@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-110 -110 220 220" role="img" aria-label="ARMOR-ELECTRICAL">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop stop-color="#07090C"/><stop offset="1" stop-color="#12161C"/></linearGradient>
+    <filter id="g"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect x="-110" y="-110" width="220" height="220" rx="36" fill="url(#bg)"/>
+  <g transform="scale(0.95)" filter="url(#g)" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke="#00E5FF" stroke-width="4">
+    <path d="M0,-84 L66,-58 V4 C66,48 34,72 0,88 C-34,72 -66,48 -66,4 V-58 Z"/>
+    <g transform="scale(.78) translate(0 4)" stroke-width="4">
+    <path d="M10,-46 L-24,4 H-2 L-10,46 L26,-8 H4 Z" stroke="#FFB020" stroke-width="4"/>
+    <path d="M-44,-30 q8,-14 16,0 t16,0" stroke-width="3" opacity=".7"/><path d="M-44,30 h20 M24,30 h20" stroke-width="3" opacity=".7"/>
+    </g>
+  </g>
+</svg>
