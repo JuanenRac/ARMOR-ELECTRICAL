@@ -32,6 +32,7 @@ constexpr std::size_t kMeterCount = 16;
 enum class WifiSecurity { kOpen, kWpa2, kWpa3, kWpa2Wpa3 };
 // The panel over plain HTTP only, over HTTP and HTTPS (a certificate the node made for itself), or over HTTPS only (port 80 sends the browser to HTTPS).
 enum class WebMode { kHttp, kBoth, kHttps };
+enum class BleMode { kOff, kSetup, kAlways };   // when the node listens to a phone over Bluetooth
 // How the node reaches the network: over the Ethernet cable (only the s3-eth board has one) or as a Wi-Fi station.
 enum class Uplink { kWifi, kEthernet };
 
@@ -95,6 +96,7 @@ struct Settings {
   BusSetting bus;
   std::array<MeterSetting, kMeterCount> meters;
   WebMode web = WebMode::kBoth;
+  BleMode ble = BleMode::kSetup;   // "setup": only while the node has no user; "always"; "off": the Bluetooth stack is not even started
   std::string language = "en";
 };
 
@@ -109,6 +111,7 @@ inline const char* to_text(WifiSecurity v) {
   return "wpa2";
 }
 inline const char* to_text(Uplink v) { return v == Uplink::kEthernet ? "ethernet" : "wifi"; }
+inline const char* to_text(BleMode v) { return v == BleMode::kAlways ? "always" : v == BleMode::kOff ? "off" : "setup"; }
 inline const char* to_text(WebMode v) { return v == WebMode::kHttps ? "https" : v == WebMode::kHttp ? "http" : "both"; }
 
 // The speeds the line may use.
@@ -252,6 +255,9 @@ inline void read_settings(const json::Value& document, Settings& s, Problems& pr
   }
   if (const json::Value* web = document.get("web"); web != nullptr && web->is_object()) {
     if (!read_choice<WebMode>(*web, "mode", {{"http", WebMode::kHttp}, {"both", WebMode::kBoth}, {"https", WebMode::kHttps}}, s.web)) bad(problems, "web.mode", "invalid");
+  }
+  if (const json::Value* ble = document.get("ble"); ble != nullptr && ble->is_object()) {
+    if (!read_choice<BleMode>(*ble, "mode", {{"off", BleMode::kOff}, {"setup", BleMode::kSetup}, {"always", BleMode::kAlways}}, s.ble)) bad(problems, "ble.mode", "invalid");
   }
   if (const json::Value* ui = document.get("ui"); ui != nullptr && ui->is_object()) read_text(*ui, "language", s.language, 4, "ui.language", problems);
 }
@@ -404,6 +410,7 @@ inline std::string to_json(const Settings& s, bool secrets) {
   }
   w.end_array();
   w.key("web").begin_object().field("mode", to_text(s.web)).end_object();
+  w.key("ble").begin_object().field("mode", to_text(s.ble)).end_object();
   w.key("ui").begin_object().field("language", s.language).end_object();
   w.end_object();
   return w.str();

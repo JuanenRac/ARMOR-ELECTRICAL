@@ -27,6 +27,7 @@ extern "C" {
 }
 #include "core/netplan.hpp"
 #include "log_buffer.hpp"
+#include "ble_provision.hpp"
 #include "mqtt_link.hpp"
 #include "network.hpp"
 #include "node_store.hpp"
@@ -108,6 +109,7 @@ extern "C" void app_main() {
   if (!network_ok) ESP_LOGE(kTag, "the network could not be started: the node stays local");
   const bool panel_ok = network_ok && armor::web::start(settings);
   armor::mqtt_link::start(settings);
+  armor::ble_provision::start(settings, setup);   // only when the settings say so: Bluetooth stays unused otherwise
 
   if (setup) xTaskCreate(setup_reminder_task, "setup-hint", 3072, nullptr, 2, nullptr);
   bool button_is_a_pin = false;

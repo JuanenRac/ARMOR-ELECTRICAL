@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## [0.0.3] - Configuration from a phone over Bluetooth, and the meters loop tested
+
+- **Bluetooth Low Energy (NimBLE), the same channel as the other nodes:** a phone running the ARMOR app finds the node as `ARMOR-XXXXXX` and sets up its name, Wi-Fi station, address, broker and the rest, with the same set-up code and the same users as the panel (`docs/BLE_PROVISIONING.md`). New setting `ble.mode` (`setup` by default, `always`, `off`) in the panel's Network page, in seven languages. 68 host checks of the framing, the requests, the access rules and the setting.
+- **What the node does on every turn of its loop is now tested on a computer** (`core/meter_runner.hpp`, 62 checks): the firmware's task only opens the UART and gives it the clock. A stand-in line plays the meters: one that reads, a DC one, one that does not answer, one with a bad CRC, another address or a refusal, replies in pieces, replies that come late, a line that will not send, sixteen meters, the message's clock and the polling period.
+- **A fix the tests found:** a meter that worked and then stopped answering was shown as *waiting* for ever; it is now *silent* (or *garbled*), with the reason, and it leaves the message after ten seconds as before.
+- **The panel** was exercised in a real browser (headless Edge) against `tools/panel_mock.mjs`, a stand-in node, on both board profiles: set-up, login, the Meters and Readings pages, saving with a refused and a corrected meter, the Bluetooth setting, every page in the seven languages, the width of a phone. The texts of the solar node that this panel no longer uses were removed.
+- **Not done:** the radio side has never run on a board and no phone has talked to it; nothing has run on a board.
+
 ## [0.0.2] - The firmware of the electrical node
 
 - **The firmware,** forked from the solar node's and reduced to what a node of meters needs: the settings stored in flash (`core/electrical_config.hpp`), **one serial line** (a hardware UART, 9600 baud by default) for up to **sixteen meters** (PZEM-004T v3 AC or PZEM-017 DC, each with its channel, name, kind and Modbus address), the rounds that ask them one at a time, and the message published on `armor/electrical/<node>/state` (QoS 0, not retained). It **only reads**: no request that writes to a meter exists, no output pin is driven, and the rules for switching are not linked into it.
