@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here.
 
+## [0.0.4] - The commands to a switch, tested and not linked
+
+- **`core/switch_set.hpp`:** the layer between a message and the transfer controller. It reads a command of ARMOR-COMMON's new `electrical_command` schema strictly (`arm`, `close_a`, `close_b`, `open`, `acknowledge`), refuses what it should (`disabled`, `fault`, `not_armed`, `not_confirmed_open`, `unknown_switch`, `bad_token`, `not_supported`) and answers with an `electrical_result`. Closing is two steps: an accepted `arm` gives a one-time 64-bit token and a close must carry it (a wrong token withdraws the arm; the token is spent by the first close); `open` needs neither and always works. The state message can carry `switches` (`SwitchSet::switches_json`, `message_json` takes the array).
+- `TransferController::disarm()` (withdraws an unused arm; never moves anything).
+- `tests/test_switch_set.cpp` (about 240,000 checks): the reader against the shared vectors, the two-step close and its replays, every refusal, a welded contactor, the state message, and 40 rounds of random commands and noise against contactors that weld and stick; a mutation that skips the token check is caught. `tests/emit_samples.cpp` prints states, commands and answers and `check_samples.py` has ARMOR-COMMON validate them (and that an answer answers a command that was sent).
+- **Not linked into the firmware:** no image creates a `SwitchSet`, the state message still says `switching_enabled: false` and has no `switches`. Nothing here has driven a contactor.
+
 ## [0.0.3] - Configuration from a phone over Bluetooth, and the meters loop tested
 
 - **Bluetooth Low Energy (NimBLE), the same channel as the other nodes:** a phone running the ARMOR app finds the node as `ARMOR-XXXXXX` and sets up its name, Wi-Fi station, address, broker and the rest, with the same set-up code and the same users as the panel (`docs/BLE_PROVISIONING.md`). New setting `ble.mode` (`setup` by default, `always`, `off`) in the panel's Network page, in seven languages. 68 host checks of the framing, the requests, the access rules and the setting.

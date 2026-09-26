@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "../core/electrical_json.hpp"
+#include "../core/switch_set.hpp"
 
 using namespace armor::electrical;
 
@@ -33,5 +34,38 @@ int main() {
   std::printf("%s %s\n", topic(node).c_str(), message_json(node, 1000, false, fresh).c_str());
   std::printf("%s %s\n", topic(node).c_str(), message_json(node, 2000, true, fresh, {{"heater", {SwitchState::kClosed, "over_current"}}, {"grid", {SwitchState::kOpen, ""}}}).c_str());
   std::printf("%s %s\n", topic(node).c_str(), message_json(node, 3000, false, {}).c_str());
+
+  // The switches of a node: the states it publishes and the answers it gives, for a node that may switch and for one that may not (stand-in contactors, nothing driven).
+  for (bool allowed : {true, false}) {
+    SwitchSet set(node, [](std::uint8_t* out, std::size_t n) { for (std::size_t i = 0; i < n; ++i) out[i] = static_cast<std::uint8_t>(i * 17 + 3); return true; });
+    SwitchConfig config;
+    config.id = "transfer"; config.label = "Grid or inverter"; config.source_a = "grid"; config.source_b = "dc-bus";
+    config.transfer = TransferConfig{allowed, 2000, 1000, 10'000};
+    set.add(config);
+    const auto state = [&](std::uint64_t at) { std::printf("%s %s\n", topic(node).c_str(), message_json(node, at, set.switching_enabled(), fresh, {}, set.switches_json(at)).c_str()); };
+    const auto command = [&](const std::string& action, const std::string& token, std::uint64_t at) {
+      const std::string text = std::string("{\"kind\":\"electrical_command\",\"node_id\":\"") + node + "\",\"timestamp_ms\":" + std::to_string(at) + ",\"command_id\":\"c0ffee0123456789\",\"switch\":\"transfer\",\"action\":\"" + action + "\"" +
+                               (token.empty() ? "" : ",\"token\":\"" + token + "\"") + "}";
+      std::printf("armor/electrical/%s/command %s\n", node.c_str(), text.c_str());
+      const std::string answer = set.handle(text, at);
+      std::printf("%s %s\n", result_topic(node).c_str(), answer.c_str());
+      return answer;
+    };
+    for (std::uint64_t at = 0; at <= 2500; at += 10) set.tick(at);
+    state(2500);
+    const std::string armed = command("arm", "", 2600);
+    state(2600);
+    armor::json::Value parsed;
+    armor::json::parse(armed, parsed);
+    const std::string token = parsed.string_or("token", "0123456789abcdef");
+    command("close_a", token, 2700);
+    command("close_a", token, 2800);   // the same again: nothing to close with
+    for (std::uint64_t at = 2700; at <= 4900; at += 10) { set.set_feedback("transfer", Feedback{set.coils("transfer").a && at > 4700, false}); set.tick(at); }
+    state(5000);
+    command("open", "", 5100);
+    command("acknowledge", "", 5200);
+    for (std::uint64_t at = 5100; at <= 5400; at += 10) { set.set_feedback("transfer", Feedback{false, false}); set.tick(at); }
+    state(5500);
+  }
   return 0;
 }
