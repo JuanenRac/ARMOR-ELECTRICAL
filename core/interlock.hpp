@@ -38,6 +38,8 @@ class TransferController {
   /// The operator's first step: the next request to close is accepted for `arm_window_ms`.
   void arm(std::uint64_t now_ms) { armed_until_ms_ = now_ms + config_.arm_window_ms; }
   bool armed(std::uint64_t now_ms) const { return now_ms < armed_until_ms_; }
+  /// Withdraw an `arm` that was not used (a request that came with the wrong credentials). Never opens or closes anything.
+  void disarm() { armed_until_ms_ = 0; }
 
   /// Ask for a source (or none). Opening (`kNone`) is always accepted. Returns why a request to close was refused.
   Refusal request(Source wanted, std::uint64_t now_ms) {

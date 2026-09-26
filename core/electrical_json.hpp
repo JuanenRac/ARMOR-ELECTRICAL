@@ -2,7 +2,7 @@
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 //   armor/electrical/<node>/state     one message per node, every few seconds; JSON, no retained flag.
-//   kind "electrical": one entry per measured channel: AC or DC, voltage, current, power (positive when it draws from the network), energy, and for AC the
+//   kind "electrical": the state of the node's switches (when it has any) and one entry per measured channel: AC or DC, voltage, current, power (positive when it draws from the network), energy, and for AC the
 //                      frequency and the power factor; the state of a switch as the node sees it; an alarm. It carries a state and never a command.
 // `node_id` and a channel id are lowercase letters, digits, - and _ (the rule of the whole of A.R.M.O.R.); `timestamp_ms` is the node's clock.
 #pragma once
@@ -37,9 +37,10 @@ struct ChannelExtra {
 inline const char* state_name(SwitchState state) { return state == SwitchState::kClosed ? "closed" : state == SwitchState::kOpen ? "open" : "unknown"; }
 
 /// The message of a node from the meters that have a fresh reading. `extras` (by channel id) adds the state of a switch and an alarm code; a meter's own alarm flag is
-/// always reported. At most sixteen channels go into one message. `switching_enabled` says whether this node's firmware may switch at all.
+/// always reported. At most sixteen channels go into one message. `switching_enabled` says whether this node's firmware may switch at all. `switches` is the already
+/// serialised array of the node's switches (`SwitchSet::switches_json`), or empty for a node that has none.
 inline std::string message_json(const std::string& node_id, std::uint64_t timestamp_ms, bool switching_enabled, const std::vector<const MeterState*>& meters,
-                                const std::vector<std::pair<std::string, ChannelExtra>>& extras = {}) {
+                                const std::vector<std::pair<std::string, ChannelExtra>>& extras = {}, const std::string& switches = "") {
   json::Writer w;
   w.begin_object().field("kind", "electrical").field("node_id", node_id).key("timestamp_ms").integer(static_cast<long long>(timestamp_ms));
   w.field("switching_enabled", switching_enabled);
@@ -63,7 +64,9 @@ inline std::string message_json(const std::string& node_id, std::uint64_t timest
     w.end_object();
     ++written;
   }
-  w.end_array().end_object();
+  w.end_array();
+  if (!switches.empty()) w.key("switches").raw(switches);
+  w.end_object();
   return w.str();
 }
 
