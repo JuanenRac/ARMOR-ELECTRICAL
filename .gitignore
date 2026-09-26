@@ -1,0 +1,10 @@
+build/
+dist/
+*.log
+__pycache__/
+sdkconfig
+sdkconfig.old
+managed_components/
+certs/
+secrets/*
+!secrets/node.conf.example
