@@ -1,0 +1,38 @@
+# ARMOR-ELECTRICAL defaults. Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
+#
+# The board is an ESP32-S3-DevKitC-1 style ESP32-S3-WROOM-1 N16R8 (16 MB flash, 8 MB octal PSRAM) with two USB-C sockets: "USB & OTG" (the chip's native
+# USB, GPIO 19 and 20) and "USB to serial" (a CH343P on UART0, GPIO 43 and 44). The console is moved to the native USB Serial/JTAG so that all three
+# hardware UARTs are free for the equipment; the serial log comes out of the "USB & OTG" socket, the same one used to flash.
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+# A node that stops answering must recover by itself: the task watchdog resets a stuck task.
+CONFIG_ESP_TASK_WDT_EN=y
+
+# Two application slots for over-the-air updates (partitions.csv); the boot loader goes back to the previous image when a new one does not confirm itself.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# The N16R8 module carries 8 MB of octal PSRAM. If it does not answer the node still starts, without it (a wrong guess must not brick a board).
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_IGNORE_NOTFOUND=y
+CONFIG_SPIRAM_USE_MALLOC=y
+
+CONFIG_LWIP_MAX_SOCKETS=16
+# The HTTPS panel: a second server with its own certificate; the TLS buffers are released while a connection is idle.
+CONFIG_ESP_HTTPS_SERVER_ENABLE=y
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA=y
+CONFIG_MBEDTLS_DYNAMIC_FREE_CA_CERT=y
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
+
+# The emulated serial ports time the line with interrupts: the GPIO functions and the timer's interrupt live in IRAM so that a flash write (a setting saved,
+# a firmware update) never delays them.
+CONFIG_GPIO_CTRL_FUNC_IN_IRAM=y
+CONFIG_GPTIMER_ISR_IRAM_SAFE=y
+CONFIG_GPTIMER_CTRL_FUNC_IN_IRAM=y

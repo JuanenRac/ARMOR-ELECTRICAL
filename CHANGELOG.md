@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## [0.0.2] - The firmware of the electrical node
+
+- **The firmware,** forked from the solar node's and reduced to what a node of meters needs: the settings stored in flash (`core/electrical_config.hpp`), **one serial line** (a hardware UART, 9600 baud by default) for up to **sixteen meters** (PZEM-004T v3 AC or PZEM-017 DC, each with its channel, name, kind and Modbus address), the rounds that ask them one at a time, and the message published on `armor/electrical/<node>/state` (QoS 0, not retained). It **only reads**: no request that writes to a meter exists, no output pin is driven, and the rules for switching are not linked into it.
+- **The panel** is the other nodes' (set-up with the code on the USB console, users, Wi-Fi station and access point, broker, update over the air with rollback, log, HTTPS) with two pages of its own, **Meters** (the line and each meter, with its state, its counters and a hint for the usual causes of silence) and **Readings** (the last message, channel by channel), in seven languages.
+- **Two boards, one code base:** the ESP32-S3-WROOM-1 N16R8 on Wi-Fi (`s3-wifi`) and the Waveshare ESP32-S3-ETH on its cable (`s3-eth`); the universal images build in the ESP-IDF 5.4.2 container without warnings.
+- **Tests:** 71 checks of the settings (defaults, the meters' channels and addresses, the pins of the line, the stored document and what the panel may send) on top of the 53 and 135,736 of 0.0.1.
+- **Not done:** running on a board, any meter or contactor connected, any measurement of a real installation, any switching.
+
 ## [0.0.1] - The core of the electrical node
 
 - **Reading the meters.** The frames of the Peacefair **PZEM-004T v3** (AC) and **PZEM-017** (DC) over Modbus RTU: the CRC-16, the request that reads the input registers and the decoding of the reply (voltage, current, power, energy, frequency, power factor, alarm). Only the read request is built; the requests that write to a meter (its address, its thresholds, the reset of its energy counter) are not built anywhere. A reply is refused when its CRC, address, function or length do not fit, when it is an exception, or when it holds a value no real meter could give.
@@ -9,4 +17,4 @@ All notable changes to this project are documented here.
 - **The message.** `armor/electrical/{node}/state` (kind `electrical`, one entry per channel: AC or DC, voltage, current, power, energy, and for AC the frequency and the power factor; the state of a switch as the node sees it; an alarm), which the shared contract of ARMOR-COMMON accepts. It carries a state and never a command.
 - **The rules for switching**, kept apart from any hardware: a controller for the transfer between two sources that never commands both, needs the switching allowed, the node armed just before, both contactors confirmed open for the whole dead time and a fault-free state, treats a contactor that does not show what it was told as a fault that stays until it is acknowledged with both confirmed open, and always opens at once when asked. **Switching is off by default and nothing drives any hardware.**
 - **Tests:** 53 checks of the meters and 135,736 of the switching rules (scripted scenarios and random steps with contactors that weld, stick and fall out), and the messages the node makes are checked against ARMOR-COMMON.
-- **Not done:** the firmware of the node (Wi-Fi, panel, MQTT, the serial ports), every piece of hardware, any measurement of a real installation, any switching.
+- **Not done:** the firmware of the node, every piece of hardware, any measurement of a real installation, any switching.

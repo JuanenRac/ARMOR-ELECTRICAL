@@ -1,0 +1,8 @@
+# ARMOR-ELECTRICAL, board profile s3-eth: the Waveshare ESP32-S3-ETH (ESP32-S3R8, 16 MB flash, W5500 over SPI). Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
+# The native USB of its USB-C connector carries the log and the flashing, as on the other board.
+CONFIG_ARMOR_BOARD_S3_ETH=y
+# The W5500 Ethernet controller (SPI), and nothing else of the Ethernet drivers.
+CONFIG_ETH_USE_SPI_ETHERNET=y
+CONFIG_ETH_SPI_ETHERNET_W5500=y
+CONFIG_ETH_SPI_ETHERNET_DM9051=n
+CONFIG_ETH_SPI_ETHERNET_KSZ8851SNL=n
