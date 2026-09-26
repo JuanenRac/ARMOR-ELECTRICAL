@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - a small, strict JSON reader and writer (a copy of ARMOR-SOLAR's core/json.hpp, to be shared once the projects build from one place).
+// ARMOR-ELECTRICAL - a small, strict JSON reader and writer for the node's settings and its web API.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The panel and the node speak JSON, and the settings are stored as JSON, so the parser sees text that comes from the network: it is
