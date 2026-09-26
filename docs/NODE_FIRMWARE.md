@@ -4,7 +4,11 @@ The firmware of an **ESP32-S3** node (the same two boards and the same board pro
 
 **It only reads.** The firmware never builds a request that writes to a meter, and it does not drive any contactor, relay or breaker: the rules for switching (`core/interlock.hpp`) are in the repository, tested, and **not linked into the firmware**.
 
-**Nothing here has run on a board and no meter has been connected.** What has been done: the settings, the meters' frames and the bus are tested on a computer with stand-in meters, the messages the node makes are accepted by ARMOR-COMMON, and the firmware is built in the ESP-IDF container (see the CHANGELOG for the result).
+**Nothing here has run on a board and no meter has been connected.** What has been done: the settings, the meters' frames, the bus and what the node does on every turn of its loop (`core/meter_runner.hpp`, against a stand-in line that plays the meters: one that reads, one that is silent, garbled replies, replies in pieces or late, sixteen meters) are tested on a computer, the messages the node makes are accepted by ARMOR-COMMON, the panel was exercised in a real browser against a stand-in node (`tools/panel_mock.mjs`) and the firmware is built in the ESP-IDF container for both boards without warnings. The host tests are 135,990 checks, 254 of them apart from the switching rules.
+
+## Configuration from a phone over Bluetooth
+
+The node listens over Bluetooth Low Energy (NimBLE) with the same channel as the radar node's, so the ARMOR app on a phone finds it as `ARMOR-XXXXXX` and sets up its name, Wi-Fi, address, broker and Bluetooth mode, with the panel's users and set-up code ([BLE_PROVISIONING.md](BLE_PROVISIONING.md)). The setting `ble.mode` (Network page) is `setup` by default (the node listens only while it has no user), `always` or `off` (the Bluetooth stack is not even started). What a node lists in its settings differs between the three kinds of A.R.M.O.R. node, and the app only touches what they all have. The radio side builds for both boards and the framing and the access rules are tested on a computer; **it has never run on a board and no phone has talked to it.**
 
 ## The serial line and the meters
 

@@ -8,6 +8,7 @@
 #include <string>
 
 #include "core/electrical_config.hpp"
+#include "core/meter_runner.hpp"   // BusStatus and MeterStatus
 
 namespace armor::manager {
 
@@ -16,26 +17,8 @@ using Publish = std::function<void(const std::string& topic, const std::string& 
 // Starts the task when at least one meter is enabled. `publish` gets the node's message (topic, JSON) every round.
 void start(const config::Settings& settings, Publish publish);
 
-struct BusStatus {
-  std::string state = "disabled";   // disabled, starting, error, running
-  std::string error;                // why the line did not open
-  int rx = -1, tx = -1, baud = 0, poll_s = 0;
-  std::uint32_t bytes_rx = 0, bytes_tx = 0, messages = 0;
-};
 BusStatus bus();
 
-struct MeterStatus {
-  int number = 0;             // 1 to 16
-  bool enabled = false;
-  std::string channel, label, model;
-  int address = 0;
-  std::string state = "disabled";   // disabled, waiting, reading, silent, garbled
-  std::string error;                // the last result of an exchange, when it was not good
-  std::uint32_t replies_ok = 0, replies_bad = 0, timeouts = 0;
-  bool have_reading = false;
-  double voltage_v = 0, current_a = 0, power_w = 0, energy_kwh = 0;
-  bool alarm = false;
-};
 MeterStatus meter(std::size_t index);
 
 // The last message of the node (JSON), or "" before the first.

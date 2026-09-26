@@ -15,4 +15,4 @@ From the makers' public description of the two meters; **nothing here has been c
 
 - The register layouts come from the makers' descriptions and were not checked against a meter. The first reading of a real one must be compared with the meter's own display.
 - The current transformer of the PZEM-004T v3 measures the current, not its direction: the power is always positive. To tell import from export on the grid input a meter that measures direction is needed (a later step).
-- The line's electrical levels (the PZEM's serial side is 5 V, an ESP32-S3's is 3.3 V) need a level adaptation that this project does not describe yet.
+- The line's electrical levels (the PZEM's serial side is 5 V, an ESP32-S3's is 3.3 V) need a level adaptation; [HARDWARE.md](HARDWARE.md) proposes one, untried.
