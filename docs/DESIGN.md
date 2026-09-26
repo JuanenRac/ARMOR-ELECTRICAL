@@ -12,7 +12,7 @@ ARMOR-ELECTRICAL is the part of A.R.M.O.R. that looks at the house's electrical 
 - **`core/pzem_bus.hpp`**: a serial line with several meters (each has its own address): one request at a time, a reply timeout, the last good reading of each, and freshness.
 - **`core/electrical_json.hpp`**: the message of the node (see [ELECTRICAL_MESSAGES.md](ELECTRICAL_MESSAGES.md)).
 - **`core/interlock.hpp`**: the rules for switching, when a node one day switches something (see [SWITCHING.md](SWITCHING.md) and [SAFETY.md](SAFETY.md)).
-- **The firmware** (the ESP32-S3 with its serial ports, Wi-Fi, web panel and MQTT) is not written yet. ARMOR-SOLAR's node is built the same way and its structure (settings, panel, MQTT link, update over the air) is what this one will follow.
+- **The firmware** (the ESP32-S3 with its serial line, Wi-Fi, web panel and MQTT), described in [NODE_FIRMWARE.md](NODE_FIRMWARE.md): `core/electrical_config.hpp` (the settings), `main/uart_bus.*` and `main/electrical_manager.*` (the line and the rounds), and the panel of ARMOR-SOLAR's node adapted (Meters and Readings). It reads only; `core/interlock.hpp` is not linked into it.
 
 ## Channels and the drawing
 

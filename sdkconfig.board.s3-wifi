@@ -1,0 +1,2 @@
+# ARMOR-ELECTRICAL, board profile s3-wifi: an ESP32-S3-WROOM-1 N16R8 with no Ethernet. Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
+CONFIG_ARMOR_BOARD_S3_WIFI=y

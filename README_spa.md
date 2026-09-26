@@ -14,7 +14,7 @@
   <a href="README_jpn.md">🇯🇵 日本語</a>
 </p>
 
-### Nodo eléctrico: lee las tensiones, corrientes, potencia y energía de la red AC y DC de la casa y guarda las reglas para maniobrarla (núcleo probado en el PC; el firmware aún está por hacer)
+### Nodo eléctrico: lee las tensiones, corrientes, potencia y energía de la red AC y DC de la casa y guarda las reglas para maniobrarla (núcleo probado en el PC y un firmware que compila; nunca ha corrido en una placa)
 
 <p align="center">
   <img src="https://img.shields.io/badge/License-GPL%203.0-blue.svg" alt="GPL 3.0">
@@ -26,7 +26,7 @@
 
 ---
 
-**Comprobación de honestidad - qué funciona hoy:** **Madurez: scaffolding.** El núcleo (las tramas de los contadores PZEM-004T v3 y PZEM-017, el bus que los pregunta, el mensaje del nodo y las reglas para maniobrar: 53 comprobaciones de los contadores y 135.736 de las reglas de maniobra) se prueba en un ordenador con contadores y contactores simulados, y ARMOR-COMMON acepta los mensajes que hace. **Aún no hay firmware, no se ha conectado nada a un contador ni a un contactor, y nada de aquí maniobra nada.**
+**Comprobación de honestidad - qué funciona hoy:** **Madurez: scaffolding.** El núcleo (las tramas de los contadores PZEM-004T v3 y PZEM-017, el bus que los pregunta, el mensaje del nodo y las reglas para maniobrar: 53 comprobaciones de los contadores y 135.736 de las reglas de maniobra) se prueba en un ordenador con contadores y contactores simulados, y ARMOR-COMMON acepta los mensajes que hace. El firmware del nodo (los ajustes, la línea serie y las páginas Contadores y Lecturas de su panel: 71 comprobaciones más) compila en el contenedor de ESP-IDF 5.4.2 para las dos placas. **Nunca ha corrido en una placa, no se ha conectado nada a un contador ni a un contactor, y nada de aquí maniobra nada.**
 
 ---
 
@@ -37,7 +37,8 @@
 * **El mensaje** `armor/electrical/<nodo>/state`: una entrada por canal (un circuito, una línea, la entrada de red, un bus DC) con AC o DC, tensión, corriente, potencia, energía, frecuencia, factor de potencia, el estado de un interruptor tal como lo ve el nodo y una alarma; está en el contrato compartido y lleva un estado, nunca una orden.
 * **Las reglas para maniobrar,** aparte de cualquier hardware: un controlador del cambio entre dos fuentes que nunca manda las dos, exige la maniobra permitida, el nodo armado justo antes y los dos contactores confirmados abiertos durante todo el tiempo muerto, y convierte un contactor que no muestra lo que se le ordenó en una avería que se queda hasta que se reconoce. **La maniobra está desactivada por defecto y nada maneja ningún hardware.**
 * **Dónde se ve:** el *Diseñador eléctrico* de ARMOR-STUDIO dibuja la red de la casa y muestra en cada elemento lo que mide su canal; ARMOR-SERVER guarda las lecturas, su historial y las sumas.
-* **Todavía no:** el firmware del nodo (Wi-Fi, panel, MQTT, puertos serie), el hardware, ninguna medida de una instalación real y ninguna maniobra.
+* **El firmware del nodo** (ESP32-S3-WROOM-1 N16R8 por Wi-Fi, o la Waveshare ESP32-S3-ETH por su cable): los ajustes, una línea serie para hasta dieciséis contadores y el panel web de los otros nodos (puesta en marcha, usuarios, Wi-Fi, broker, actualización por aire, HTTPS) con sus propias páginas de Contadores y Lecturas, en siete idiomas. Solo lee: las reglas para maniobrar no están enlazadas en él. Véase [el firmware](docs/NODE_FIRMWARE.md).
+* **Todavía no:** el firmware funcionando en una placa, el hardware, ninguna medida de una instalación real y ninguna maniobra.
 
 ## 📂 Estructura del repositorio
 
