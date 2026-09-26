@@ -1,7 +1,7 @@
-// ARMOR-ELECTRICAL - the node's link to the broker: the clock and the electrical message of the node.
+// ARMOR-ELECTRICAL - the node's link to the broker: the clock and the messages the node publishes.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
-// The node publishes what its meters measure every round (armor/electrical/<node>/state, JSON, QoS 0, not retained: the server keeps the latest
+// The node publishes what it reads as it is read (armor/<family>/<node>/..., JSON, QoS 0, not retained: the server keeps the latest
 // reading and marks a device stale when it stops). It sends nothing until the network, the clock and the broker are all there.
 #include "mqtt_link.hpp"
 

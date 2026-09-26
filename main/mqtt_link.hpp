@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the node's link to the broker: the clock and the electrical message of the node.
+// ARMOR-ELECTRICAL - the node's link to the broker: the clock and the messages the node publishes.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <cstdint>
@@ -16,7 +16,7 @@ bool connected();
 bool clock_is_set();
 std::uint64_t wall_clock_ms();
 
-// Publishes the node's message (armor/electrical/<node>/state). Nothing is sent while the broker is not connected or the clock is not set: the server
+// Publishes one message of the node (its topic is the node's own, armor/<family>/<node>/...). Nothing is sent while the broker is not connected or the clock is not set: the server
 // ignores a message older than the last one it accepted, so a timestamp from an unset clock must never leave the node.
 void publish(const std::string& topic, const std::string& payload);
 
