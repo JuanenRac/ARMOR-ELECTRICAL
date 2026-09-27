@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here.
 
+## [0.0.5]
+
+- A GitHub Actions CI baseline (`.github/workflows/ci.yml`): validates the manifest, the version, CHANGELOG.md's heading, the seven README translations' structure and its own local Markdown links, then runs this project's real build/test through `tools/armor_project_tool.py build-test .` (vendored from ARMOR-COMMON, alongside `tools/armor_ci_validate.py` and `tools/_armor_readme_parity.py`, which do the manifest/docs checking).
+
 ## [0.0.4] - The commands to a switch, tested and not linked
 
 - **`core/switch_set.hpp`:** the layer between a message and the transfer controller. It reads a command of ARMOR-COMMON's new `electrical_command` schema strictly (`arm`, `close_a`, `close_b`, `open`, `acknowledge`), refuses what it should (`disabled`, `fault`, `not_armed`, `not_confirmed_open`, `unknown_switch`, `bad_token`, `not_supported`) and answers with an `electrical_result`. Closing is two steps: an accepted `arm` gives a one-time 64-bit token and a close must carry it (a wrong token withdraws the arm; the token is spent by the first close); `open` needs neither and always works. The state message can carry `switches` (`SwitchSet::switches_json`, `message_json` takes the array).
