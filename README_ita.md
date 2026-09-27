@@ -78,6 +78,7 @@ Vedi il [progetto](docs/DESIGN.md), le [note di sicurezza](docs/SAFETY.md), le [
 * **[ARMOR-RADAR](../ARMOR-RADAR)** - Firmware del nodo di campo per ESP32-S3 con tre radar e un proprio pannello web
 * **[ARMOR-SOLAR](../ARMOR-SOLAR)** - Protocolli di inverter e batterie solari e messaggi di un nodo gateway
 * **ARMOR-ELECTRICAL** (questo repository) - Nodo elettrico: contatori, il messaggio delle letture della rete e le regole di manovra
+* **[ARMOR-NETWORK](../ARMOR-NETWORK)** - La rete locale: i suoi dispositivi, internet e ciò che cambia
 * **[ARMOR-SERVER](../ARMOR-SERVER)** - Coordinatore centrale: telemetria, allarmi, dispositivi, letture solari e telecamere
 * **[ARMOR-STUDIO](../ARMOR-STUDIO)** - Console web: telecamere, radar, allarmi, energia solare e progettista del sito 2D/3D
 * **[ARMOR-ANDROID-CONTROL](../ARMOR-ANDROID-CONTROL)** - Client Android dell'operatore con radar 2D/3D in tempo reale
@@ -86,6 +87,7 @@ Vedi il [progetto](docs/DESIGN.md), le [note di sicurezza](docs/SAFETY.md), le [
 * **[ARMOR-HARDWARE](../ARMOR-HARDWARE)** - Contenitori, elettronica e matrice di accettazione da banco
 * **[ARMOR-DEVOPS](../ARMOR-DEVOPS)** - Distribuzione, banco di prova CM5, backup e TLS
 * **[ARMOR-SIMULATOR](../ARMOR-SIMULATOR)** - Simulatore di telemetria offline con guasti ripetibili
+* **[ARMOR-UPDATER](../ARMOR-UPDATER)** - Rileva, installa e aggiorna i repository stessi dell'ecosistema
 * **[ARMOR-DOCS](../ARMOR-DOCS)** - Architettura, base di sicurezza e matrice delle capacità
 
 ## 📚 Documentazione e comunità
