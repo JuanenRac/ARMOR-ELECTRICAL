@@ -17,6 +17,8 @@ extern "C" {
 #include "esp_netif.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "sdkconfig.h"
 }
 #if defined(ARMOR_BOARD_S3_ETH)
@@ -108,10 +110,12 @@ void on_eth_event(void*, esp_event_base_t, int32_t event_id, void*) {
   }
 }
 
+#endif
+
 // The name, and either DHCP or the fixed address, mask, gateway and DNS of the settings.
 void apply_ip(esp_netif_t* netif, const config::Settings& s, const std::string& hostname) {
   esp_netif_set_hostname(netif, hostname.c_str());
-  if (s.ip.dhcp || s.uplink != config::Uplink::kEthernet) return;
+  if (s.ip.dhcp) return;
   esp_netif_ip_info_t info{};
   std::uint32_t address = 0, mask = 0, gateway = 0;
   if (!net::parse_ipv4(s.ip.address, address) || !net::parse_ipv4(s.ip.netmask, mask) || !net::parse_ipv4(s.ip.gateway, gateway)) {
@@ -134,7 +138,6 @@ void apply_ip(esp_netif_t* netif, const config::Settings& s, const std::string& 
     esp_netif_set_dns_info(netif, kinds[i], &dns);
   }
 }
-#endif
 
 void reconnect_station(void*) { esp_wifi_connect(); }
 
@@ -153,21 +156,33 @@ void on_wifi_event(void*, esp_event_base_t, int32_t event_id, void* data) {
     }
     case WIFI_EVENT_STA_START: esp_wifi_connect(); break;
     case WIFI_EVENT_STA_CONNECTED: {
+      {
       std::lock_guard<std::mutex> guard(g_lock);
       g_status.link_up = true;
       g_status.sta_connected = true;
       g_status.sta_ssid = g_settings.sta.ssid;
+      g_status.sta_error.clear();
       ESP_LOGI(kTag, "joined the Wi-Fi network \"%s\"", g_settings.sta.ssid.c_str());
+      }
+      if (!g_settings.ip.dhcp && g_ip_netif != nullptr) refresh_ip(g_ip_netif);   // a fixed address gets no DHCP event (called outside the lock: it takes it)
       break;
     }
     case WIFI_EVENT_STA_DISCONNECTED: {
+      const auto* event = static_cast<wifi_event_sta_disconnected_t*>(data);
+      const char* error = "failed";
+      switch (event->reason) {
+        case WIFI_REASON_NO_AP_FOUND: error = "network_not_found"; break;
+        case WIFI_REASON_AUTH_FAIL: case WIFI_REASON_AUTH_EXPIRE: case WIFI_REASON_ASSOC_FAIL: case WIFI_REASON_HANDSHAKE_TIMEOUT: case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT: error = "wrong_password"; break;
+        default: break;
+      }
       {
         std::lock_guard<std::mutex> guard(g_lock);
         g_status.link_up = false;
         g_status.sta_connected = false;
         g_status.has_ip = false;
+        g_status.sta_error = error;
       }
-      ESP_LOGW(kTag, "the Wi-Fi network is not reachable: trying again in 3 s");
+      ESP_LOGW(kTag, "the Wi-Fi network \"%s\" is not reachable (%s, reason %u): trying again in 3 s", g_settings.sta.ssid.c_str(), error, static_cast<unsigned>(event->reason));
       if (g_reconnect_timer != nullptr) esp_timer_start_once(g_reconnect_timer, 3 * 1000 * 1000);
       break;
     }
@@ -185,6 +200,22 @@ wifi_auth_mode_t auth_mode(config::WifiSecurity security) {
   return WIFI_AUTH_WPA2_PSK;
 }
 
+bool set_access_point(const netplan::Plan& plan) {
+  wifi_config_t ap{};
+  std::strncpy(reinterpret_cast<char*>(ap.ap.ssid), plan.ap.ssid.c_str(), sizeof ap.ap.ssid - 1);
+  ap.ap.ssid_len = static_cast<std::uint8_t>(plan.ap.ssid.size());
+  if (plan.ap.security != config::WifiSecurity::kOpen) std::strncpy(reinterpret_cast<char*>(ap.ap.password), plan.ap.password.c_str(), sizeof ap.ap.password - 1);
+  ap.ap.channel = static_cast<std::uint8_t>(plan.ap.channel);
+  ap.ap.authmode = auth_mode(plan.ap.security);
+  ap.ap.ssid_hidden = plan.ap.hidden ? 1 : 0;
+  ap.ap.max_connection = static_cast<std::uint8_t>(plan.ap.max_clients);
+  ap.ap.beacon_interval = 100;
+  if (plan.ap.security == config::WifiSecurity::kWpa3) ap.ap.pmf_cfg.required = true;
+  if (plan.ap.security == config::WifiSecurity::kWpa2Wpa3) ap.ap.pmf_cfg.capable = true;
+  if (esp_wifi_set_config(WIFI_IF_AP, &ap) != ESP_OK) { ESP_LOGE(kTag, "the access point settings were refused"); return false; }
+  return true;
+}
+
 bool wifi_setup(const config::Settings& s, const netplan::Plan& plan) {
   wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
   if (esp_wifi_init(&init) != ESP_OK) { ESP_LOGE(kTag, "the Wi-Fi driver could not be initialised"); return false; }
@@ -194,20 +225,7 @@ bool wifi_setup(const config::Settings& s, const netplan::Plan& plan) {
 
   const bool access_point = plan.ap.enabled;
   esp_wifi_set_mode(plan.station && access_point ? WIFI_MODE_APSTA : (plan.station ? WIFI_MODE_STA : WIFI_MODE_AP));
-  if (access_point) {
-    wifi_config_t ap{};
-    std::strncpy(reinterpret_cast<char*>(ap.ap.ssid), plan.ap.ssid.c_str(), sizeof ap.ap.ssid - 1);
-    ap.ap.ssid_len = static_cast<std::uint8_t>(plan.ap.ssid.size());
-    if (plan.ap.security != config::WifiSecurity::kOpen) std::strncpy(reinterpret_cast<char*>(ap.ap.password), plan.ap.password.c_str(), sizeof ap.ap.password - 1);
-    ap.ap.channel = static_cast<std::uint8_t>(plan.ap.channel);
-    ap.ap.authmode = auth_mode(plan.ap.security);
-    ap.ap.ssid_hidden = plan.ap.hidden ? 1 : 0;
-    ap.ap.max_connection = static_cast<std::uint8_t>(plan.ap.max_clients);
-    ap.ap.beacon_interval = 100;
-    if (plan.ap.security == config::WifiSecurity::kWpa3) ap.ap.pmf_cfg.required = true;
-    if (plan.ap.security == config::WifiSecurity::kWpa2Wpa3) ap.ap.pmf_cfg.capable = true;
-    if (esp_wifi_set_config(WIFI_IF_AP, &ap) != ESP_OK) { ESP_LOGE(kTag, "the access point settings were refused"); return false; }
-  }
+  if (access_point && !set_access_point(plan)) return false;
   if (plan.station) {
     wifi_config_t sta{};
     std::strncpy(reinterpret_cast<char*>(sta.sta.ssid), s.sta.ssid.c_str(), sizeof sta.sta.ssid - 1);
@@ -226,7 +244,50 @@ void wifi_tune(const netplan::Plan& plan) {
   esp_wifi_set_bandwidth(WIFI_IF_AP, plan.ap.bandwidth_mhz == 40 ? WIFI_BW_HT40 : WIFI_BW_HT20);
   esp_wifi_set_max_tx_power(static_cast<std::int8_t>(plan.ap.tx_power_dbm * 4));  // the driver counts in quarter dBm
 }
+
+netplan::Plan g_rescue;
+int g_rescue_after_s = 0;
+
+// A node with no address (no cable, no Wi-Fi network of its own that it can join) and no access point of its own cannot be reached by anyone, and a person who
+// has just set it up would think it vanished. After a while without an address it opens the set-up access point again, protected with the set-up code.
+void open_rescue_access_point() {
+  const netplan::Plan& plan = g_rescue;
+  ESP_LOGW(kTag, "no address after %d s and no access point: opening \"%s\" (password: the set-up code) so the node can be reached", g_rescue_after_s, plan.ap.ssid.c_str());
+  esp_netif_create_default_wifi_ap();
+  if (!g_wifi_running) {
+    if (!wifi_setup(g_settings, plan)) return;
+    if (esp_wifi_start() != ESP_OK) { ESP_LOGE(kTag, "the rescue access point could not be started"); return; }
+    g_wifi_running = true;
+  } else {
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    if (!set_access_point(plan)) return;
+  }
+  wifi_tune(plan);
+  std::lock_guard<std::mutex> guard(g_lock);
+  g_status.ap_active = true;
+  g_status.ap_setup = true;
+  g_status.ap_ssid = plan.ap.ssid;
+  g_status.ap_channel = plan.ap.channel;
+}
+
+void rescue_task(void*) {
+  vTaskDelay(pdMS_TO_TICKS(g_rescue_after_s * 1000));
+  bool reachable;
+  {
+    std::lock_guard<std::mutex> guard(g_lock);
+    reachable = g_status.has_ip || g_status.ap_active;
+  }
+  if (!reachable) open_rescue_access_point();
+  vTaskDelete(nullptr);
+}
 }  // namespace
+
+void arm_rescue(const netplan::Plan& rescue_plan, int after_seconds) {
+  if (!rescue_plan.ap.enabled || after_seconds <= 0) return;
+  g_rescue = rescue_plan;
+  g_rescue_after_s = after_seconds;
+  xTaskCreate(rescue_task, "net-rescue", 6144, nullptr, 2, nullptr);
+}
 
 bool start(const config::Settings& s, const netplan::Plan& plan) {
   g_plan = plan;
@@ -277,7 +338,7 @@ bool start(const config::Settings& s, const netplan::Plan& plan) {
   if (plan.ap.enabled) esp_netif_create_default_wifi_ap();
   if (plan.station) {
     esp_netif_t* sta_netif = esp_netif_create_default_wifi_sta();
-    esp_netif_set_hostname(sta_netif, plan.hostname.c_str());
+    apply_ip(sta_netif, s, plan.hostname);
     g_ip_netif = sta_netif;
   }
   if (wifi && !wifi_setup(s, plan)) return false;

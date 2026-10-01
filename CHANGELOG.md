@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## [0.0.7] - A node that has just been set up can always be reached
+
+- **A rescue access point.** A node that is set up (it has a user) but has no address 90 seconds after it starts - no cable, no Wi-Fi network it can join, no access point of its own - opens the set-up Wi-Fi `ARMOR-SETUP-xxxxxx` again, protected with the set-up code. Before, it closed its set-up Wi-Fi when the first administrator was created and vanished.
+- **Why it did not join the Wi-Fi.** The `hello` of the Bluetooth channel and the panel's status carry `sta_error` (`network_not_found`, `wrong_password` or `failed`).
+- **Bluetooth stays on while there is no address.** A node set up to join a Wi-Fi network keeps advertising until it has an address, and stops two minutes after it has one, so the app can come back and read the outcome.
+- **A fixed address on the Wi-Fi too.** DHCP or a fixed address is valid whichever connection the node uses (it was only honoured on the cable); the panel offers it for both.
+- Same change as ARMOR-RADAR 0.3.2; built with ESP-IDF 5.5.5.
+
 ## [0.0.6] - A board that boots
 
 - **Boot loop fixed (shared firmware base):** generating the TLS certificate overflowed the main task's stack on the first boot of a board; the buffer is on the heap and the stack is 16 KB. Both images (Wi-Fi and Ethernet) build.
