@@ -24,6 +24,7 @@ struct Status {
   int ap_clients = 0;
   bool sta_connected = false;
   std::string sta_ssid;
+  std::string sta_error;              // why the station is not connected: "network_not_found", "wrong_password" or "failed" (empty when it is, or has not tried)
   int sta_rssi = 0;
 };
 
@@ -32,6 +33,10 @@ struct Status {
 bool start(const config::Settings& settings, const netplan::Plan& plan);
 
 // Whether the node can be reached: the station has an address, or an access point is up (its own address is 192.168.4.1).
+// If, `after_seconds` after the start, the node has no address and no access point of its own, it opens `rescue_plan`'s access point (the set-up one) so
+// that it can still be reached. Does nothing when the node already has an access point.
+void arm_rescue(const netplan::Plan& rescue_plan, int after_seconds);
+
 bool has_ip();
 bool reachable();
 Status status();
