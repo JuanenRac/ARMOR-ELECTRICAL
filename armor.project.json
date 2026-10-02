@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "ecosystem": "A.R.M.O.R.",
   "name": "ARMOR-ELECTRICAL",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "role": "Electrical node: reads the voltages, currents, power and energy of the house's AC and DC network, and holds the rules for switching it",
   "stack": "C++17 (host-tested core); ESP-IDF firmware for the ESP32-S3 (Wi-Fi or Ethernet), with its web panel",
   "technologies": [
@@ -17,5 +17,5 @@
   "parent": "ARMOR-COMMON",
   "build": "cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host",
   "notes": "The core (the meters' frames, the bus that asks them, the message, the switching rules) and the node's settings are tested on a computer with stand-in meters and contactors: 375,089 checks across three host test binaries (the interlock and switch-set suites are exhaustive/property-based), all passing. Every state, command and result it makes is accepted by ARMOR-COMMON's shared contract checker. The commands to a switch and the node's answers (`core/switch_set.hpp`) are tested the same way and against ARMOR-COMMON's shared vectors. The firmware builds for both boards and only reads: neither the rules for switching nor the commands are linked into it. It has never run on a board, nothing has been connected to a meter or a contactor, and nothing here switches anything.",
-  "native_version": "0.0.9"
+  "native_version": "0.1.0"
 }
