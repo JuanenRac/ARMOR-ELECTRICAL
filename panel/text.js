@@ -20,6 +20,7 @@ const L = {
   signIn: ["Sign in", "Iniciar sesión", "Anmelden", "Connexion", "Accedi", "サインイン", "登录"],
   user: ["User", "Usuario", "Benutzer", "Utilisateur", "Utente", "ユーザー", "用户名"],
   password: ["Password", "Contraseña", "Passwort", "Mot de passe", "Password", "パスワード", "密码"],
+  showPassword: ["Show the password", "Mostrar la contraseña", "Passwort anzeigen", "Afficher le mot de passe", "Mostra la password", "パスワードを表示", "显示密码"],
   setupTitle: ["Set up this node", "Configurar este nodo", "Diesen Knoten einrichten", "Configurer ce nœud", "Configura questo nodo", "このノードを設定", "设置此节点"],
   setupCode: ["Setup code", "Código de configuración", "Einrichtungscode", "Code de configuration", "Codice di configurazione", "セットアップコード", "设置码"],
   adminName: ["Administrator name", "Nombre del administrador", "Name des Administrators", "Nom de l'administrateur", "Nome dell'amministratore", "管理者名", "管理员名称"],

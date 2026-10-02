@@ -579,6 +579,15 @@ function render(full = true) {
 
 // ---- login and set-up screens -----------------------------------------------------------------------------------------------------------
 
+// A password field with an eye to show what was typed - the login and set-up screens are the one place a mistyped password locks
+// someone out with no other field to cross-check it against.
+function passwordField(labelKey, inputAttrs) {
+  const input = el("input", Object.assign({ type: "password" }, inputAttrs));
+  const toggle = el("button", { type: "button", class: "eye-toggle", "aria-label": t("showPassword"),
+    onclick: () => { input.type = input.type === "password" ? "text" : "password"; toggle.textContent = input.type === "password" ? "👁" : "🙈"; } }, "👁");
+  return el("label", { class: "field" }, el("span", {}, t(labelKey)), el("div", { class: "password-row" }, input, toggle));
+}
+
 function langPicker() {
   return el("select", { "aria-label": t("language"), onchange: e => { lang = Number(e.target.value); try { localStorage.setItem("armor_lang", LANGS[lang][0]); } catch (error) { /* ignore */ } render(); } },
     LANGS.map((l, i) => el("option", { value: String(i), selected: i === lang }, l[1])));
@@ -596,7 +605,7 @@ function loginScreen() {
   return el("div", { class: "center" }, el("form", { class: "login", onsubmit: submit },
     el("div", { class: "brand" }, el("div", { class: "brand-mark" }, "A"), el("div", {}, el("strong", {}, "A.R.M.O.R."), el("small", {}, S.session.node_id))), el("h1", {}, t("signIn")),
     el("label", { class: "field" }, el("span", {}, t("user")), el("input", { autocomplete: "username", autofocus: true, oninput: e => { form.user = e.target.value; } })),
-    el("label", { class: "field" }, el("span", {}, t("password")), el("input", { type: "password", autocomplete: "current-password", oninput: e => { form.password = e.target.value; } })),
+    passwordField("password", { autocomplete: "current-password", oninput: e => { form.password = e.target.value; } }),
     message, el("button", { class: "b primary", type: "submit" }, t("signIn")), langPicker()));
 }
 
@@ -616,11 +625,11 @@ function setupScreen() {
     S.session.mac ? el("p", { class: "hint mono" }, t("mac") + ": " + S.session.mac) : null,
     el("label", { class: "field" }, el("span", {}, t("setupCode")), el("input", { autocomplete: "off", autocapitalize: "characters", oninput: e => { form.code = e.target.value.trim().toUpperCase(); } })),
     el("label", { class: "field" }, el("span", {}, t("adminName")), el("input", { value: "admin", autocomplete: "username", oninput: e => { form.user = e.target.value; } })),
-    el("label", { class: "field" }, el("span", {}, t("newPassword")), el("input", { type: "password", autocomplete: "new-password", oninput: e => { form.password = e.target.value; } })),
+    passwordField("newPassword", { autocomplete: "new-password", oninput: e => { form.password = e.target.value; } }),
     ...(hasEthernet() ? [el("p", { class: "hint" }, t("setupEthHelp"))] : [
       el("h3", {}, t("setupWifiTitle")), el("p", { class: "hint" }, t("setupWifiHelp")),
       el("label", { class: "field" }, el("span", {}, t("ssid")), el("input", { autocomplete: "off", maxLength: 32, oninput: e => { form.wifi_ssid = e.target.value; } })),
-      el("label", { class: "field" }, el("span", {}, t("wifiPassword")), el("input", { type: "password", autocomplete: "off", oninput: e => { form.wifi_password = e.target.value; } }))]),
+      passwordField("wifiPassword", { autocomplete: "off", oninput: e => { form.wifi_password = e.target.value; } })]),
     message, el("button", { class: "b primary", type: "submit" }, t("createAdmin")), langPicker()));
 }
 
