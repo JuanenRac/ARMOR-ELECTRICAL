@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "ecosystem": "A.R.M.O.R.",
   "name": "ARMOR-ELECTRICAL",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "role": "Electrical node: reads the voltages, currents, power and energy of the house's AC and DC network, and holds the rules for switching it",
   "stack": "C++17 (host-tested core); ESP-IDF firmware for the ESP32-S3 (Wi-Fi or Ethernet), with its web panel",
   "technologies": [
