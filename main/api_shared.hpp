@@ -13,6 +13,9 @@ std::string status_json();          // node, network, broker, the line and the m
 std::string meters_json();          // {"bus":{...},"meters":[...],"catalog":[...]}: the state of the line and of the sixteen meters, and the pins the board offers
 std::string readings_json();        // the last message of the node, in an array: what it publishes
 std::string config_get_json();      // {"config":{...},"channel_auto":n,"firmware":"x.y.z"}: no password ever leaves the node
+// The same document the flash keeps, secrets and all: an admin downloading the node's whole configuration to load onto an identical
+// unit (manufacturing a batch of nodes), not something the ordinary panel pages ever call.
+std::string config_export_json();
 std::string problems_json(const config::Problems& problems);   // [{"path":..,"code":..}]
 
 enum class PutResult { kSaved, kInvalid, kStorage };
