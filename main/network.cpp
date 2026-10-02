@@ -42,6 +42,20 @@ esp_timer_handle_t g_reconnect_timer = nullptr;
 bool g_wifi_running = false;   // the driver was started by start()
 std::mutex g_scan_lock;
 
+// Which saved network the station is on now (0: the one above, 1..: settings.sta.backup[index-1]) and how many times in a row
+// it has failed to connect since the last success or switch. After enough failures, and only when another saved network
+// exists, the next one in the list is tried - the same backup networks a phone or laptop would remember, tried in order.
+int g_sta_index = 0;
+int g_sta_attempts = 0;
+constexpr int kStaAttemptsBeforeSwitch = 4;
+
+config::Network station_network(const config::Settings& s, int index) {
+  if (index <= 0 || static_cast<std::size_t>(index) > s.sta.backup.size()) return {s.sta.ssid, s.sta.password};
+  return s.sta.backup[static_cast<std::size_t>(index) - 1];
+}
+int station_network_count(const config::Settings& s) { return 1 + static_cast<int>(s.sta.backup.size()); }
+void apply_station_network(int index);   // defined below, after the Wi-Fi config helpers it uses
+
 std::string text_of(const esp_ip4_addr_t& address) {
   char text[16];
   std::snprintf(text, sizeof text, IPSTR, IP2STR(&address));
@@ -156,14 +170,17 @@ void on_wifi_event(void*, esp_event_base_t, int32_t event_id, void* data) {
     }
     case WIFI_EVENT_STA_START: esp_wifi_connect(); break;
     case WIFI_EVENT_STA_CONNECTED: {
+      g_sta_attempts = 0;   // forget past failures of this network now that it has worked
+      std::string ssid;
       {
       std::lock_guard<std::mutex> guard(g_lock);
       g_status.link_up = true;
       g_status.sta_connected = true;
-      g_status.sta_ssid = g_settings.sta.ssid;
+      g_status.sta_ssid = station_network(g_settings, g_sta_index).ssid;
       g_status.sta_error.clear();
-      ESP_LOGI(kTag, "joined the Wi-Fi network \"%s\"", g_settings.sta.ssid.c_str());
+      ssid = g_status.sta_ssid;
       }
+      ESP_LOGI(kTag, "joined the Wi-Fi network \"%s\"", ssid.c_str());
       if (!g_settings.ip.dhcp && g_ip_netif != nullptr) refresh_ip(g_ip_netif);   // a fixed address gets no DHCP event (called outside the lock: it takes it)
       break;
     }
@@ -175,14 +192,26 @@ void on_wifi_event(void*, esp_event_base_t, int32_t event_id, void* data) {
         case WIFI_REASON_AUTH_FAIL: case WIFI_REASON_AUTH_EXPIRE: case WIFI_REASON_ASSOC_FAIL: case WIFI_REASON_HANDSHAKE_TIMEOUT: case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT: error = "wrong_password"; break;
         default: break;
       }
+      std::string ssid;
+      int total;
       {
         std::lock_guard<std::mutex> guard(g_lock);
         g_status.link_up = false;
         g_status.sta_connected = false;
         g_status.has_ip = false;
         g_status.sta_error = error;
+        ssid = g_status.sta_ssid;
+        total = station_network_count(g_settings);
       }
-      ESP_LOGW(kTag, "the Wi-Fi network \"%s\" is not reachable (%s, reason %u): trying again in 3 s", g_settings.sta.ssid.c_str(), error, static_cast<unsigned>(event->reason));
+      g_sta_attempts += 1;
+      // Enough tries on this one, and there is somewhere else to try: the same backup networks a phone would remember.
+      if (g_sta_attempts >= kStaAttemptsBeforeSwitch && total > 1) {
+        g_sta_attempts = 0;
+        g_sta_index = (g_sta_index + 1) % total;
+        apply_station_network(g_sta_index);
+        break;
+      }
+      ESP_LOGW(kTag, "the Wi-Fi network \"%s\" is not reachable (%s, reason %u): trying again in 3 s", ssid.c_str(), error, static_cast<unsigned>(event->reason));
       if (g_reconnect_timer != nullptr) esp_timer_start_once(g_reconnect_timer, 3 * 1000 * 1000);
       break;
     }
@@ -216,6 +245,16 @@ bool set_access_point(const netplan::Plan& plan) {
   return true;
 }
 
+wifi_config_t station_wifi_config(const config::Network& network) {
+  wifi_config_t sta{};
+  std::strncpy(reinterpret_cast<char*>(sta.sta.ssid), network.ssid.c_str(), sizeof sta.sta.ssid - 1);
+  std::strncpy(reinterpret_cast<char*>(sta.sta.password), network.password.c_str(), sizeof sta.sta.password - 1);
+  sta.sta.threshold.authmode = network.password.empty() ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA_PSK;
+  sta.sta.pmf_cfg.capable = true;
+  sta.sta.pmf_cfg.required = false;
+  return sta;
+}
+
 bool wifi_setup(const config::Settings& s, const netplan::Plan& plan) {
   wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
   if (esp_wifi_init(&init) != ESP_OK) { ESP_LOGE(kTag, "the Wi-Fi driver could not be initialised"); return false; }
@@ -227,12 +266,9 @@ bool wifi_setup(const config::Settings& s, const netplan::Plan& plan) {
   esp_wifi_set_mode(plan.station && access_point ? WIFI_MODE_APSTA : (plan.station ? WIFI_MODE_STA : WIFI_MODE_AP));
   if (access_point && !set_access_point(plan)) return false;
   if (plan.station) {
-    wifi_config_t sta{};
-    std::strncpy(reinterpret_cast<char*>(sta.sta.ssid), s.sta.ssid.c_str(), sizeof sta.sta.ssid - 1);
-    std::strncpy(reinterpret_cast<char*>(sta.sta.password), s.sta.password.c_str(), sizeof sta.sta.password - 1);
-    sta.sta.threshold.authmode = s.sta.password.empty() ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA_PSK;
-    sta.sta.pmf_cfg.capable = true;
-    sta.sta.pmf_cfg.required = false;
+    g_sta_index = 0;
+    g_sta_attempts = 0;
+    wifi_config_t sta = station_wifi_config(station_network(s, g_sta_index));
     if (esp_wifi_set_config(WIFI_IF_STA, &sta) != ESP_OK) { ESP_LOGE(kTag, "the station settings were refused"); return false; }
   }
   esp_wifi_set_ps(WIFI_PS_NONE);  // an access point that sleeps answers late
@@ -243,6 +279,21 @@ void wifi_tune(const netplan::Plan& plan) {
   if (!plan.ap.enabled) return;
   esp_wifi_set_bandwidth(WIFI_IF_AP, plan.ap.bandwidth_mhz == 40 ? WIFI_BW_HT40 : WIFI_BW_HT20);
   esp_wifi_set_max_tx_power(static_cast<std::int8_t>(plan.ap.tx_power_dbm * 4));  // the driver counts in quarter dBm
+}
+
+// Switches the station to the saved network at `index` (wrapping through the main one and every backup) and connects to it;
+// called only after the current one has failed enough times in a row.
+void apply_station_network(int index) {
+  config::Network network;
+  {
+    std::lock_guard<std::mutex> guard(g_lock);
+    network = station_network(g_settings, index);
+    g_status.sta_ssid = network.ssid;
+  }
+  wifi_config_t sta = station_wifi_config(network);
+  esp_wifi_set_config(WIFI_IF_STA, &sta);
+  ESP_LOGW(kTag, "trying the next saved Wi-Fi network: \"%s\"", network.ssid.c_str());
+  esp_wifi_connect();
 }
 
 netplan::Plan g_rescue;
