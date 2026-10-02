@@ -289,8 +289,16 @@ const BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200];
 const meterStatus = index => S.meters.find(m => m.meter === index + 1) || { state: "disabled" };
 
 function pinLabel(info) { return "GPIO " + info.gpio + (info.note ? " ⚠ " + t("pn_" + info.note) : "") + (info.on_header ? "" : " *"); }
-function pinOptions(selected, includeNone) {
-  const assignable = S.catalog.filter(p => p.use !== "reserved");
+// Every GPIO this draft config already claims, except the one field at `exceptPath` - so a dropdown doesn't grey out its own value.
+function claimedGpios(exceptPath) {
+  const used = new Set();
+  const add = (path, gpio) => { if (path !== exceptPath && gpio >= 0) used.add(gpio); };
+  add("bus.rx", S.cfg.bus.rx); add("bus.tx", S.cfg.bus.tx);
+  return used;
+}
+function pinOptions(selected, includeNone, exceptPath) {
+  const used = exceptPath !== undefined ? claimedGpios(exceptPath) : new Set();
+  const assignable = S.catalog.filter(p => p.use !== "reserved" && (p.gpio === selected || !used.has(p.gpio)));
   const list = assignable.map(p => [p.gpio, pinLabel(p)]);
   if (selected >= 0 && !assignable.some(p => p.gpio === selected)) list.unshift([selected, "GPIO " + selected]);
   return (includeNone ? [[-1, t("none")]] : []).concat(list);
@@ -298,7 +306,7 @@ function pinOptions(selected, includeNone) {
 
 function busCard() {
   return el("section", { class: "card" }, el("h2", {}, t("busTitle")), el("p", { class: "muted" }, t("busIntro")),
-    el("div", { class: "row" }, field("busRx", "bus.rx", { type: "select", number: true, options: pinOptions(S.cfg.bus.rx, true) }), field("busTx", "bus.tx", { type: "select", number: true, options: pinOptions(S.cfg.bus.tx, true) })),
+    el("div", { class: "row" }, field("busRx", "bus.rx", { type: "select", number: true, options: pinOptions(S.cfg.bus.rx, true, "bus.rx") }), field("busTx", "bus.tx", { type: "select", number: true, options: pinOptions(S.cfg.bus.tx, true, "bus.tx") })),
     el("div", { class: "row" }, field("busBaud", "bus.baud", { type: "select", number: true, options: BAUDS.map(b => [b, String(b)]) }), field("busPoll", "bus.poll_s", { type: "number", min: 1, max: 3600 })),
     S.bus && S.bus.state ? el("div", { class: "actions" }, psPill(S.bus.state), el("span", { class: "muted", id: "bus-live" }, t("busCounters", S.bus.bytes_tx, S.bus.bytes_rx, S.bus.messages))) : null,
     S.bus && S.bus.error ? el("p", { class: "err" }, t("be_" + S.bus.error)) : null);
@@ -399,7 +407,7 @@ function updatePage() {
       el("div", { class: "actions" }, el("button", { class: "b primary", disabled: !isAdmin(), onclick: () => {
         if (!file.files[0]) return;
         uploadFirmware(file.files[0], progress, label, r => {
-          if (r.ok) { result.textContent = t("updateDone", r.version); S.rebooting = true; setTimeout(() => { const wait = async () => { const q = await api("GET", "session"); if (q.ok) location.reload(); else setTimeout(wait, 2000); }; wait(); }, 6000); }
+          if (r.ok) { result.textContent = t("updateDone", r.version); S.rebooting = true; render(); setTimeout(() => { const wait = async () => { const q = await api("GET", "session"); if (q.ok) location.reload(); else setTimeout(wait, 2000); }; wait(); }, 6000); }
           else { result.textContent = errorText(r.error); result.className = "err"; }
         });
       } }, t("upload")))),
