@@ -151,6 +151,10 @@ static void test_document() {
   CHECK(!config::load("{\"mqtt\":{\"enabled\":true,\"uri\":\"http://x\"}}", s, edited, problems) && has(problems, "mqtt.uri", "invalid"));
   problems.clear();
   CHECK(config::load("{\"mqtt\":{\"enabled\":true,\"uri\":\"mqtt://192.168.0.180:18883\",\"username\":\"electrical-1\",\"password\":\"x\"},\"web\":{\"mode\":\"https\"}}", s, edited, problems) && edited.mqtt.enabled && edited.web == config::WebMode::kHttps);
+  problems.clear();
+  CHECK(config::load("{\"system\":{\"auto_restart_hours\":12}}", s, edited, problems) && edited.auto_restart_hours == 12);
+  problems.clear();
+  CHECK(!config::load("{\"system\":{\"auto_restart_hours\":5}}", s, edited, problems) && has(problems, "system.auto_restart_hours", "invalid"));
 }
 
 static void test_wifi_board_has_no_ethernet() {
