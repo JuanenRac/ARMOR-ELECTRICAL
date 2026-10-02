@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here.
 
+## [0.1.1] - A proper goodbye to the access point before restarting
+
+- **The node never told the access point it was leaving before a restart:** `esp_restart()` just cuts the radio, with no deauthentication frame sent; some access points get stuck holding the old association and need restarting themselves before the node can rejoin. It now calls `esp_wifi_disconnect()` and gives it a moment before restarting, on every restart path (the panel, a firmware update, the factory reset held on BOOT).
+- **The "Restarting..." screen never appeared after a firmware update:** `S.rebooting = true` was set without calling `render()` on that one path - the panel just sat on the old screen until the auto-reload kicked in on its own six seconds later. Now it shows immediately.
+- **The default HTTP header limit (512 bytes) was too small for a real browser:** a session cookie plus a modern browser's own request headers can exceed it, which the panel refused outright - a blank page saying "Header fields are too long". Raised to 2048 bytes.
+
 ## [0.1.0] - The node finder can tell this is an electrical node
 
 - **The panel's own title now says what it is** ("A.R.M.O.R. electrical" instead of a generic "A.R.M.O.R. node"). ARMOR-STUDIO's "find nodes on the network" reads this when it probes a candidate, so the Electrical menu no longer lists a radar or a solar node found on the network.
