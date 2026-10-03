@@ -3,7 +3,7 @@
 set(ARMOR_SOURCES "api_shared.cpp" "app_main.cpp" "ble_provision.cpp" "entropy.cpp" "log_buffer.cpp" "mqtt_link.cpp" "network.cpp" "node_store.cpp" "electrical_manager.cpp"
                   "tls_cert.cpp" "uart_bus.cpp" "web_server.cpp")
 set(ARMOR_REQUIRES driver esp_driver_gpio esp_driver_uart esp_driver_gptimer esp_event esp_netif esp_timer esp_wifi esp_http_server esp_https_server app_update
-                   esp_partition esp_app_format mbedtls bootloader_support mqtt nvs_flash lwip esp_hw_support esp_system heap log bt esp_eth esp_driver_spi)
+                   esp_partition esp_app_format mbedtls bootloader_support mqtt nvs_flash lwip esp_hw_support esp_system heap log bt esp_eth esp_driver_spi spi_flash)
 if(CONFIG_ARMOR_BOARD_S3_ETH)
   list(APPEND ARMOR_SOURCES "board_ethernet.cpp")
 endif()
