@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here.
 
+## [0.1.6] - Chip, flash, PSRAM and bootloader version on the Overview page
+
+- **A new "Hardware" card:** the chip and its revision, how many cores, the flash and PSRAM sizes, and the IDF version of both the running firmware and the bootloader (not the same thing - a mismatch there usually means the wrong board file was built). Read straight from the chip and the bootloader's own descriptor, not stored anywhere. Needed `spi_flash` added to the component's own dependencies; built clean with the real toolchain.
+
 ## [0.1.5] - An eye on the login and set-up passwords
 
 - **Sign-in, the admin password and the Wi-Fi password at set-up** now have an eye button that shows what was typed - the one place a mistyped password locks someone out with no other field to check it against.
