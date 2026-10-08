@@ -10,7 +10,6 @@
 extern "C" {
 #include <sys/time.h>
 #include "esp_log.h"
-#include "esp_sntp.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -93,10 +92,7 @@ void broker_watchdog_task(void*) {
 // Waits for an address, then starts the clock and the broker connection once. The ports keep reading meanwhile.
 void link_task(void*) {
   while (!network::has_ip()) vTaskDelay(pdMS_TO_TICKS(500));
-  esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
-  esp_sntp_setservername(0, g_settings.mqtt.ntp.c_str());
-  esp_sntp_init();
-
+  // The clock itself is clock_sync.cpp's (it starts without a broker too).
   start_client(current_broker(g_settings, g_broker_index));
   xTaskCreate(broker_watchdog_task, "mqtt-link-wd", 4096, nullptr, 2, nullptr);
   vTaskDelete(nullptr);

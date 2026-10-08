@@ -73,7 +73,6 @@ struct Mqtt {
   bool enabled = false;  // a node that was never configured has no broker yet
   std::string uri, username, password;
   int heartbeat_s = 10;  // the keep-alive of the connection is twice this
-  std::string ntp = "pool.ntp.org";
   // Tried in order, after the broker above, whenever it cannot be reached for a while (main/mqtt_link.cpp); never while it still works.
   std::vector<Broker> backup;
 };
@@ -95,6 +94,14 @@ struct MeterSetting {
   int address = 1;         // its Modbus address on the line (1 to 247)
 };
 
+// What time the node believes it is: a time server on the Internet (or the browser's clock when that is off) and the zone the local time is
+// shown in. The zone is a POSIX TZ rule, so summer time changes by itself ("CET-1CEST,M3.5.0,M10.5.0/3" is Spain); "UTC0" is no offset.
+struct Clock {
+  bool ntp_enabled = true;
+  std::string ntp = "pool.ntp.org";
+  std::string zone = "UTC0";
+};
+
 struct Settings {
   std::string node_id;
   std::string node_name;
@@ -104,6 +111,7 @@ struct Settings {
   AccessPoint ap;
   Station sta;
   Mqtt mqtt;
+  Clock time;
   BusSetting bus;
   std::array<MeterSetting, kMeterCount> meters;
   WebMode web = WebMode::kBoth;
@@ -239,15 +247,26 @@ inline void read_settings(const json::Value& document, Settings& s, Problems& pr
     read_text(*sta, "ssid", s.sta.ssid, 32, "sta.ssid", problems);
     read_secret(*sta, "password", s.sta.password, "sta.password", problems);
     if (const json::Value* backup = sta->get("backup"); backup != nullptr) {
-      if (!backup->is_array() || backup->items.size() > kMaxBackupNetworks) bad(problems, "sta.backup", "invalid");
-      else for (std::size_t i = 0; i < backup->items.size(); ++i) {
-        const json::Value& item = backup->items[i];
-        const std::string base = "sta.backup." + std::to_string(i) + ".";
-        Network network;
-        if (!item.is_object()) { bad(problems, base + "ssid", "invalid"); continue; }
-        read_text(item, "ssid", network.ssid, 32, base + "ssid", problems);
-        read_secret(item, "password", network.password, base + "password", problems);
-        s.sta.backup.push_back(network);
+      if (!backup->is_array()) bad(problems, "sta.backup", "invalid");
+      // A "backup" the document sends replaces the stored list, never adds to it - a save after removing one in the panel must not
+      // leave the one just removed behind (found for real: deleting backup brokers and saving brought them straight back).
+      else {
+        // The panel never holds a stored password (it only learns that there is one), so an entry that arrives without one is the same
+        // network as before and keeps its password; one with a new name is a different network and starts without.
+        const std::vector<Network> before = std::move(s.sta.backup);
+        s.sta.backup.clear();
+        // More than fit is never fatal: an older or hand-edited document with extra entries loses only the ones past the limit, not
+        // the whole node (a broker and the rest of the settings have nothing to do with how many backup networks were once saved).
+        for (std::size_t i = 0; i < backup->items.size() && i < kMaxBackupNetworks; ++i) {
+          const json::Value& item = backup->items[i];
+          const std::string base = "sta.backup." + std::to_string(i) + ".";
+          Network network;
+          if (!item.is_object()) { bad(problems, base + "ssid", "invalid"); continue; }
+          read_text(item, "ssid", network.ssid, 32, base + "ssid", problems);
+          for (const Network& old : before) if (old.ssid == network.ssid) { network.password = old.password; break; }
+          read_secret(item, "password", network.password, base + "password", problems);
+          s.sta.backup.push_back(network);
+        }
       }
     }
   }
@@ -257,18 +276,30 @@ inline void read_settings(const json::Value& document, Settings& s, Problems& pr
     read_text(*mqtt, "username", s.mqtt.username, 64, "mqtt.username", problems);
     read_secret(*mqtt, "password", s.mqtt.password, "mqtt.password", problems);
     read_int(*mqtt, "heartbeat_s", s.mqtt.heartbeat_s, 2, 300, "mqtt.heartbeat_s", problems);
-    read_text(*mqtt, "ntp", s.mqtt.ntp, 64, "mqtt.ntp", problems);
+    read_text(*mqtt, "ntp", s.time.ntp, 64, "mqtt.ntp", problems);   // where older documents kept it
     if (const json::Value* backup = mqtt->get("backup"); backup != nullptr) {
-      if (!backup->is_array() || backup->items.size() > kMaxBackupBrokers) bad(problems, "mqtt.backup", "invalid");
-      else for (std::size_t i = 0; i < backup->items.size(); ++i) {
-        const json::Value& item = backup->items[i];
-        const std::string base = "mqtt.backup." + std::to_string(i) + ".";
-        Broker broker;
-        if (!item.is_object()) { bad(problems, base + "uri", "invalid"); continue; }
-        read_text(item, "uri", broker.uri, 160, base + "uri", problems);
-        read_text(item, "username", broker.username, 64, base + "username", problems);
-        read_secret(item, "password", broker.password, base + "password", problems);
-        s.mqtt.backup.push_back(broker);
+      if (!backup->is_array()) bad(problems, "mqtt.backup", "invalid");
+      // A "backup" the document sends replaces the stored list, never adds to it (see sta.backup above - the same bug, found on the
+      // broker page: removing backup brokers and saving brought them straight back).
+      else {
+        // Same as the backup networks: an entry that arrives without a password is the same account as before (same user on the same
+        // slot or the same address) and keeps it.
+        const std::vector<Broker> before = std::move(s.mqtt.backup);
+        s.mqtt.backup.clear();
+        // Same as sta.backup above: more entries than fit just lose the extras, not the rest of the node's settings.
+        for (std::size_t i = 0; i < backup->items.size() && i < kMaxBackupBrokers; ++i) {
+          const json::Value& item = backup->items[i];
+          const std::string base = "mqtt.backup." + std::to_string(i) + ".";
+          Broker broker;
+          if (!item.is_object()) { bad(problems, base + "uri", "invalid"); continue; }
+          read_text(item, "uri", broker.uri, 160, base + "uri", problems);
+          read_text(item, "username", broker.username, 64, base + "username", problems);
+          for (std::size_t k = 0; k < before.size(); ++k) {
+            if (before[k].username == broker.username && (k == i || before[k].uri == broker.uri)) { broker.password = before[k].password; break; }
+          }
+          read_secret(item, "password", broker.password, base + "password", problems);
+          s.mqtt.backup.push_back(broker);
+        }
       }
     }
   }
@@ -298,11 +329,26 @@ inline void read_settings(const json::Value& document, Settings& s, Problems& pr
   if (const json::Value* ble = document.get("ble"); ble != nullptr && ble->is_object()) {
     if (!read_choice<BleMode>(*ble, "mode", {{"off", BleMode::kOff}, {"setup", BleMode::kSetup}, {"always", BleMode::kAlways}}, s.ble)) bad(problems, "ble.mode", "invalid");
   }
+  if (const json::Value* time = document.get("time"); time != nullptr && time->is_object()) {
+    read_bool(*time, "ntp_enabled", s.time.ntp_enabled, "time.ntp_enabled", problems);
+    read_text(*time, "ntp", s.time.ntp, 64, "time.ntp", problems);
+    read_text(*time, "zone", s.time.zone, 48, "time.zone", problems);
+  }
   if (const json::Value* ui = document.get("ui"); ui != nullptr && ui->is_object()) read_text(*ui, "language", s.language, 4, "ui.language", problems);
   if (const json::Value* system = document.get("system"); system != nullptr && system->is_object()) read_int(*system, "auto_restart_hours", s.auto_restart_hours, 0, 48, "system.auto_restart_hours", problems);
 }
 
 // ---- checking ------------------------------------------------------------------------------------------------------------------
+
+// A POSIX TZ rule: letters, digits, signs, commas, dots, colons, slashes and angle brackets, nothing else (it goes to setenv()).
+inline bool time_zone_is_valid(std::string_view zone) {
+  if (zone.empty() || zone.size() > 48) return false;
+  for (const char c : zone) {
+    const bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '+' || c == '-' || c == ',' || c == '.' || c == ':' || c == '/' || c == '<' || c == '>';
+    if (!ok) return false;
+  }
+  return true;
+}
 
 inline bool language_is_known(std::string_view code) {
   for (const char* known : {"en", "es", "de", "fr", "it", "ja", "zh"}) if (code == known) return true;
@@ -394,11 +440,14 @@ inline Problems validate(const Settings& s) {
   }
   if (s.uplink == Uplink::kWifi && !s.ap.enabled && !s.sta.enabled) bad(problems, "sta.enabled", "required");
 
+  // clock
+  if (s.time.ntp_enabled && !net::valid_host(s.time.ntp)) bad(problems, "time.ntp", "invalid");
+  if (!time_zone_is_valid(s.time.zone)) bad(problems, "time.zone", "invalid");
+
   // broker
   if (s.mqtt.enabled) {
     if (s.mqtt.uri.empty()) bad(problems, "mqtt.uri", "required");
     else if (!broker_uri_is_valid(s.mqtt.uri)) bad(problems, "mqtt.uri", "invalid");
-    if (!net::valid_host(s.mqtt.ntp)) bad(problems, "mqtt.ntp", "invalid");
     for (std::size_t i = 0; i < s.mqtt.backup.size(); ++i) {
       const std::string base = "mqtt.backup." + std::to_string(i) + ".";
       if (!broker_uri_is_valid(s.mqtt.backup[i].uri)) bad(problems, base + "uri", s.mqtt.backup[i].uri.empty() ? "required" : "invalid");
@@ -465,7 +514,7 @@ inline std::string to_json(const Settings& s, bool secrets) {
   w.end_object();
   w.key("mqtt").begin_object().field("enabled", s.mqtt.enabled).field("uri", s.mqtt.uri).field("username", s.mqtt.username);
   if (secrets) w.field("password", s.mqtt.password); else w.field("password_set", !s.mqtt.password.empty());
-  w.field("heartbeat_s", s.mqtt.heartbeat_s).field("ntp", s.mqtt.ntp);
+  w.field("heartbeat_s", s.mqtt.heartbeat_s);
   w.key("backup").begin_array();
   for (const Broker& broker : s.mqtt.backup) {
     w.begin_object().field("uri", broker.uri).field("username", broker.username);
@@ -483,6 +532,7 @@ inline std::string to_json(const Settings& s, bool secrets) {
   w.key("web").begin_object().field("mode", to_text(s.web)).end_object();
   w.key("ble").begin_object().field("mode", to_text(s.ble)).end_object();
   w.key("ui").begin_object().field("language", s.language).end_object();
+  w.key("time").begin_object().field("ntp_enabled", s.time.ntp_enabled).field("ntp", s.time.ntp).field("zone", s.time.zone).end_object();
   w.key("system").begin_object().field("auto_restart_hours", s.auto_restart_hours).end_object();
   w.end_object();
   return w.str();

@@ -28,6 +28,7 @@ extern "C" {
 #include "core/netplan.hpp"
 #include "log_buffer.hpp"
 #include "ble_provision.hpp"
+#include "clock_sync.hpp"
 #include "mqtt_link.hpp"
 #include "network.hpp"
 #include "node_store.hpp"
@@ -112,6 +113,7 @@ extern "C" void app_main() {
     armor::network::arm_rescue(armor::netplan::plan_network(settings, true, armor::store::setup_code(), armor::store::mac_tail(), armor::store::mac_sum()), 90);
   }
   if (!network_ok) ESP_LOGE(kTag, "the network could not be started: the node stays local");
+  armor::clocksync::start(settings);
   const bool panel_ok = network_ok && armor::web::start(settings);
   armor::mqtt_link::start(settings);
   armor::ble_provision::start(settings, setup);   // only when the settings say so: Bluetooth stays unused otherwise

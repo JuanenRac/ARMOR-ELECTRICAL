@@ -18,6 +18,7 @@ function el(tag, attrs, ...kids) {
   const node = document.createElement(tag);
   for (const [name, value] of Object.entries(attrs || {})) {
     if (value === undefined || value === null || value === false) continue;
+    if (name === "tip") { const text = L["tip_" + value] ? t("tip_" + value) : ""; if (text) node.title = text; continue; }   // the hover hint, in the panel's language
     if (name === "class") node.className = value;
     else if (name.startsWith("on")) node.addEventListener(name.slice(2), value);
     else if (name in node && name !== "list") node[name] = value;
@@ -93,7 +94,7 @@ function field(labelKey, path, options = {}) {
   let input;
   if (options.type === "checkbox") {
     input = el("input", { type: "checkbox", checked: !!current, disabled, onchange: e => { setValue(path, e.target.checked); if (options.rerender) render(); } });
-    return el("label", { class: "check" }, input, t(labelKey), problem ? el("span", { class: "err" }, problemText(problem)) : null);
+    return el("label", { class: "check", tip: labelKey }, input, t(labelKey), problem ? el("span", { class: "err" }, problemText(problem)) : null);
   }
   if (options.type === "select") {
     input = el("select", { disabled, onchange: e => { const v = e.target.value; setValue(path, options.number ? Number(v) : v); if (options.after) options.after(v); if (options.rerender) render(); } },
@@ -108,7 +109,7 @@ function field(labelKey, path, options = {}) {
     input = el("input", { type: "text", value: current === undefined ? "" : current, disabled, maxLength: options.max, placeholder: options.placeholder || "", oninput: e => setValue(path, e.target.value) });
   }
   if (problem) input.classList.add("bad");
-  return el("label", { class: "field" }, el("span", {}, t(labelKey)), input, problem ? el("span", { class: "err" }, problemText(problem)) : null, options.hint ? el("span", { class: "hint" }, options.hint) : null);
+  return el("label", { class: "field", tip: labelKey }, el("span", {}, t(labelKey)), input, problem ? el("span", { class: "err" }, problemText(problem)) : null, options.hint ? el("span", { class: "hint" }, options.hint) : null);
 }
 
 // ---- the save bar --------------------------------------------------------------------------------------------------------------------
@@ -120,11 +121,24 @@ function refreshBar() {
   const message = S.message || (dirty ? { kind: "warn", text: t("unsaved") } : S.restartNeeded ? { kind: "warn", text: t("savedRestart") } : null);
   barNode.replaceChildren(...[
     el("span", { class: "msg " + (message ? message.kind : "") }, message ? message.text : ""),
-    S.restartNeeded && !dirty ? el("button", { class: "b danger", onclick: () => reboot() }, t("restart")) : null,
-    dirty ? el("button", { class: "b", onclick: discard }, t("discard")) : null,
-    dirty ? el("button", { class: "b primary", disabled: S.busy, onclick: () => save(false) }, t("save")) : null,
-    dirty ? el("button", { class: "b danger", disabled: S.busy, onclick: () => save(true) }, t("saveRestart")) : null].filter(Boolean));
+    S.restartNeeded && !dirty ? el("button", { class: "b danger", tip: "restart", onclick: () => reboot() }, t("restart")) : null,
+    dirty ? el("button", { class: "b", tip: "discard", onclick: discard }, t("discard")) : null,
+    dirty ? el("button", { class: "b primary", tip: "save", disabled: S.busy, onclick: () => save(false) }, t("save")) : null,
+    dirty ? el("button", { class: "b danger", tip: "saveRestart", disabled: S.busy, onclick: () => save(true) }, t("saveRestart")) : null].filter(Boolean));
   barNode.hidden = !(message || dirty || S.restartNeeded);
+}
+
+// The panel's language also lives in the node's settings (ui.language, which the exported file shows): choosing it here saves it there at once, with
+// no restart, instead of leaving the node on the language it was set up in. Only an admin can change settings.
+async function persistLanguage() {
+  if (!S.cfg || !S.session || !S.session.authenticated || !isAdmin()) return;
+  const code = LANGS[lang][0];
+  if (S.cfg.ui && S.cfg.ui.language === code) return;
+  const r = await api("PUT", "config", { ui: { language: code } });
+  if (!r.ok) return;
+  S.cfg.ui.language = code;
+  try { const saved = JSON.parse(S.saved); saved.ui = Object.assign({}, saved.ui, { language: code }); S.saved = JSON.stringify(saved); } catch (error) { /* the next save sorts it out */ }
+  refreshBar();
 }
 
 function discard() { S.cfg = JSON.parse(S.saved); S.problems = {}; S.message = null; render(); }
@@ -202,11 +216,40 @@ const PAGES = [
   { id: "broker", icon: "⌁", label: "navBroker", group: "navNetwork" },
   { id: "users", icon: "☺", label: "navUsers", group: "navSystem" },
   { id: "update", icon: "⟳", label: "navUpdate", group: "navSystem" },
+  { id: "help", icon: "?", label: "navHelp", group: "navSystem" },
+  { id: "about", icon: "ⓘ", label: "navAbout", group: "navSystem" },
 ];
 
 const card = (title, ...kids) => el("section", { class: "card" }, title ? el("h2", {}, title) : null, ...kids);
 const kv = rows => el("dl", { class: "kv" }, rows.filter(Boolean).flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, v)]));
 const note = (text, kind) => el("p", { class: "note " + (kind || "") }, text);
+
+const fmtBytes = b => b >= 1048576 ? (Math.round(b / 104857.6) / 10) + " MB" : b >= 1024 ? Math.round(b / 1024) + " kB" : b + " B";
+const utcLabel = minutes => "UTC" + (minutes < 0 ? "-" : "+") + String(Math.floor(Math.abs(minutes) / 60)).padStart(2, "0") + ":" + String(Math.abs(minutes) % 60).padStart(2, "0");
+
+// Common zones as POSIX rules (summer time changes by itself); anything else can be typed in as its own rule.
+const TIME_ZONES = [
+  ["UTC0", "UTC"], ["WET0WEST,M3.5.0/1,M10.5.0", "Lisbon · London · Dublin"], ["CET-1CEST,M3.5.0,M10.5.0/3", "Madrid · Paris · Berlin · Rome (CET/CEST)"],
+  ["EET-2EEST,M3.5.0/3,M10.5.0/4", "Athens · Helsinki · Kyiv (EET/EEST)"], ["MSK-3", "Moscow · Istanbul"], ["GMT0", "Reykjavik · Dakar"],
+  ["<-03>3", "Buenos Aires · São Paulo"], ["EST5EDT,M3.2.0,M11.1.0", "New York · Toronto"], ["CST6CDT,M3.2.0,M11.1.0", "Chicago · Mexico City"],
+  ["MST7MDT,M3.2.0,M11.1.0", "Denver"], ["PST8PDT,M3.2.0,M11.1.0", "Los Angeles · Vancouver"], ["<-05>5", "Bogotá · Lima"], ["<-04>4", "Caracas · La Paz"],
+  ["GST-4", "Dubai"], ["IST-5:30", "India"], ["<+07>-7", "Bangkok · Jakarta"], ["CST-8", "Beijing · Singapore · Hong Kong"], ["JST-9", "Tokyo · Seoul"],
+  ["AEST-10AEDT,M10.1.0,M4.1.0/3", "Sydney · Melbourne"], ["NZST-12NZDT,M9.5.0,M4.1.0/3", "Auckland"], ["<+02>-2", "Cairo · Johannesburg"],
+];
+const zoneName = rule => { const hit = TIME_ZONES.find(z => z[0] === rule); return hit ? hit[1] + " (" + rule + ")" : rule; };
+
+function flashCard(flash) {
+  const parts = flash.partitions || [];
+  const rows = [[t("flashTotal"), fmtBytes(flash.total)], [t("flashAllocated"), fmtBytes(flash.allocated) + " (" + Math.round(flash.allocated * 100 / flash.total) + " %)"], [t("flashUnallocated"), fmtBytes(flash.total - flash.allocated)]];
+  parts.forEach(p => {
+    const label = p.label.toUpperCase();
+    if (p.app) {
+      const state = p.running ? " · " + t("slotRunning") : p.next_boot ? " · " + t("slotNextBoot") : "";
+      rows.push([label, p.used ? fmtBytes(p.used) + " / " + fmtBytes(p.size) + " (" + Math.round(p.used * 100 / p.size) + " %) · " + fmtBytes(p.size - p.used) + " " + t("flashFree") + " · v" + p.version + state : t("slotEmpty") + " · " + fmtBytes(p.size)]);
+    } else rows.push([label, fmtBytes(p.size)]);
+  });
+  return card(t("ovFlash"), kv(rows));
+}
 
 function formatUptime(seconds) {
   const d = Math.floor(seconds / 86400), h = Math.floor(seconds % 86400 / 3600), m = Math.floor(seconds % 3600 / 60);
@@ -232,6 +275,9 @@ function overviewPage() {
   return el("div", { class: "grid" },
     card(t("ovNode"), kv([[t("nodeId"), s.node_id], [t("nodeName"), s.name], [t("firmware"), s.version + " (" + s.partition + ")"], [t("uptime"), formatUptime(s.uptime_s)],
       [t("resetReason"), reasonText(s.reset_reason)], [t("memory"), Math.round(s.heap_free / 1024) + " kB" + (s.psram_free ? " + " + Math.round(s.psram_free / 1048576 * 10) / 10 + " MB PSRAM" : "")]])),
+        s.time ? card(t("ovTime"), kv([[t("localTime"), s.time.set ? s.time.local + " (" + utcLabel(s.time.utc_offset_min) + ")" : t("clockNotSet")],
+          [t("timeSource"), !s.time.set ? "—" : s.time.synced ? t("timeFromNtp") : s.time.ntp ? t("timeNtpWaiting") : t("timeManual")], [t("timeZone"), zoneName(s.time.zone)]])) : null,
+        s.flash ? flashCard(s.flash) : null,
         s.hardware ? card(t("ovHardware"), kv([[t("chip"), s.hardware.chip.toUpperCase() + " rev " + s.hardware.chip_revision + " · " + s.hardware.cores + " " + t("cores")],
       [t("flash"), s.hardware.flash_mb + " MB"], [t("psram"), s.hardware.psram_mb ? s.hardware.psram_mb + " MB" : t("none")],
       [t("appIdf"), s.hardware.app_idf], [t("bootloaderIdf"), s.hardware.bootloader_idf]])) : null,
@@ -261,14 +307,20 @@ function networkPage() {
     card(t("webTitle"), field("webMode", "web.mode", { type: "select", options: [["both", t("webBoth")], ["https", t("webHttps")], ["http", t("webHttp")]] }),
       S.status && S.status.web ? el("p", { class: "muted" }, t(S.status.web.https ? "webRunning" : "webNotRunning")) : null,
       S.status && S.status.web && S.status.web.cert_sha256 ? el("p", { class: "muted mono" }, t("webFingerprint") + ": " + S.status.web.cert_sha256) : null, note(t("webNote"), "info")),
+    card(t("clockTitle"),
+      field("timeZone", "time.zone", { type: "select", options: TIME_ZONES.some(z => z[0] === S.cfg.time.zone) ? TIME_ZONES.map(z => z) : [[S.cfg.time.zone, S.cfg.time.zone]].concat(TIME_ZONES) }),
+      field("ntpEnabled", "time.ntp_enabled", { type: "checkbox", rerender: true }),
+      cfg.time.ntp_enabled ? field("ntp", "time.ntp") : el("div", { class: "actions" }, el("button", { class: "b", tip: "setTimeFromBrowser", disabled: !isAdmin(), onclick: setClockFromBrowser }, t("setTimeFromBrowser"))),
+      S.status && S.status.time ? el("p", { class: "muted" }, t("localTime") + ": " + (S.status.time.set ? S.status.time.local : t("clockNotSet"))) : null,
+      note(t("clockNote"), "info")),
     card(t("bleTitle"), field("bleMode", "ble.mode", { type: "select", options: [["setup", t("bleSetup")], ["always", t("bleAlways")], ["off", t("bleOff")]] }), note(t("bleNote"), "info")),
     card(t("systemTitle"), field("autoRestart", "system.auto_restart_hours", { type: "select", number: true,
       options: [[0, t("autoRestartNever")], [1, t("autoRestart1")], [2, t("autoRestart2")], [3, t("autoRestart3")], [4, t("autoRestart4")], [6, t("autoRestart6")], [12, t("autoRestart12")], [24, t("autoRestart24")], [48, t("autoRestart48")]] }),
       note(t("autoRestartNote"), "info")),
     isAdmin() ? card(t("configBackupTitle"),
       el("div", { class: "row" },
-        el("button", { class: "b", onclick: exportConfig }, t("exportConfig")),
-        el("label", { class: "b" }, t("importConfig"), el("input", { type: "file", accept: "application/json", hidden: true, onchange: e => { if (e.target.files[0]) importConfig(e.target.files[0]); e.target.value = ""; } }))),
+        el("button", { class: "b", tip: "exportConfig", onclick: exportConfig }, t("exportConfig")),
+        el("label", { class: "b", tip: "importConfig" }, t("importConfig"), el("input", { type: "file", accept: "application/json", hidden: true, onchange: e => { if (e.target.files[0]) importConfig(e.target.files[0]); e.target.value = ""; } }))),
       note(t("configBackupNote"), "info")) : null);
 }
 
@@ -308,7 +360,7 @@ function wifiPage() {
         note(t("noWifiWarn"), "info")] : null),
     isWired() ? null : card(t("wifiSta"), field("staEnable", "sta.enabled", { type: "checkbox", rerender: true }),
       cfg.sta.enabled ? [el("div", { class: "row" }, field("ssid", "sta.ssid", { max: 32 }), field("wifiPassword", "sta.password", { type: "password" }))] : null,
-      el("div", { class: "actions" }, el("button", { class: "b", disabled: !isAdmin() || S.scan.busy, onclick: scanNetworks }, t("scanNetworks"))), scanResults(),
+      el("div", { class: "actions" }, el("button", { class: "b", tip: "scanNetworks", disabled: !isAdmin() || S.scan.busy, onclick: scanNetworks }, t("scanNetworks"))), scanResults(),
       el("p", { class: "hint" }, t("scanNote")), note(t("staNote"), "info"),
       cfg.sta.enabled ? backupNetworks() : null));
 }
@@ -320,10 +372,10 @@ function backupNetworks() {
     list.map((network, i) => {
       const base = "sta.backup." + i + ".";
       return el("div", { class: "row" }, field("ssid", base + "ssid", { max: 32 }), field("wifiPassword", base + "password", { type: "password" }),
-        el("button", { class: "b danger", disabled: !isAdmin(), onclick: () => { list.splice(i, 1); refreshBar(); render(); } }, t("removeNetwork")));
+        el("button", { class: "b danger", tip: "removeNetwork", disabled: !isAdmin(), onclick: () => { list.splice(i, 1); refreshBar(); render(); } }, t("removeNetwork")));
     }),
     isAdmin() && list.length < MAX_BACKUP_NETWORKS
-      ? el("div", { class: "actions" }, el("button", { class: "b", onclick: () => { list.push({ ssid: "", password: "" }); refreshBar(); render(); } }, t("addBackupNetwork")))
+      ? el("div", { class: "actions" }, el("button", { class: "b", tip: "addBackupNetwork", onclick: () => { list.push({ ssid: "", password: "" }); refreshBar(); render(); } }, t("addBackupNetwork")))
       : null);
 }
 
@@ -334,11 +386,11 @@ function backupBrokers() {
     list.map((broker, i) => {
       const base = "mqtt.backup." + i + ".";
       return el("div", {}, el("div", { class: "row" }, field("brokerUri", base + "uri", { placeholder: "mqtt://192.168.0.180:18883" }),
-        el("button", { class: "b danger", disabled: !isAdmin(), onclick: () => { list.splice(i, 1); refreshBar(); render(); } }, t("removeNetwork"))),
+        el("button", { class: "b danger", tip: "removeNetwork", disabled: !isAdmin(), onclick: () => { list.splice(i, 1); refreshBar(); render(); } }, t("removeNetwork"))),
         el("div", { class: "row" }, field("brokerUser", base + "username"), field("brokerPassword", base + "password", { type: "password" })));
     }),
     isAdmin() && list.length < MAX_BACKUP_BROKERS
-      ? el("div", { class: "actions" }, el("button", { class: "b", onclick: () => { list.push({ uri: "", username: "", password: "" }); refreshBar(); render(); } }, t("addBackupBroker")))
+      ? el("div", { class: "actions" }, el("button", { class: "b", tip: "addBackupBroker", onclick: () => { list.push({ uri: "", username: "", password: "" }); refreshBar(); render(); } }, t("addBackupBroker")))
       : null);
 }
 
@@ -348,7 +400,7 @@ function brokerPage() {
     card(t("brokerTitle"), field("brokerEnable", "mqtt.enabled", { type: "checkbox", rerender: true }),
       mq.enabled ? [field("brokerUri", "mqtt.uri", { placeholder: "mqtt://192.168.0.180:18883" }),
         el("div", { class: "row" }, field("brokerUser", "mqtt.username"), field("brokerPassword", "mqtt.password", { type: "password" })),
-        el("div", { class: "row" }, field("heartbeat", "mqtt.heartbeat_s", { type: "number", min: 2, max: 300 }), field("ntp", "mqtt.ntp")),
+        el("div", { class: "row" }, field("heartbeat", "mqtt.heartbeat_s", { type: "number", min: 2, max: 300 })),
         backupBrokers()] : null,
       note(t("brokerNote"), "info")));
 }
@@ -465,6 +517,27 @@ function uploadFirmware(file, progressBar, label, done) {
   request.send(file);
 }
 
+function aboutPage() {
+  const s = S.status;
+  return el("div", { class: "grid wide" },
+    card(null,
+      el("p", { class: "eyebrow" }, "AUTONOMOUS RADAR & MULTIMODAL OBSERVATION RANGE"),
+      el("h2", {}, "A.R.M.O.R. Electrical"),
+      el("p", {}, t("aboutDescription")),
+      kv([[t("nodeId"), s ? s.node_id : "—"], [t("nodeName"), s ? s.name : "—"], [t("firmware"), s ? s.version : "—"],
+        [t("author"), "JuanenRac · Electro Hobby 3D"], [t("license"), "GPL-3.0-or-later"]]),
+      el("p", { class: "muted mono" }, "github.com/JuanenRac/ARMOR-ELECTRICAL")));
+}
+
+const HELP_TOPICS = ["overview", "meters", "readings", "network", "wifi", "broker", "users", "update"];
+let helpTopic = "overview";
+function helpPage() {
+  const paragraphs = t("help_" + helpTopic + "_text").split("\n\n");
+  return el("div", { class: "help" },
+    el("div", { class: "help-nav" }, HELP_TOPICS.map(topic => el("button", { class: topic === helpTopic ? "active" : "", onclick: () => { helpTopic = topic; render(); } }, t("navHelpTab_" + topic)))),
+    card(t("help_" + helpTopic + "_title"), ...paragraphs.map(p => el("p", {}, p))));
+}
+
 function updatePage() {
   const s = S.status;
   const progress = el("i"), label = el("p", { class: "muted" }), file = el("input", { type: "file", accept: ".bin" });
@@ -481,7 +554,7 @@ function updatePage() {
           else { result.textContent = errorText(r.error); result.className = "err"; }
         });
       } }, t("upload")))),
-    card(t("maintenance"), el("div", { class: "actions" }, el("button", { class: "b", disabled: !isAdmin(), onclick: () => confirm(t("confirmAsk")) && reboot() }, t("rebootNode"))),
+    card(t("maintenance"), el("div", { class: "actions" }, el("button", { class: "b", tip: "rebootNode", disabled: !isAdmin(), onclick: () => confirm(t("confirmAsk")) && reboot() }, t("rebootNode"))),
       el("h3", {}, t("factoryTitle")), el("p", { class: "muted" }, t("factoryHelp")),
       el("div", { class: "actions" }, confirmBox, el("button", { class: "b danger", disabled: !isAdmin(), onclick: async () => {
         const r = await api("POST", "factory-reset", { confirm: confirmBox.value });
@@ -491,6 +564,12 @@ function updatePage() {
 }
 
 // ---- data, polling and the shell -------------------------------------------------------------------------------------------------------
+
+async function setClockFromBrowser() {
+  const r = await api("POST", "time", { epoch: Math.floor(Date.now() / 1000) });
+  S.message = r.ok ? { kind: "ok", text: t("timeSetOk") } : { kind: "err", text: errorText(r.data.error) };
+  await refreshLive(); render();
+}
 
 async function refreshLive() {
   const [status, meters, readings] = await Promise.all([api("GET", "status"), api("GET", "meters"), api("GET", "readings")]);
@@ -541,15 +620,15 @@ function updatePills() {
 function shell(content) {
   const groups = [...new Set(PAGES.map(p => p.group))];
   const nav = el("nav", { class: "nav" }, groups.map(g => [el("div", { class: "nav-title" }, t(g)),
-    PAGES.filter(p => p.group === g).map(p => el("button", { class: p.id === S.page ? "active" : "", onclick: () => go(p.id) }, el("span", { class: "ico" }, p.icon), t(p.label)))]));
-  const langSelect = el("select", { "aria-label": t("language"), onchange: e => { lang = Number(e.target.value); try { localStorage.setItem("armor_lang", LANGS[lang][0]); } catch (error) { /* ignore */ } document.documentElement.lang = LANGS[lang][0]; render(); } },
+    PAGES.filter(p => p.group === g).map(p => el("button", { class: p.id === S.page ? "active" : "", tip: p.label, onclick: () => go(p.id) }, el("span", { class: "ico" }, p.icon), t(p.label)))]));
+  const langSelect = el("select", { "aria-label": t("language"), onchange: e => { lang = Number(e.target.value); try { localStorage.setItem("armor_lang", LANGS[lang][0]); } catch (error) { /* ignore */ } document.documentElement.lang = LANGS[lang][0]; persistLanguage(); render(); } },
     LANGS.map((l, i) => el("option", { value: String(i), selected: i === lang }, l[1])));
   const page = PAGES.find(p => p.id === S.page);
   barNode = el("div", { class: "bar", hidden: true });
   const view = el("div", { class: "shell" },
     el("aside", { class: "side" }, el("div", { class: "brand" }, el("div", { class: "brand-mark" }, "A"), el("div", {}, el("strong", {}, "A.R.M.O.R."), el("small", {}, S.session.node_id))), nav,
       el("div", { class: "side-foot" }, el("div", {}, el("span", { class: "dot " + (S.status && S.status.network.has_ip ? "ok" : "bad") }), S.session.user + " · " + (S.session.role === "admin" ? t("roleAdmin") : t("roleViewer"))),
-        langSelect, el("button", { class: "b", onclick: async () => { await api("POST", "logout", {}); S.session.authenticated = false; start(); } }, t("signOut")))),
+        langSelect, el("button", { class: "b", tip: "signOut", onclick: async () => { await api("POST", "logout", {}); S.session.authenticated = false; start(); } }, t("signOut")))),
     el("main", {}, el("header", { class: "top" }, el("div", {}, el("p", { class: "eyebrow" }, t(page.group)), el("h1", {}, t(page.label))), el("div", { class: "pills", id: "pills" })), content),
     barNode);
   return view;
@@ -573,6 +652,8 @@ function render(full = true) {
     case "readings": content = readingsPage(); break;
     case "users": content = usersPage(); break;
     case "update": content = updatePage(); break;
+    case "help": content = helpPage(); break;
+    case "about": content = aboutPage(); break;
     default: content = overviewPage();
   }
   $app.replaceChildren(shell(content));
@@ -597,7 +678,7 @@ function langPicker() {
 }
 
 function loginScreen() {
-  const form = { user: "", password: "" };
+  const form = { user: "", password: "", remember: false };
   const message = el("p", { class: "err" });
   const submit = async e => {
     e.preventDefault();
@@ -609,6 +690,7 @@ function loginScreen() {
     el("div", { class: "brand" }, el("div", { class: "brand-mark" }, "A"), el("div", {}, el("strong", {}, "A.R.M.O.R."), el("small", {}, S.session.node_id))), el("h1", {}, t("signIn")),
     el("label", { class: "field" }, el("span", {}, t("user")), el("input", { autocomplete: "username", autofocus: true, oninput: e => { form.user = e.target.value; } })),
     passwordField("password", { autocomplete: "current-password", oninput: e => { form.password = e.target.value; } }),
+    el("label", { class: "check" }, el("input", { type: "checkbox", onchange: e => { form.remember = e.target.checked; } }), t("rememberMe")),
     message, el("button", { class: "b primary", type: "submit" }, t("signIn")), langPicker()));
 }
 
@@ -629,8 +711,8 @@ function setupScreen() {
     el("label", { class: "field" }, el("span", {}, t("setupCode")), el("input", { autocomplete: "off", autocapitalize: "characters", oninput: e => { form.code = e.target.value.trim().toUpperCase(); } })),
     el("label", { class: "field" }, el("span", {}, t("adminName")), el("input", { value: "admin", autocomplete: "username", oninput: e => { form.user = e.target.value; } })),
     passwordField("newPassword", { autocomplete: "new-password", oninput: e => { form.password = e.target.value; } }),
-    ...(hasEthernet() ? [el("p", { class: "hint" }, t("setupEthHelp"))] : [
-      el("h3", {}, t("setupWifiTitle")), el("p", { class: "hint" }, t("setupWifiHelp")),
+    ...([
+      el("h3", {}, t(hasEthernet() ? "setupWifiOptionalTitle" : "setupWifiTitle")), el("p", { class: "hint" }, t(hasEthernet() ? "setupWifiOptionalHelp" : "setupWifiHelp")),
       el("label", { class: "field" }, el("span", {}, t("ssid")), el("input", { autocomplete: "off", maxLength: 32, oninput: e => { form.wifi_ssid = e.target.value; } })),
       passwordField("wifiPassword", { autocomplete: "off", oninput: e => { form.wifi_password = e.target.value; } })]),
     message, el("button", { class: "b primary", type: "submit" }, t("createAdmin")), langPicker()));
