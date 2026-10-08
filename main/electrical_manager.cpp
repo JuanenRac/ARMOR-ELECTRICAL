@@ -50,6 +50,7 @@ void bus_task(void*) {
   clock.wall_clock_is_set = [] { return mqtt_link::clock_is_set(); };
   clock.wall_clock_ms = [] { return mqtt_link::wall_clock_ms(); };
   std::uint32_t reported_failures = 0;
+  bool reported_no_publisher = false;
   for (;;) {
     const Runner::Outcome outcome = g_runner->step(*line, clock);
     if (g_runner->write_failures() != reported_failures) { reported_failures = g_runner->write_failures(); ESP_LOGW(kTag, "a request could not be sent"); }
@@ -59,7 +60,12 @@ void bus_task(void*) {
       g_meters = g_runner->meters();
       if (outcome.message) g_last_message = g_runner->message();
     }
-    if (outcome.message && g_publish) g_publish(electrical::topic(g_settings.node_id), g_runner->message());
+    if (outcome.message && g_publish) {
+      g_publish(electrical::topic(g_settings.node_id), g_runner->message());
+    } else if (outcome.message && !reported_no_publisher) {
+      reported_no_publisher = true;   // said once: the readings are being taken but nothing can carry them to the broker
+      ESP_LOGW(kTag, "the readings are not being published: the broker link has not been given to the meters");
+    }
   }
 }
 }  // namespace

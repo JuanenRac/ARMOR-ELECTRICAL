@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here.
 
+## [0.1.8] - The log says when the readings cannot be published
+
+- When the meters produce a message and the broker link has not been given to them, the log now says so once (*the readings are not being published*) instead of dropping them without a word.
+
+
 ## [0.1.7] - About and Help pages, date and time, hints everywhere and a node that can always be reached
 
 - **"Keep me signed in on this browser"** at login: unchecked, nothing changes (30 minutes idle still signs out); checked, the session survives closing the browser and lasts 30 days of actual use.
