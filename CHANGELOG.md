@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here.
 
+## [0.1.9] - Switch between the two firmware slots from the panel
+
+- **Firmware slots in the panel** (*Firmware and log -> Update*): a new card shows the two application slots (ota_0 and ota_1) with the version each one holds and which one runs, and a button boots the other one at the next restart - the way back to the version that ran before an update, or forward to the one just installed. It asks for confirmation, needs an administrator, refuses an empty slot or a firmware of another project, and the settings are kept. The same card exists in the radar, solar, electrical and touch-panel nodes, in the seven languages (`POST /api/v1/ota/switch`).
+
 ## [0.1.8] - The log says when the readings cannot be published
 
 - When the meters produce a message and the broker link has not been given to them, the log now says so once (*the readings are not being published*) instead of dropping them without a word.

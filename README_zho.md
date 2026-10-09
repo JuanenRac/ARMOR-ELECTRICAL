@@ -59,7 +59,7 @@ ARMOR-ELECTRICAL/
 ## 🛠️ 开发环境
 
 ```bash
-cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 135,990 checks: the meters (53), the loop that asks them (62), the settings (71), Bluetooth (68), the switching rules (135,736)
+cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 375,292 checks: the meters (53), the loop that asks them (62), the settings (73), Bluetooth (68), the interlock rules (135,736), the switch set (239,300)
 build/host/emit_samples | python tests/check_samples.py                                     # the messages, against ARMOR-COMMON
 node tools/panel_mock.mjs --user admin:adminpass123                                         # the panel without a board
 tools/build_node.sh generic                                                                 # the firmware image for the N16R8 board in the ESP-IDF container: dist/generic-s3-wifi.bin

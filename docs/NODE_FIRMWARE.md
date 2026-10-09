@@ -4,7 +4,7 @@ The firmware of an **ESP32-S3** node (the same two boards and the same board pro
 
 **It only reads.** The firmware never builds a request that writes to a meter, and it does not drive any contactor, relay or breaker: the rules for switching (`core/interlock.hpp`) are in the repository, tested, and **not linked into the firmware**.
 
-**Nothing here has run on a board and no meter has been connected.** What has been done: the settings, the meters' frames, the bus and what the node does on every turn of its loop (`core/meter_runner.hpp`, against a stand-in line that plays the meters: one that reads, one that is silent, garbled replies, replies in pieces or late, sixteen meters) are tested on a computer, the messages the node makes are accepted by ARMOR-COMMON, the panel was exercised in a real browser against a stand-in node (`tools/panel_mock.mjs`) and the firmware is built in the ESP-IDF container for both boards without warnings. The host tests are 135,990 checks, 254 of them apart from the switching rules.
+**Nothing here has run on a board and no meter has been connected.** What has been done: the settings, the meters' frames, the bus and what the node does on every turn of its loop (`core/meter_runner.hpp`, against a stand-in line that plays the meters: one that reads, one that is silent, garbled replies, replies in pieces or late, sixteen meters) are tested on a computer, the messages the node makes are accepted by ARMOR-COMMON, the panel was exercised in a real browser against a stand-in node (`tools/panel_mock.mjs`) and the firmware is built in the ESP-IDF container for both boards without warnings. The host tests are 375,292 checks, 256 of them apart from the switching rules.
 
 ## Configuration from a phone over Bluetooth
 
@@ -36,3 +36,5 @@ Each round makes one message with a channel per meter that answered recently; a 
 3. Wire **one** meter first, powered from a supply that is safe to have on a bench, with its serial side adapted to 3.3 V; set its channel and address and check that the page says `reading` and the numbers agree with a reference instrument.
 4. Add the meters one by one, each with its own address; never two with the same address on the line.
 5. In Studio, open the Electrical Designer, tie an element to the node and the channel, and check the numbers on the drawing.
+
+**Firmware slots.** The panel's *Update* page also lists the two application slots with the version each one holds and boots the other one at the next restart (`POST /api/v1/ota/switch`, an administrator only): the way back to the version that ran before an update, or forward to the one just installed. An empty slot or a firmware of another project is refused.
