@@ -178,6 +178,7 @@ std::string io_json() {
   json::Writer w;
   w.begin_object().key("zigbee").raw(zigbee::status_json(s.zigbee, zigbee_bridge::status()));
   w.key("relays").raw(relay_outputs::json());
+  w.key("remote").begin_object().field("relays", relay_outputs::remote_enabled()).end_object();
   w.key("analogs").begin_array();
   const auto inputs = analoginputs::status();
   for (std::size_t i = 0; i < board::kAnalogCount; ++i) {

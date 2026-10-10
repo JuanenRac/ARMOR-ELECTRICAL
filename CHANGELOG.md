@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here.
 
+## [0.2.3] - The relays as devices of the house: the server can switch them
+
+- **A relay is a device of the device layer.** With the new setting `remote.relays` (off by default) every enabled relay publishes `armor/device/<node>/<relay>/state` (`{"on":true}`, when it changes and every half minute) with an `availability` message, and obeys `armor/device/<node>/<relay>/set` with `ON`, `OFF` or `TOGGLE` - the convention the radar node already uses for the pins its panel maps. In Studio the relay is added in *Devices* with the connection **ARMOR node** and the name `<node>/<relay>`; the server then switches it with its own rules (a risk that asks first, only an administrator for the critical ones). Anything else in a command (a number, a sentence, a pulse) is ignored and logged.
+- **Three independent things must agree before a relay moves by a command:** the node's setting `remote.relays`, the broker's access list (`mqtt_identity.sh electrical-relays <node> on` in ARMOR-DEVOPS, off by default) and a device the operator created in the server. The panel keeps working as before.
+- **Fall back to open.** `remote.link_timeout_s` (0, never, or at least 10): with the broker out of reach for that long, every closed relay opens by itself, once per loss.
+- **A node can subscribe to the broker.** `mqtt_link::subscribe(filter, handler, on_connected)` subscribes again on every reconnection and hands each complete message that matches (the MQTT rules for `+` and `#`, `core/mqtt_topic.hpp`) to its handler; a message in pieces is dropped.
+- **The panel** has a card on *Inputs and outputs* with the setting, the fall back time and how to add the devices in Studio (seven languages); the settings are checked (it needs a broker; the time is 0 or at least 10 seconds).
+- **Tests:** the command words, the topics and the filter, the rules of `+` and `#`, finding a relay by name, the link watch and the fall back, and the settings and their stored form (477 checks on the Wi-Fi profile, 431 on the Ethernet one); the panel's browser test passes 43 of 43.
+
 ## [0.2.2] - A second client for the Zigbee radio: an alarm panel that takes over while the server is away
 
 - **A fallback client for the Zigbee radio.** Besides the server that runs Zigbee2MQTT (the primary, `zigbee.allowed_client`), the bridge can name a second address (`zigbee.fallback_client`, for example an alarm panel). The fallback is accepted only while the primary is not connected and has been away for `zigbee.fallback_after_s` seconds (30 by default, 5 to 600); the primary may always connect and takes the radio back from the fallback. Any other address is still refused. The node still interprets nothing: what the fallback says to the radio is its own business. The rules (`Arbiter` in `core/zigbee_bridge.hpp`) are tested on a computer: the wait, the primary's priority, the fallback reconnecting, and the clock of the absence restarting only when the primary leaves.

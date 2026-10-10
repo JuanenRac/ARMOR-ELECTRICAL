@@ -9,7 +9,9 @@
 #include "../core/analog.hpp"
 #include "../core/electrical_config.hpp"
 #include "../core/electrical_json.hpp"
+#include "../core/mqtt_topic.hpp"
 #include "../core/relay_bank.hpp"
+#include "../core/relay_remote.hpp"
 #include "../core/zigbee_bridge.hpp"
 
 static int failures = 0;
@@ -398,6 +400,68 @@ static void test_document() {
   CHECK(config::load("{\"v\":1,\"node\":{\"id\":\"electrical-a1b2c3\",\"name\":\"x\"},\"sta\":{\"enabled\":true,\"ssid\":\"casa\",\"password\":\"una-clave-larga\"}}", config::default_settings("a1b2c3"), old, problems) && !old.zigbee.enabled && !old.relays[0].enabled && !old.analogs[0].enabled);
 }
 
+// ---- the relays as devices of the broker -------------------------------------------------------------------------------------------------
+
+static void test_remote() {
+  using relays::Action;
+  // the words of a command
+  CHECK(relays::parse_command("ON") == Action::kOn && relays::parse_command(" on\n") == Action::kOn && relays::parse_command("true") == Action::kOn && relays::parse_command("1") == Action::kOn);
+  CHECK(relays::parse_command("OFF") == Action::kOff && relays::parse_command("false") == Action::kOff && relays::parse_command("0") == Action::kOff);
+  CHECK(relays::parse_command("Toggle") == Action::kToggle);
+  for (const char* word : {"", "pulse", "pulse:500", "50", "onn", "on off", "{\"state\":\"ON\"}", "ON;OFF"}) CHECK(relays::parse_command(word) == Action::kNone);
+  // the topics
+  CHECK(relays::topic("electrical-1", "lights", "state") == "armor/device/electrical-1/lights/state");
+  CHECK(relays::topic("electrical-1", "lights", "set") == "armor/device/electrical-1/lights/set" && relays::topic("electrical-1", "lights", "availability") == "armor/device/electrical-1/lights/availability");
+  CHECK(relays::topic("electrical-1", "lights", "other").empty() && relays::topic("Bad Node", "lights", "state").empty() && relays::topic("electrical-1", "Bad Name", "state").empty() && relays::topic("electrical-1", "", "state").empty());
+  CHECK(relays::command_filter("electrical-1") == "armor/device/electrical-1/+/set" && relays::command_filter("Bad Node").empty());
+  CHECK(relays::relay_of_command_topic("electrical-1", "armor/device/electrical-1/lights/set") == "lights");
+  for (const char* other : {"armor/device/electrical-2/lights/set", "armor/device/electrical-1/lights/state", "armor/device/electrical-1/a/b/set", "armor/device/electrical-1//set", "armor/device/electrical-1/Lights/set",
+                            "armor/electrical/electrical-1/command", "armor/device/electrical-1/set", ""}) CHECK(relays::relay_of_command_topic("electrical-1", other).empty());
+  CHECK(relays::report(true) == "{\"on\":true}" && relays::report(false) == "{\"on\":false}");
+  // the filter really matches the topics the node asks for, and only those
+  CHECK(mqtt::topic_matches(relays::command_filter("electrical-1"), "armor/device/electrical-1/lights/set"));
+  CHECK(!mqtt::topic_matches(relays::command_filter("electrical-1"), "armor/device/electrical-1/lights/state") && !mqtt::topic_matches(relays::command_filter("electrical-1"), "armor/device/electrical-2/lights/set"));
+  CHECK(!mqtt::topic_matches(relays::command_filter("electrical-1"), "armor/device/electrical-1/a/b/set"));
+  // the rules of + and #
+  CHECK(mqtt::topic_matches("a/b/c", "a/b/c") && !mqtt::topic_matches("a/b/c", "a/b") && !mqtt::topic_matches("a/b", "a/b/c") && !mqtt::topic_matches("a/b/c", "a/b/d"));
+  CHECK(mqtt::topic_matches("a/+/c", "a/x/c") && !mqtt::topic_matches("a/+/c", "a/x/y/c") && !mqtt::topic_matches("a/+", "a") && mqtt::topic_matches("+/+", "a/b"));
+  CHECK(mqtt::topic_matches("a/#", "a/b/c") && mqtt::topic_matches("a/#", "a") && mqtt::topic_matches("#", "a/b") && !mqtt::topic_matches("a/#", "b/c") && !mqtt::topic_matches("a/#/c", "a/b/c"));
+  CHECK(!mqtt::topic_matches("#", "$SYS/x") && !mqtt::topic_matches("+/x", "$SYS/x") && mqtt::topic_matches("$SYS/#", "$SYS/x") && !mqtt::topic_matches("", "a") && !mqtt::topic_matches("a", ""));
+  // finding a relay by its name: only an enabled one has a name for the broker
+  config::Settings s = valid_settings();
+  s.relays[0] = {true, "lights", "", board::kRelayPins[0], false};
+  s.relays[1] = {false, "pump", "", board::kRelayPins[1], false};
+  relays::Bank bank(s);
+  CHECK(bank.find("lights") == 0 && bank.find("pump") == -1 && bank.find("") == -1 && bank.find("relay3") == -1 && bank.name(0) == "lights");
+  // the link watch and the fall back to open
+  relays::LinkWatch watch;
+  CHECK(!watch.lost() && watch.lost_for_ms(1000) == 0);
+  watch.update(true, 1000); CHECK(!watch.lost());
+  watch.update(false, 2000); CHECK(watch.lost() && watch.lost_for_ms(5000) == 3000);
+  watch.update(false, 9000); CHECK(watch.lost_for_ms(12000) == 10000);          // still lost since 2000, not since the last check
+  CHECK(!relays::must_open(0, 999999) && !relays::must_open(30, 29999) && relays::must_open(30, 30000) && relays::must_open(10, 99999));
+  watch.update(true, 13000); CHECK(!watch.lost() && watch.lost_for_ms(14000) == 0);
+  // the settings: off by default, needs a broker, and a fall back time that is 0 or at least ten seconds
+  config::Settings t = valid_settings();
+  CHECK(!t.remote.relays && t.remote.link_timeout_s == 0);
+  t.remote.relays = true;
+  CHECK(has(config::validate(t), "remote.relays", "needs_broker"));
+  t.mqtt.enabled = true; t.mqtt.uri = "mqtt://192.168.0.180:1883";
+  CHECK(config::validate(t).empty());
+  for (int seconds : {0, 10, 600, 86400}) { t.remote.link_timeout_s = seconds; CHECK(config::validate(t).empty()); }
+  for (int seconds : {1, 9}) { t.remote.link_timeout_s = seconds; CHECK(has(config::validate(t), "remote.link_timeout_s", "range")); }
+  t.remote.link_timeout_s = 60;
+  config::Settings back; config::Problems problems;
+  CHECK(config::load(config::to_json(t, true), config::default_settings("a1b2c3"), back, problems) && back.remote.relays && back.remote.link_timeout_s == 60 && config::to_json(back, true) == config::to_json(t, true));
+  problems.clear();
+  CHECK(!config::load("{\"remote\":{\"link_timeout_s\":100000}}", t, back, problems) && has(problems, "remote.link_timeout_s", "range"));
+  problems.clear();
+  CHECK(!config::load("{\"remote\":{\"relays\":\"yes\"}}", t, back, problems) && has(problems, "remote.relays", "invalid"));
+  problems.clear();
+  config::Settings old;
+  CHECK(config::load("{\"v\":1,\"node\":{\"id\":\"electrical-a1b2c3\",\"name\":\"x\"},\"sta\":{\"enabled\":true,\"ssid\":\"casa\",\"password\":\"una-clave-larga\"}}", config::default_settings("a1b2c3"), old, problems) && !old.remote.relays);
+}
+
 int main() {
   test_defaults();
   test_zigbee_settings();
@@ -409,6 +473,7 @@ int main() {
   test_message();
   test_bridge();
   test_document();
+  test_remote();
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

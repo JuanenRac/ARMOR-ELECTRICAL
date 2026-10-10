@@ -546,9 +546,16 @@ function analogCard(index) {
       st.error ? el("p", { class: "err" }, L["ane_" + st.error] ? t("ane_" + st.error) : st.error) : null] : null);
 }
 
+function remoteCard() {
+  const node = S.session.node_id;
+  return el("section", { class: "card" }, el("h2", {}, t("remoteTitle")), el("p", { class: "muted" }, t("remoteHelp")),
+    field("remoteRelays", "remote.relays", { type: "checkbox", rerender: true }),
+    S.cfg.remote.relays ? [field("remoteTimeout", "remote.link_timeout_s", { type: "number", min: 0, max: 86400, hint: t("remoteTimeoutHint") }), el("p", { class: "hint" }, t("remoteStudio", node))] : null);
+}
+
 function ioPage() {
   return el("div", {}, note(t("relaysWarn")), el("p", { class: "muted" }, t("ioIntro")), note(t("ioRestart"), "info"),
-    el("h2", { class: "section" }, t("relaysTitle")), el("div", { class: "grid wide" }, Array.from({ length: 8 }, (_, i) => relayCard(i))),
+    el("h2", { class: "section" }, t("relaysTitle")), remoteCard(), el("div", { class: "grid wide" }, Array.from({ length: 8 }, (_, i) => relayCard(i))),
     el("h2", { class: "section" }, t("analogTitle")), note(t("analogWarn")), el("div", { class: "grid wide" }, Array.from({ length: 8 }, (_, i) => analogCard(i))));
 }
 

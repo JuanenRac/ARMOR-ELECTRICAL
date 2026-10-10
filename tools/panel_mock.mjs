@@ -40,6 +40,7 @@ const config = {
     enabled: i < 4, channel: ["grid", "heater", "dc-bus", "oven"][i] ?? `meter${i + 1}`, label: ["Grid input", "Water heater", "Battery bus", ""][i] ?? "", model: i === 2 ? "dc" : "ac", address: i + 1,
   })),
   zigbee: { enabled: true, rx: 18, tx: 17, reset: 21, bootloader: 47, baud: 115200, port: 8888, allowed_client: "192.168.0.180", fallback_client: "", fallback_after_s: 30 },
+  remote: { relays: false, link_timeout_s: 0 },
   relays: Array.from({ length: 8 }, (_, i) => ({ enabled: i < 2, name: ["lights", "pump"][i] ?? `relay${i + 1}`, label: ["Hall lights", ""][i] ?? "", pin: wired ? [38, 39, 40, 41, 42, 43, 44, 48][i] : [38, 39, 40, 41, 42, 11, 12, 13][i], active_low: i === 1 })),
   analogs: Array.from({ length: 8 }, (_, i) => ({ enabled: i < 2, channel: ["battery", "oven"][i] ?? `analog${i + 1}`, label: ["Battery", ""][i] ?? "", pin: [1, 2, 4, 5, 6, 7, 3, -1][i], quantity: i === 1 ? "current" : "voltage", mode: i === 1 ? "ac" : "dc",
     scale: i === 1 ? 30 : 11, offset_v: 0, zero_below: i === 1 ? 0.3 : 0, nominal_voltage_v: i === 1 ? 230 : 0 })),
@@ -100,6 +101,7 @@ const io = () => {
   const z = config.zigbee;
   return {
     zigbee: { enabled: z.enabled, state: z.enabled ? "connected" : "disabled", error: "", port: z.port, baud: z.baud, allowed_client: z.allowed_client, client: z.enabled ? z.allowed_client : "", role: z.enabled ? "primary" : "", fallback_client: z.fallback_client, fallback_after_s: z.fallback_after_s, takeovers: 0, to_radio: 120 + tick * 9, from_radio: 4096 + tick * 61, connections: 1, refused: 0, dropped: 0, has_reset: z.reset >= 0, has_bootloader: z.bootloader >= 0 },
+    remote: { relays: config.remote.relays },
     relays: config.relays.map((r, i) => ({ relay: i + 1, enabled: r.enabled, name: r.name, label: r.label, pin: r.pin, on: r.enabled && relayOn.get(i) === true })),
     analogs: config.analogs.map((a, i) => a.enabled
       ? { input: i + 1, enabled: true, state: "reading", error: "", millivolts: a.quantity === "current" ? 1650 + (tick % 5) : 1100, value: a.quantity === "current" ? 21.213 : 12.1, samples: 4000 }
@@ -133,6 +135,8 @@ const problems = doc => {
     if (!/^\d+\.\d+\.\d+\.\d+$/.test(doc.zigbee.allowed_client ?? "")) list.push({ path: "zigbee.allowed_client", code: doc.zigbee.allowed_client ? "invalid" : "required" });
     if (!(doc.zigbee.port >= 1024 && doc.zigbee.port <= 65535)) list.push({ path: "zigbee.port", code: "range" });
   }
+  if (doc.remote?.relays && !(doc.mqtt?.enabled ?? config.mqtt.enabled)) list.push({ path: "remote.relays", code: "needs_broker" });
+  if (doc.remote && doc.remote.link_timeout_s !== 0 && doc.remote.link_timeout_s !== undefined && doc.remote.link_timeout_s < 10) list.push({ path: "remote.link_timeout_s", code: "range" });
   (doc.analogs ?? []).forEach((a, i) => { if (a.enabled && !(a.pin >= 1 && a.pin <= 10)) list.push({ path: `analogs.${i}.pin`, code: a.pin < 0 ? "required" : "not_analog" }); });
   const seen = new Map();
   (doc.meters ?? []).forEach((m, i) => {

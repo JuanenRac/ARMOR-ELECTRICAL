@@ -30,6 +30,13 @@ class Bank {
   }
   void open_all() { on_.fill(false); }
 
+  // The relay with this name, or -1 (a disabled relay has no name for the broker).
+  int find(const std::string& name) const {
+    for (std::size_t i = 0; i < settings_.size(); ++i) if (settings_[i].enabled && settings_[i].name == name) return static_cast<int>(i);
+    return -1;
+  }
+  const std::string& name(std::size_t index) const { return settings_[index < settings_.size() ? index : 0].name; }
+
   // The level the pin must have for the relay's state: a relay that closes on a low pin has it inverted. An open relay of a disabled slot is "off" too.
   bool pin_level(std::size_t index) const {
     if (index >= settings_.size()) return false;

@@ -152,6 +152,12 @@ try {
   check("the warnings about the relays and about 3.3 V are shown", body.includes("starts open when the node starts") && body.includes("more than 3.3 V"));
   check("the analog inputs show what the pin reads", body.includes("mV at the pin") && body.includes("21.213 A"), body.slice(0, 400));
   check("a running relay shows its state and a button", body.includes("open") && body.includes("Close"));
+  check("the broker's control of the relays is off by default and explained", body.includes("Let the broker move the relays") && body.includes("armor/device/<node>/<relay>") && !body.includes("Fall back to open after"));
+  await ev(`(() => { const c = [...document.querySelectorAll('section.card')].find(x => x.querySelector('h2')?.textContent.startsWith('The broker moves the relays')); const box = c.querySelector('input[type=checkbox]'); box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await sleep(400);
+  body = await text();
+  check("turning it on shows the fall back time and how to add the devices in Studio", body.includes("Fall back to open after") && body.includes("electrical-a1b2c3/<relay name>") && body.includes("electrical-relays electrical-a1b2c3 on"), body.slice(0, 200));
+  await clickButton("Discard changes"); await sleep(400);
   await clickButton("Close"); await sleep(900);
   check("closing a relay shows it closed", (await ev("[...document.querySelectorAll('.pill')].some(p => p.textContent.trim() === 'closed')")) === true);
   const io = await (await fetch("http://127.0.0.1:18122/api/v1/io", { headers: { Cookie: cookie } })).json();

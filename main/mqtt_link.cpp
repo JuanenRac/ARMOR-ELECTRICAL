@@ -8,6 +8,7 @@
 #include <atomic>
 #include <mutex>
 #include <ctime>
+#include <vector>
 extern "C" {
 #include <sys/time.h>
 #include "esp_log.h"
@@ -16,6 +17,7 @@ extern "C" {
 #include "freertos/task.h"
 #include "mqtt_client.h"
 }
+#include "core/mqtt_topic.hpp"
 #include "network.hpp"
 
 namespace armor::mqtt_link {
@@ -31,6 +33,13 @@ std::atomic<bool> g_connected{false};
 std::atomic<bool> g_enabled{false};
 std::atomic<std::uint32_t> g_published{0};
 std::atomic<std::uint32_t> g_dropped{0};
+
+struct Subscription {
+  std::string filter;
+  MessageHandler on_message;
+  ConnectedHandler on_connected;
+};
+std::vector<Subscription> g_subscriptions;   // filled before start(), read-only afterwards
 
 // Which saved broker the node is trying (0: the one above, 1..: settings.mqtt.backup[index-1]). A watchdog task switches to the
 // next one, the same way network.cpp does for Wi-Fi, after the connection has stayed down for a while; it never touches a
@@ -50,11 +59,24 @@ config::Broker current_broker(const config::Settings& s, int index) {
 }
 int broker_count(const config::Settings& s) { return 1 + static_cast<int>(s.mqtt.backup.size()); }
 
-void on_mqtt(void*, esp_event_base_t, int32_t event_id, void*) {
+void on_mqtt(void*, esp_event_base_t, int32_t event_id, void* data) {
+  auto* event = static_cast<esp_mqtt_event_handle_t>(data);
   switch (event_id) {
-    case MQTT_EVENT_CONNECTED: g_connected = true; ESP_LOGI(kTag, "MQTT connected to %s", current_broker(g_settings, g_broker_index).uri.c_str()); break;
+    case MQTT_EVENT_CONNECTED:
+      g_connected = true;
+      ESP_LOGI(kTag, "MQTT connected to %s", current_broker(g_settings, g_broker_index).uri.c_str());
+      for (const Subscription& subscription : g_subscriptions) esp_mqtt_client_subscribe(event->client, subscription.filter.c_str(), 1);
+      for (const Subscription& subscription : g_subscriptions) if (subscription.on_connected) subscription.on_connected();
+      break;
     case MQTT_EVENT_DISCONNECTED: g_connected = false; ESP_LOGW(kTag, "MQTT disconnected"); break;
     case MQTT_EVENT_ERROR: ESP_LOGW(kTag, "MQTT error (the broker refused the identity, or is not reachable)"); break;
+    case MQTT_EVENT_DATA: {
+      if (event->data_len != event->total_data_len || event->current_data_offset != 0) break;   // a command is a few bytes: never a fragment
+      const std::string topic(event->topic, static_cast<std::size_t>(event->topic_len));
+      const std::string payload(event->data, static_cast<std::size_t>(event->data_len));
+      for (const Subscription& subscription : g_subscriptions) if (subscription.on_message && mqtt::topic_matches(subscription.filter, topic)) subscription.on_message(topic, payload);
+      break;
+    }
     default: break;
   }
 }
@@ -122,6 +144,10 @@ void start(const config::Settings& settings) {
   }
   g_enabled = true;
   xTaskCreate(link_task, "mqtt-link", 6144, nullptr, 4, nullptr);
+}
+
+void subscribe(const std::string& filter, MessageHandler on_message, ConnectedHandler on_connected) {
+  if (!filter.empty()) g_subscriptions.push_back({filter, std::move(on_message), std::move(on_connected)});
 }
 
 bool connected() { return g_connected; }

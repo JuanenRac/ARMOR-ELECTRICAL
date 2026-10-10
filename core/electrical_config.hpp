@@ -138,6 +138,13 @@ struct AnalogSetting {
   double nominal_voltage_v = 0.0;
 };
 
+// Whether the broker may move the relays. OFF by default: a relay then answers only to the panel. On, each relay is a device of the device layer (core/relay_remote.hpp) and
+// falls back to open after `link_timeout_s` seconds without the broker (0: never).
+struct Remote {
+  bool relays = false;
+  int link_timeout_s = 0;
+};
+
 // What time the node believes it is: a time server on the Internet (or the browser's clock when that is off) and the zone the local time is
 // shown in. The zone is a POSIX TZ rule, so summer time changes by itself ("CET-1CEST,M3.5.0,M10.5.0/3" is Spain); "UTC0" is no offset.
 struct Clock {
@@ -160,6 +167,7 @@ struct Settings {
   std::array<MeterSetting, kMeterCount> meters;
   ZigbeeSetting zigbee;
   std::array<RelaySetting, board::kRelayCount> relays;
+  Remote remote;
   std::array<AnalogSetting, board::kAnalogCount> analogs;
   WebMode web = WebMode::kBoth;
   BleMode ble = BleMode::kSetup;   // "setup": only while the node has no user; "always"; "off": the Bluetooth stack is not even started
@@ -413,6 +421,10 @@ inline void read_settings(const json::Value& document, Settings& s, Problems& pr
       read_bool(item, "active_low", relay.active_low, base + "active_low", problems);
     }
   }
+  if (const json::Value* remote = document.get("remote"); remote != nullptr && remote->is_object()) {
+    read_bool(*remote, "relays", s.remote.relays, "remote.relays", problems);
+    read_int(*remote, "link_timeout_s", s.remote.link_timeout_s, 0, 86400, "remote.link_timeout_s", problems);
+  }
   if (const json::Value* analogs = document.get("analogs"); analogs != nullptr) {
     if (!analogs->is_array() || analogs->items.size() > board::kAnalogCount) bad(problems, "analogs", "invalid");
     else for (std::size_t i = 0; i < analogs->items.size(); ++i) {
@@ -626,6 +638,10 @@ inline Problems validate(const Settings& s) {
     if (!relay.label.empty() && (!net::valid_utf8(relay.label, &label_characters) || label_characters > 40)) bad(problems, base + "label", "invalid");
   }
 
+  // the broker moving the relays: it needs a broker, and a fall back time is 0 (never) or at least ten seconds
+  if (s.remote.relays && !s.mqtt.enabled) bad(problems, "remote.relays", "needs_broker");
+  if (s.remote.link_timeout_s != 0 && s.remote.link_timeout_s < 10) bad(problems, "remote.link_timeout_s", "range");
+
   // the analog inputs: a channel of the message each, so the names are shared with the meters' and the message has room for all
   std::size_t analog_count = 0;
   for (std::size_t i = 0; i < board::kAnalogCount; ++i) {
@@ -702,6 +718,7 @@ inline std::string to_json(const Settings& s, bool secrets) {
     w.begin_object().field("enabled", relay.enabled).field("name", relay.name).field("label", relay.label).field("pin", relay.pin).field("active_low", relay.active_low).end_object();
   }
   w.end_array();
+  w.key("remote").begin_object().field("relays", s.remote.relays).field("link_timeout_s", s.remote.link_timeout_s).end_object();
   w.key("analogs").begin_array();
   for (const AnalogSetting& input : s.analogs) {
     w.begin_object().field("enabled", input.enabled).field("channel", input.channel).field("label", input.label).field("pin", input.pin).field("quantity", input.quantity).field("mode", input.mode)
