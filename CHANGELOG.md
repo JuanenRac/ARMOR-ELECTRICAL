@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here.
 
-## [0.2.0] - A login over HTTP after one over HTTPS
+## [0.2.0] - No silence without a clock, clean RS485 readings and a login over HTTP after one over HTTPS
 
 - **An RS485 adapter that hears its own request no longer spoils the readings.** The echo of the request that comes back before the answer, and stray bytes in front of it, are dropped before the answer is read (they used to make every reading "wrong length").
 - **A node without a clock no longer falls silent.** It used to drop everything it read until a time server answered, so a node on a network without internet, or one that restarted after a power cut with the provider down, said nothing at all. It now publishes with the time since it started, and ARMOR-SERVER stamps such a message with the moment it receives it; as soon as the clock is set it sends real dates again.
