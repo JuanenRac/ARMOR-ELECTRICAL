@@ -126,6 +126,44 @@ try {
   check("the DC channel has no frequency of its own", (await ev("[...document.querySelectorAll('section.card')].find(c => c.innerText.includes('Battery bus'))?.innerText.includes('Frequency')")) === false);
   await shot(`epanel-${board}-readings.png`);
 
+  // ---- the Zigbee radio page
+  await ev("window.confirm = () => true");
+  await goto("zigbee");
+  body = await text();
+  check("the Zigbee page has the radio card, the warning and the Zigbee2MQTT lines", body.includes("Zigbee radio") && body.includes("only to the one address") && body.includes("tcp://192.168.0.181:8888") && body.includes("adapter: zstack"), body.slice(0, 300));
+  check("the bridge shows it is connected with its counters", body.includes("connected") && /\d+ bytes to the radio/.test(body) && body.includes("Connected from 192.168.0.180"), body.slice(0, 400));
+  check("the radio has its reset and boot-loader buttons for an administrator", body.includes("Reset the radio") && body.includes("Radio to boot loader"));
+  await clickButton("Reset the radio"); await sleep(700);
+  check("resetting the radio is answered", !(await text()).includes("not available"), (await text()).slice(0, 200));
+  await shot(`epanel-${board}-zigbee.png`);
+  // the allowed client is required: an empty one is refused and said so
+  await setText("input[placeholder='192.168.0.180']", "");
+  await clickButton("Save"); await sleep(900);
+  check("an empty allowed client is refused and the panel says so", (await text()).includes("required") && (await ev("document.querySelectorAll('input.bad').length")) > 0);
+  await setText("input[placeholder='192.168.0.180']", "192.168.0.50");
+  await clickButton("Save"); await sleep(900);
+  const savedZ = await (await fetch("http://127.0.0.1:18122/api/v1/config", { headers: { Cookie: cookie } })).json();
+  check("the corrected radio settings are saved", savedZ.config.zigbee.allowed_client === "192.168.0.50" && savedZ.config.zigbee.baud === 115200 && savedZ.config.zigbee.port === 8888, JSON.stringify(savedZ.config.zigbee));
+
+  // ---- the inputs and outputs page
+  await goto("io");
+  body = await text();
+  check("the page has eight relays and eight analog inputs", [1, 2, 8].every(n => body.includes(`Relay ${n}`)) && [1, 2, 8].every(n => body.includes(`Input ${n}`)) && body.includes("Relay outputs") && body.includes("Analog inputs"), body.slice(0, 300));
+  check("the warnings about the relays and about 3.3 V are shown", body.includes("starts open when the node starts") && body.includes("more than 3.3 V"));
+  check("the analog inputs show what the pin reads", body.includes("mV at the pin") && body.includes("21.213 A"), body.slice(0, 400));
+  check("a running relay shows its state and a button", body.includes("open") && body.includes("Close"));
+  await clickButton("Close"); await sleep(900);
+  check("closing a relay shows it closed", (await ev("[...document.querySelectorAll('.pill')].some(p => p.textContent.trim() === 'closed')")) === true);
+  const io = await (await fetch("http://127.0.0.1:18122/api/v1/io", { headers: { Cookie: cookie } })).json();
+  check("the node reports the relay closed", io.relays[0].on === true && io.relays[1].on === false, JSON.stringify(io.relays[0]));
+  await shot(`epanel-${board}-io.png`);
+  // an analog input on a pin that is not ADC1 is refused
+  await ev(`(() => { const c = [...document.querySelectorAll('section.card')].find(x => x.querySelector('h2')?.textContent.startsWith('Input 3')); const box = c.querySelector('input[type=checkbox]'); box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await sleep(400);
+  const pinOptions = await ev(`(() => { const c = [...document.querySelectorAll('section.card')].find(x => x.querySelector('h2')?.textContent.startsWith('Input 3')); const sel = [...c.querySelectorAll('select')][0]; return [...sel.options].map(o => o.value).filter(v => v !== '-1').map(Number); })()`);
+  check("an analog input is offered only ADC1 pins", pinOptions.length > 0 && pinOptions.every(g => g >= 1 && g <= 10), JSON.stringify(pinOptions));
+  await clickButton("Discard changes"); await sleep(400);
+
   // ---- the network page has the Bluetooth setting
   await goto("network");
   body = await text();
@@ -137,7 +175,7 @@ try {
   await shot(`epanel-${board}-network.png`);
 
   // ---- every page in every language: no raw keys, no missing texts, no console errors
-  const pages = ["overview", "meters", "readings", "network", "wifi", "broker", "users", "update"];
+  const pages = ["overview", "meters", "readings", "zigbee", "io", "network", "wifi", "broker", "users", "update"];
   const langs = await ev("LANGS.map(l => l[0])");
   let rawBad = 0;
   for (let li = 0; li < langs.length; li += 1) {
@@ -154,7 +192,7 @@ try {
   // ---- phone width
   await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 800, deviceScaleFactor: 2, mobile: true });
   await ev(`(() => { lang = 0; localStorage.setItem('armor_lang', 'en'); })()`);
-  for (const p of ["meters", "readings"]) {
+  for (const p of ["meters", "readings", "zigbee", "io"]) {
     await ev(`location.hash = '#/${p}'`); await sleep(500);
     const overflow = await ev("document.documentElement.scrollWidth - document.documentElement.clientWidth");
     check(`the ${p} page fits a phone's width`, overflow <= 1, `overflow ${overflow}px`);

@@ -211,6 +211,8 @@ const PAGES = [
   { id: "overview", icon: "◎", label: "navOverview", group: "navNode" },
   { id: "meters", icon: "⇋", label: "navMeters", group: "navElectrical" },
   { id: "readings", icon: "⚡", label: "navReadings", group: "navElectrical" },
+  { id: "zigbee", icon: "⌬", label: "navZigbee", group: "navElectrical" },
+  { id: "io", icon: "⏻", label: "navIo", group: "navElectrical" },
   { id: "network", icon: "⇄", label: "navNetwork", group: "navNetwork" },
   { id: "wifi", icon: "◌", label: "navWifi", group: "navNetwork" },
   { id: "broker", icon: "⌁", label: "navBroker", group: "navNetwork" },
@@ -416,6 +418,10 @@ function claimedGpios(exceptPath) {
   const used = new Set();
   const add = (path, gpio) => { if (path !== exceptPath && gpio >= 0) used.add(gpio); };
   add("bus.rx", S.cfg.bus.rx); add("bus.tx", S.cfg.bus.tx);
+  const z = S.cfg.zigbee;
+  if (z && z.enabled) { add("zigbee.rx", z.rx); add("zigbee.tx", z.tx); add("zigbee.reset", z.reset); add("zigbee.bootloader", z.bootloader); }
+  (S.cfg.relays || []).forEach((r, i) => { if (r.enabled) add("relays." + i + ".pin", r.pin); });
+  (S.cfg.analogs || []).forEach((a, i) => { if (a.enabled) add("analogs." + i + ".pin", a.pin); });
   return used;
 }
 function pinOptions(selected, includeNone, exceptPath) {
@@ -449,6 +455,99 @@ function meterCard(index) {
 function metersPage() {
   return el("div", {}, note(t("metersWarn")), el("p", { class: "muted" }, t("metersIntro")), note(t("metersRestart"), "info"),
     el("div", { class: "grid wide" }, [busCard()].concat(Array.from({ length: 16 }, (_, i) => i).map(meterCard))));
+}
+
+
+// ---- the base board: the Zigbee radio, the relays and the analog inputs ------------------------------------------------------------------
+
+const ZIGBEE_BAUDS = [115200, 230400];
+const zbStatus = () => (S.io && S.io.zigbee) || { state: "disabled", enabled: false };
+const relayStatus = index => (S.io && S.io.relays && S.io.relays[index]) || { enabled: false, on: false };
+const analogStatus = index => (S.io && S.io.analogs && S.io.analogs[index]) || { state: "disabled" };
+const analogPinOptions = (selected, exceptPath) => pinOptions(selected, true, exceptPath).filter(([gpio]) => gpio === -1 || (gpio >= 1 && gpio <= 10));
+
+function zbPill(state) {
+  const plain = state === "disabled" || state === "starting" || state === "waiting";
+  return el("span", { class: "pill " + (state === "connected" ? "ok" : plain ? "" : "bad") }, t("zb_state_" + state));
+}
+const zbLiveText = z => t("zbCounters", z.to_radio || 0, z.from_radio || 0, z.connections || 0, z.refused || 0);
+
+async function radioAction(action) {
+  if (!window.confirm(t(action === "bootloader" ? "zbConfirmBoot" : "zbConfirmReset"))) return;
+  const r = await api("POST", "zigbee/radio", { action });
+  S.message = r.ok ? { kind: "ok", text: t(action === "bootloader" ? "zbBootDone" : "zbResetDone") } : { kind: "err", text: errorText(r.data.error) };
+  await refreshLive(); render();
+}
+
+function zigbeePage() {
+  const z = zbStatus(), cfg = S.cfg.zigbee;
+  const ip = S.status && S.status.network && S.status.network.ip;
+  return el("div", {}, note(t("zbWarn")), el("p", { class: "muted" }, t("zbIntro")), note(t("zbRestart"), "info"),
+    el("div", { class: "grid wide" },
+      el("section", { class: "card" }, el("h2", {}, t("zbTitle")),
+        field("zbEnabled", "zigbee.enabled", { type: "checkbox", rerender: true }),
+        cfg.enabled ? [
+          el("div", { class: "row" }, field("zbRx", "zigbee.rx", { type: "select", number: true, options: pinOptions(cfg.rx, true, "zigbee.rx") }), field("zbTx", "zigbee.tx", { type: "select", number: true, options: pinOptions(cfg.tx, true, "zigbee.tx") })),
+          el("div", { class: "row" }, field("zbReset", "zigbee.reset", { type: "select", number: true, options: pinOptions(cfg.reset, true, "zigbee.reset") }), field("zbBoot", "zigbee.bootloader", { type: "select", number: true, options: pinOptions(cfg.bootloader, true, "zigbee.bootloader") })),
+          el("div", { class: "row" }, field("zbBaud", "zigbee.baud", { type: "select", number: true, options: ZIGBEE_BAUDS.map(b => [b, String(b)]) }), field("zbPort", "zigbee.port", { type: "number", min: 1024, max: 65535 })),
+          field("zbAllowed", "zigbee.allowed_client", { max: 15, placeholder: "192.168.0.180", hint: t("zbAllowedHint") })] : null),
+      z.enabled ? el("section", { class: "card" }, el("h2", {}, t("zbStatus")),
+        el("div", { class: "actions" }, el("span", { id: "zb-pill" }, zbPill(z.state)), el("span", { class: "muted", id: "zb-live" }, zbLiveText(z))),
+        el("p", { class: "muted", id: "zb-client" }, z.client ? t("zbClient", z.client) : ""),
+        z.error ? el("p", { class: "err" }, t("zbe_" + z.error)) : null,
+        isAdmin() && z.has_reset ? el("div", { class: "actions" },
+          el("button", { class: "b", onclick: () => radioAction("reset") }, t("zbResetBtn")),
+          z.has_bootloader ? el("button", { class: "b danger", onclick: () => radioAction("bootloader") }, t("zbBootBtn")) : null) : null,
+        el("p", { class: "hint" }, t("zbBootHint"))) : null,
+      el("section", { class: "card" }, el("h2", {}, t("zbYamlTitle")), el("p", { class: "muted" }, t("zbYamlHint")),
+        el("pre", { class: "code" }, "serial:\n  port: tcp://" + (ip || "<node>") + ":" + (cfg.port || 8888) + "\n  adapter: zstack"))));
+}
+
+async function relayAction(index, on) {
+  const name = S.cfg.relays[index].label || S.cfg.relays[index].name;
+  if (on && !window.confirm(t("relayConfirm", name))) return;
+  const r = await api("POST", "relays/" + (index + 1), { on });
+  S.message = r.ok ? null : { kind: "err", text: errorText(r.data.error) };
+  await refreshLive(); render();
+}
+
+function relayCard(index) {
+  const cfg = S.cfg.relays[index], base = "relays." + index + ".", running = relayStatus(index);
+  return el("section", { class: "card" }, el("h2", {}, t("relayN", index + 1), cfg.enabled ? " · " + (cfg.label || cfg.name) : ""),
+    field("relayEnabled", base + "enabled", { type: "checkbox", rerender: true }),
+    cfg.enabled ? [
+      el("div", { class: "row" }, field("relayName", base + "name", { max: 32, hint: t("relayNameHint") }), field("relayLabel", base + "label", { max: 40 })),
+      el("div", { class: "row" }, field("relayPin", base + "pin", { type: "select", number: true, options: pinOptions(cfg.pin, true, base + "pin") }), field("relayActiveLow", base + "active_low", { type: "checkbox" })),
+      running.enabled ? el("div", { class: "actions" },
+        el("span", { class: "pill " + (running.on ? "warn" : "ok"), id: "relay-pill-" + index }, running.on ? t("relayClosed") : t("relayOpen")),
+        isAdmin() ? el("button", { class: "b" + (running.on ? "" : " danger"), onclick: () => relayAction(index, !running.on) }, running.on ? t("relayOpenBtn") : t("relayCloseBtn")) : null)
+        : el("p", { class: "hint" }, t("relayNotRunning"))] : null);
+}
+
+const analogLiveText = (index, st) => t("analogLive", (st.millivolts || 0).toFixed(0), (st.value || 0).toFixed(3), S.cfg.analogs[index].quantity === "current" ? "A" : "V");
+
+function analogCard(index) {
+  const cfg = S.cfg.analogs[index], base = "analogs." + index + ".", st = analogStatus(index);
+  return el("section", { class: "card" }, el("h2", {}, t("analogN", index + 1), cfg.enabled ? " · " + (cfg.label || cfg.channel) : ""),
+    field("analogEnabled", base + "enabled", { type: "checkbox", rerender: true }),
+    cfg.enabled ? [
+      el("div", { class: "row" }, field("analogChannel", base + "channel", { max: 32, hint: t("meterChannelHint") }), field("analogLabel", base + "label", { max: 40 })),
+      el("div", { class: "row" }, field("analogPin", base + "pin", { type: "select", number: true, options: analogPinOptions(cfg.pin, base + "pin") }),
+        field("analogQuantity", base + "quantity", { type: "select", rerender: true, options: [["voltage", t("analogVoltage")], ["current", t("analogCurrent")]] })),
+      el("div", { class: "row" }, field("analogMode", base + "mode", { type: "select", rerender: true, options: [["dc", t("analogModeDc")], ["ac", t("analogModeAc")]] }),
+        field("analogScale", base + "scale", { type: "number", step: "any", hint: t("analogScaleHint") })),
+      el("div", { class: "row" },
+        cfg.mode === "dc" ? field("analogOffset", base + "offset_v", { type: "number", step: "any", hint: t("analogOffsetHint") }) : null,
+        field("analogZero", base + "zero_below", { type: "number", step: "any", min: 0 }),
+        cfg.quantity === "current" ? field("analogNominal", base + "nominal_voltage_v", { type: "number", step: "any", min: 0, max: 1000, hint: t("analogNominalHint") }) : null),
+      st.enabled ? el("div", { class: "actions" }, el("span", { id: "analog-pill-" + index }, psPill(st.state)), el("span", { class: "muted", id: "analog-live-" + index }, st.state === "reading" ? analogLiveText(index, st) : "")) : null,
+      st.error ? el("p", { class: "err" }, L["ane_" + st.error] ? t("ane_" + st.error) : st.error) : null] : null);
+}
+
+function ioPage() {
+  return el("div", {}, note(t("relaysWarn")), el("p", { class: "muted" }, t("ioIntro")), note(t("ioRestart"), "info"),
+    el("h2", { class: "section" }, t("relaysTitle")), el("div", { class: "grid wide" }, Array.from({ length: 8 }, (_, i) => relayCard(i))),
+    el("h2", { class: "section" }, t("analogTitle")), note(t("analogWarn")), el("div", { class: "grid wide" }, Array.from({ length: 8 }, (_, i) => analogCard(i))));
 }
 
 const num = (value, digits) => (typeof value === "number" ? value.toFixed(digits) : "—");
@@ -529,7 +628,7 @@ function aboutPage() {
       el("p", { class: "muted mono" }, "github.com/JuanenRac/ARMOR-ELECTRICAL")));
 }
 
-const HELP_TOPICS = ["overview", "meters", "readings", "network", "wifi", "broker", "users", "update"];
+const HELP_TOPICS = ["overview", "meters", "readings", "zigbee", "io", "network", "wifi", "broker", "users", "update"];
 let helpTopic = "overview";
 function helpPage() {
   const paragraphs = t("help_" + helpTopic + "_text").split("\n\n");
@@ -606,10 +705,11 @@ async function setClockFromBrowser() {
 }
 
 async function refreshLive() {
-  const [status, meters, readings] = await Promise.all([api("GET", "status"), api("GET", "meters"), api("GET", "readings")]);
+  const [status, meters, readings, io] = await Promise.all([api("GET", "status"), api("GET", "meters"), api("GET", "readings"), api("GET", "io")]);
   if (status.ok) S.status = status.data;
   if (meters.ok) { S.catalog = meters.data.catalog; S.meters = meters.data.meters; S.bus = meters.data.bus; }
   if (readings.ok) S.readings = readings.data;
+  if (io.ok) S.io = io.data;
 }
 
 async function refreshLog() {
@@ -625,7 +725,7 @@ async function poll() {
   if (!S.session || !S.session.authenticated || S.rebooting) return;
   await refreshLive();
   if (S.page === "overview" || S.page === "readings") render(false);
-  else if (S.page === "meters") patchLive();
+  else if (S.page === "meters" || S.page === "zigbee" || S.page === "io") patchLive();
   else if (S.page === "update") await refreshLog();
   updatePills();
 }
@@ -636,6 +736,17 @@ function patchLive() {
     const node = document.getElementById("meter-live-" + i);
     if (node && m.enabled) node.textContent = meterLiveText(m);
   });
+  if (S.io) {
+    const z = S.io.zigbee, live = document.getElementById("zb-live"), pill = document.getElementById("zb-pill"), client = document.getElementById("zb-client");
+    if (live && z) live.textContent = zbLiveText(z);
+    if (pill && z) pill.replaceChildren(zbPill(z.state));
+    if (client && z) client.textContent = z.client ? t("zbClient", z.client) : "";
+    (S.io.analogs || []).forEach((a, i) => {
+      const text = document.getElementById("analog-live-" + i), apill = document.getElementById("analog-pill-" + i);
+      if (text && S.cfg.analogs[i]) text.textContent = a.state === "reading" ? analogLiveText(i, a) : "";
+      if (apill) apill.replaceChildren(psPill(a.state));
+    });
+  }
   const bus = document.getElementById("bus-live");
   if (bus && S.bus) bus.textContent = t("busCounters", S.bus.bytes_tx, S.bus.bytes_rx, S.bus.messages);
 }
@@ -684,6 +795,8 @@ function render(full = true) {
     case "broker": content = brokerPage(); break;
     case "meters": content = metersPage(); break;
     case "readings": content = readingsPage(); break;
+    case "zigbee": content = zigbeePage(); break;
+    case "io": content = ioPage(); break;
     case "users": content = usersPage(); break;
     case "update": content = updatePage(); break;
     case "help": content = helpPage(); break;

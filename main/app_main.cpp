@@ -32,8 +32,11 @@ extern "C" {
 #include "mqtt_link.hpp"
 #include "network.hpp"
 #include "node_store.hpp"
+#include "analog_inputs.hpp"
 #include "electrical_manager.hpp"
+#include "relay_outputs.hpp"
 #include "web_server.hpp"
+#include "zigbee_bridge.hpp"
 
 namespace {
 constexpr char kTag[] = "armor-node";
@@ -50,7 +53,7 @@ void setup_reminder_task(void*) {
 }
 
 // Holding the BOOT button for 8 seconds in the first 30 after power-up erases the settings and the users: the node is back in setup.
-// (Skipped when the operator gave GPIO 0 to the serial line.)
+// (Skipped when the operator gave GPIO 0 to the serial line, the radio, a relay or an analog input.)
 void boot_button_task(void*) {
   constexpr gpio_num_t kButton = GPIO_NUM_0;
   gpio_config_t io{};
@@ -104,6 +107,10 @@ extern "C" void app_main() {
   }
 
   // The meters run first: on the bench their statistics are the first thing to look at, with or without a network. A node in setup reads nothing yet.
+  if (!setup) {
+    armor::relay_outputs::start(settings);   // every relay starts open
+    armor::analoginputs::start(settings);
+  }
   if (!setup) armor::manager::start(settings, [](const std::string& topic, const std::string& payload) { armor::mqtt_link::publish(topic, payload); });
 
   const armor::netplan::Plan plan = armor::netplan::plan_network(settings, setup, armor::store::setup_code(), armor::store::mac_tail(), armor::store::mac_sum());
@@ -116,6 +123,7 @@ extern "C" void app_main() {
   armor::clocksync::start(settings);
   const bool panel_ok = network_ok && armor::web::start(settings);
   armor::mqtt_link::start(settings);
+  if (!setup) armor::zigbee_bridge::start(settings);   // the radio's serial line, lent to one client once the network is up
   armor::ble_provision::start(settings, setup);   // only when the settings say so: Bluetooth stays unused otherwise
 
   // A periodic, unconditional restart the panel can turn on (0: never) - a board left running for weeks without anyone touching it.
@@ -124,6 +132,9 @@ extern "C" void app_main() {
   if (setup) xTaskCreate(setup_reminder_task, "setup-hint", 3072, nullptr, 2, nullptr);
   bool button_is_a_pin = false;
   if (settings.bus.rx == 0 || settings.bus.tx == 0) button_is_a_pin = true;
+  if (settings.zigbee.enabled && (settings.zigbee.rx == 0 || settings.zigbee.tx == 0 || settings.zigbee.reset == 0 || settings.zigbee.bootloader == 0)) button_is_a_pin = true;
+  for (const auto& relay : settings.relays) if (relay.enabled && relay.pin == 0) button_is_a_pin = true;
+  for (const auto& input : settings.analogs) if (input.enabled && input.pin == 0) button_is_a_pin = true;
   if (!button_is_a_pin) xTaskCreate(boot_button_task, "boot-button", 3072, nullptr, 2, nullptr);
   xTaskCreate(confirm_firmware_task, "confirm", 3072, panel_ok ? reinterpret_cast<void*>(1) : nullptr, 2, nullptr);
 }

@@ -8,6 +8,8 @@ Nothing here has been built or connected.
 - **The serial line:** the meters' serial links can share one UART of the ESP32-S3 (each meter answers only its own address); the 5 V side needs a level adaptation to 3.3 V, and the line is short and inside the panel.
 - **Switching (later):** contactors or electronic breakers with an auxiliary contact whose state the node reads, a mechanical interlock between the two contactors of a source transfer, and coils driven through isolated drivers. See [SAFETY.md](SAFETY.md) and [SWITCHING.md](SWITCHING.md).
 
+- **Base board (a proposal):** the module that carries the ESP32-S3 adds a Zigbee radio, eight relay outputs and eight analog inputs; see [BASE_BOARD.md](BASE_BOARD.md) and [ZIGBEE.md](ZIGBEE.md).
+
 ## The serial line and its levels (a proposal, untried)
 
 - **Pins:** the firmware's defaults are GPIO 16 for the line's RX (it receives what the meters send) and GPIO 15 for its TX; both are settings in the panel's *Meters* page and any free pin of the board may be used.

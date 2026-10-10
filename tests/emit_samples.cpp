@@ -34,6 +34,13 @@ int main() {
   std::printf("%s %s\n", topic(node).c_str(), message_json(node, 1000, false, fresh).c_str());
   std::printf("%s %s\n", topic(node).c_str(), message_json(node, 2000, true, fresh, {{"heater", {SwitchState::kClosed, "over_current"}}, {"grid", {SwitchState::kOpen, ""}}}).c_str());
   std::printf("%s %s\n", topic(node).c_str(), message_json(node, 3000, false, {}).c_str());
+  // The node's own analog inputs: a voltage, a current with a power and an energy, and an alternating one, after the meters'.
+  {
+    AnalogChannel battery; battery.id = "battery"; battery.label = "Battery"; battery.has_voltage = true; battery.voltage_v = 12.34;
+    AnalogChannel oven; oven.id = "oven"; oven.ac = true; oven.has_current = true; oven.current_a = 21.213; oven.has_power = true; oven.power_w = 4879.0; oven.has_energy = true; oven.energy_kwh = 1.25;
+    std::printf("%s %s\n", topic(node).c_str(), message_json(node, 3500, false, fresh, {}, "", {battery, oven}).c_str());
+    std::printf("%s %s\n", topic(node).c_str(), message_json(node, 3600, false, {}, {}, "", {battery, oven}).c_str());
+  }
 
   // The switches of a node: the states it publishes and the answers it gives, for a node that may switch and for one that may not (stand-in contactors, nothing driven).
   for (bool allowed : {true, false}) {

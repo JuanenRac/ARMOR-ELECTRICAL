@@ -7,7 +7,8 @@
 // there is one.
 //
 // A node has ONE serial line (a hardware UART) with up to sixteen energy meters on it, each with its own address and the channel it makes in the message.
-// Nothing here can make a node write to a meter or switch anything.
+// Nothing here can make a node write to a meter. The base board adds three more things the same document sets: a Zigbee radio on its own serial line that the node hands to
+// the network (a serial-to-TCP bridge for Zigbee2MQTT), up to eight relay outputs and up to eight analog inputs (a voltage or a current, read by the ADC).
 #pragma once
 #include <algorithm>
 #include <array>
@@ -28,6 +29,7 @@ namespace armor::config {
 constexpr int kVersion = 1;
 constexpr std::size_t kMaxPasswordText = 64;
 constexpr std::size_t kMeterCount = 16;
+constexpr std::size_t kMaxChannels = 16;   // what one message carries: the meters and the analog inputs together
 
 enum class WifiSecurity { kOpen, kWpa2, kWpa3, kWpa2Wpa3 };
 // The panel over plain HTTP only, over HTTP and HTTPS (a certificate the node made for itself), or over HTTPS only (port 80 sends the browser to HTTPS).
@@ -94,6 +96,46 @@ struct MeterSetting {
   int address = 1;         // its Modbus address on the line (1 to 247)
 };
 
+// The Zigbee radio module on the base board: a coordinator the node does not interpret. The node lends its serial line to ONE client of the network (Zigbee2MQTT on the
+// server) over TCP, and only to the address named here.
+struct ZigbeeSetting {
+  bool enabled = false;
+  int rx = -1;                 // the GPIO that receives the radio's TX
+  int tx = -1;                 // the GPIO that sends to the radio's RX
+  int reset = -1;              // drives the radio's RESET_N (active low); -1: not wired
+  int bootloader = -1;         // drives the radio's serial-boot pin (active low); -1: not wired
+  int baud = 115200;           // what the radio's firmware speaks (a Z-Stack coordinator: 115200)
+  int port = 8888;             // the TCP port the node listens on
+  std::string allowed_client;  // the one IPv4 address that may connect: required while the bridge is on
+};
+
+// One relay output: the node drives the pin, whatever is behind it (a driver, the relay, the load) is the installer's. Every relay starts open (off) when the node starts.
+struct RelaySetting {
+  bool enabled = false;
+  std::string name;        // lowercase letters, digits, - and _ ; the same rule as a channel
+  std::string label;
+  int pin = -1;
+  bool active_low = false; // the relay closes when the pin is low (an opto-isolated board often does)
+};
+
+// One analog input: what the ADC sees on the pin becomes a channel of the node's message.
+//   quantity "voltage" or "current": what the sensor measures.   mode "dc": the average, "ac": the effective (RMS) value around the average.
+//   scale: the quantity per volt at the pin (a divider of 1:11 is 11 V/V, a 30 A sensor that gives 1 V is 30 A/V). offset_v: the volts the pin shows at zero (a sensor
+//   with a mid-supply bias); only for "dc", since "ac" takes it from the signal. zero_below: a reading under it (in the quantity's unit) is shown as 0 (the noise floor).
+//   nominal_voltage_v: for a current only, the voltage the circuit is assumed to have, to give a power and an energy (0: none, only the current is published).
+struct AnalogSetting {
+  bool enabled = false;
+  std::string channel;
+  std::string label;
+  int pin = -1;
+  std::string quantity = "voltage";
+  std::string mode = "dc";
+  double scale = 1.0;
+  double offset_v = 0.0;
+  double zero_below = 0.0;
+  double nominal_voltage_v = 0.0;
+};
+
 // What time the node believes it is: a time server on the Internet (or the browser's clock when that is off) and the zone the local time is
 // shown in. The zone is a POSIX TZ rule, so summer time changes by itself ("CET-1CEST,M3.5.0,M10.5.0/3" is Spain); "UTC0" is no offset.
 struct Clock {
@@ -114,6 +156,9 @@ struct Settings {
   Clock time;
   BusSetting bus;
   std::array<MeterSetting, kMeterCount> meters;
+  ZigbeeSetting zigbee;
+  std::array<RelaySetting, board::kRelayCount> relays;
+  std::array<AnalogSetting, board::kAnalogCount> analogs;
   WebMode web = WebMode::kBoth;
   BleMode ble = BleMode::kSetup;   // "setup": only while the node has no user; "always"; "off": the Bluetooth stack is not even started
   std::string language = "en";
@@ -142,6 +187,12 @@ inline const std::vector<int>& allowed_bauds() {
   return speeds;
 }
 
+// The speeds the Zigbee radio's firmware may use (a Z-Stack coordinator: 115200; the maker's own firmware: 230400).
+inline const std::vector<int>& zigbee_bauds() {
+  static const std::vector<int> speeds{115200, 230400};
+  return speeds;
+}
+
 // ---- the defaults of a node that has never been configured ---------------------------------------------------------------------
 
 // `mac_tail` is the last three bytes of the node's MAC as six lowercase hexadecimal digits: it makes the first identity unique.
@@ -152,6 +203,9 @@ inline Settings default_settings(std::string_view mac_tail) {
   s.bus.rx = board::kDefaultPins[0].rx;
   s.bus.tx = board::kDefaultPins[0].tx;
   for (std::size_t i = 0; i < kMeterCount; ++i) s.meters[i].channel = "meter" + std::to_string(i + 1);
+  s.zigbee.rx = board::kZigbeePins.rx; s.zigbee.tx = board::kZigbeePins.tx; s.zigbee.reset = board::kZigbeePins.reset; s.zigbee.bootloader = board::kZigbeePins.bootloader;
+  for (std::size_t i = 0; i < board::kRelayCount; ++i) { s.relays[i].name = "relay" + std::to_string(i + 1); s.relays[i].pin = board::kRelayPins[i]; }
+  for (std::size_t i = 0; i < board::kAnalogCount; ++i) { s.analogs[i].channel = "analog" + std::to_string(i + 1); s.analogs[i].pin = board::kAnalogPins[i]; }
   return s;
 }
 
@@ -199,6 +253,14 @@ inline void read_bool(const json::Value& parent, const char* name, bool& target,
   if (member == nullptr) return;
   if (!member->is_bool()) { bad(problems, path, "invalid"); return; }
   target = member->boolean;
+}
+
+inline void read_double(const json::Value& parent, const char* name, double& target, double lowest, double highest, const std::string& path, Problems& problems) {
+  const json::Value* member = parent.get(name);
+  if (member == nullptr) return;
+  if (!member->is_number()) { bad(problems, path, "invalid"); return; }
+  if (!(member->number >= lowest && member->number <= highest)) { bad(problems, path, "range"); return; }   // also false for NaN
+  target = member->number;
 }
 
 inline void read_int(const json::Value& parent, const char* name, int& target, long long lowest, long long highest, const std::string& path, Problems& problems) {
@@ -321,6 +383,49 @@ inline void read_settings(const json::Value& document, Settings& s, Problems& pr
       read_text(item, "label", meter.label, 40, base + "label", problems);
       read_text(item, "model", meter.model, 4, base + "model", problems);
       read_int(item, "address", meter.address, 1, 247, base + "address", problems);
+    }
+  }
+  if (const json::Value* zigbee = document.get("zigbee"); zigbee != nullptr && zigbee->is_object()) {
+    read_bool(*zigbee, "enabled", s.zigbee.enabled, "zigbee.enabled", problems);
+    read_int(*zigbee, "rx", s.zigbee.rx, -1, board::kLastGpio, "zigbee.rx", problems);
+    read_int(*zigbee, "tx", s.zigbee.tx, -1, board::kLastGpio, "zigbee.tx", problems);
+    read_int(*zigbee, "reset", s.zigbee.reset, -1, board::kLastGpio, "zigbee.reset", problems);
+    read_int(*zigbee, "bootloader", s.zigbee.bootloader, -1, board::kLastGpio, "zigbee.bootloader", problems);
+    read_int(*zigbee, "baud", s.zigbee.baud, 1200, 1000000, "zigbee.baud", problems);
+    read_int(*zigbee, "port", s.zigbee.port, 1, 65535, "zigbee.port", problems);
+    read_text(*zigbee, "allowed_client", s.zigbee.allowed_client, 15, "zigbee.allowed_client", problems);
+  }
+  if (const json::Value* relays = document.get("relays"); relays != nullptr) {
+    if (!relays->is_array() || relays->items.size() > board::kRelayCount) bad(problems, "relays", "invalid");
+    else for (std::size_t i = 0; i < relays->items.size(); ++i) {
+      const json::Value& item = relays->items[i];
+      const std::string base = "relays." + std::to_string(i) + ".";
+      if (!item.is_object()) { bad(problems, base + "enabled", "invalid"); continue; }
+      RelaySetting& relay = s.relays[i];
+      read_bool(item, "enabled", relay.enabled, base + "enabled", problems);
+      read_text(item, "name", relay.name, 32, base + "name", problems);
+      read_text(item, "label", relay.label, 40, base + "label", problems);
+      read_int(item, "pin", relay.pin, -1, board::kLastGpio, base + "pin", problems);
+      read_bool(item, "active_low", relay.active_low, base + "active_low", problems);
+    }
+  }
+  if (const json::Value* analogs = document.get("analogs"); analogs != nullptr) {
+    if (!analogs->is_array() || analogs->items.size() > board::kAnalogCount) bad(problems, "analogs", "invalid");
+    else for (std::size_t i = 0; i < analogs->items.size(); ++i) {
+      const json::Value& item = analogs->items[i];
+      const std::string base = "analogs." + std::to_string(i) + ".";
+      if (!item.is_object()) { bad(problems, base + "enabled", "invalid"); continue; }
+      AnalogSetting& input = s.analogs[i];
+      read_bool(item, "enabled", input.enabled, base + "enabled", problems);
+      read_text(item, "channel", input.channel, 32, base + "channel", problems);
+      read_text(item, "label", input.label, 40, base + "label", problems);
+      read_int(item, "pin", input.pin, -1, board::kLastGpio, base + "pin", problems);
+      read_text(item, "quantity", input.quantity, 8, base + "quantity", problems);
+      read_text(item, "mode", input.mode, 4, base + "mode", problems);
+      read_double(item, "scale", input.scale, -100000.0, 100000.0, base + "scale", problems);
+      read_double(item, "offset_v", input.offset_v, -5.0, 5.0, base + "offset_v", problems);
+      read_double(item, "zero_below", input.zero_below, 0.0, 100000.0, base + "zero_below", problems);
+      read_double(item, "nominal_voltage_v", input.nominal_voltage_v, 0.0, 1000.0, base + "nominal_voltage_v", problems);
     }
   }
   if (const json::Value* web = document.get("web"); web != nullptr && web->is_object()) {
@@ -484,6 +589,58 @@ inline Problems validate(const Settings& s) {
     if (std::find(allowed_bauds().begin(), allowed_bauds().end(), s.bus.baud) == allowed_bauds().end()) bad(problems, "bus.baud", "range");
     if (s.bus.poll_s < 1 || s.bus.poll_s > 3600) bad(problems, "bus.poll_s", "range");
   }
+
+  // the Zigbee radio: its own serial line, lent to one client of the network
+  if (s.zigbee.enabled) {
+    if (s.zigbee.rx < 0) bad(problems, "zigbee.rx", "required"); else claim(s.zigbee.rx, "zigbee", "zigbee.rx");
+    if (s.zigbee.tx < 0) bad(problems, "zigbee.tx", "required"); else claim(s.zigbee.tx, "zigbee", "zigbee.tx");
+    if (s.zigbee.reset >= 0) claim(s.zigbee.reset, "zigbee", "zigbee.reset");
+    if (s.zigbee.bootloader >= 0) claim(s.zigbee.bootloader, "zigbee", "zigbee.bootloader");
+    if (std::find(zigbee_bauds().begin(), zigbee_bauds().end(), s.zigbee.baud) == zigbee_bauds().end()) bad(problems, "zigbee.baud", "range");
+    if (s.zigbee.port < 1024 || s.zigbee.port > 65535) bad(problems, "zigbee.port", "range");
+    std::uint32_t client = 0;
+    if (s.zigbee.allowed_client.empty()) bad(problems, "zigbee.allowed_client", "required");
+    else if (!net::parse_ipv4(s.zigbee.allowed_client, client) || !net::usable_host_address(client)) bad(problems, "zigbee.allowed_client", "invalid");
+  }
+
+  // the relay outputs: each has its own name and its own pin, which may not be reserved
+  std::vector<std::string> relay_names;
+  for (std::size_t i = 0; i < board::kRelayCount; ++i) {
+    const RelaySetting& relay = s.relays[i];
+    if (!relay.enabled) continue;
+    const std::string base = "relays." + std::to_string(i) + ".";
+    if (!valid_device_name(relay.name)) bad(problems, base + "name", relay.name.empty() ? "required" : "invalid");
+    else if (std::find(relay_names.begin(), relay_names.end(), relay.name) != relay_names.end()) bad(problems, base + "name", "conflict");
+    else relay_names.push_back(relay.name);
+    if (relay.pin < 0) bad(problems, base + "pin", "required"); else claim(relay.pin, "relay" + std::to_string(i + 1), base + "pin");
+    std::size_t label_characters = 0;
+    if (!relay.label.empty() && (!net::valid_utf8(relay.label, &label_characters) || label_characters > 40)) bad(problems, base + "label", "invalid");
+  }
+
+  // the analog inputs: a channel of the message each, so the names are shared with the meters' and the message has room for all
+  std::size_t analog_count = 0;
+  for (std::size_t i = 0; i < board::kAnalogCount; ++i) {
+    const AnalogSetting& input = s.analogs[i];
+    if (!input.enabled) continue;
+    ++analog_count;
+    const std::string base = "analogs." + std::to_string(i) + ".";
+    if (!valid_device_name(input.channel)) bad(problems, base + "channel", input.channel.empty() ? "required" : "invalid");
+    else if (std::find(channels.begin(), channels.end(), input.channel) != channels.end()) bad(problems, base + "channel", "conflict");
+    else channels.push_back(input.channel);
+    if (input.pin < 0) bad(problems, base + "pin", "required");
+    else if (!board::analog_capable(input.pin)) bad(problems, base + "pin", board::assignable(input.pin) ? "not_analog" : "reserved");
+    else if (!claims.claim(input.pin, "analog" + std::to_string(i + 1))) bad(problems, base + "pin", "conflict");
+    if (input.quantity != "voltage" && input.quantity != "current") bad(problems, base + "quantity", "invalid");
+    if (input.mode != "dc" && input.mode != "ac") bad(problems, base + "mode", "invalid");
+    if (input.scale == 0.0) bad(problems, base + "scale", "range");
+    if (input.mode == "ac" && input.offset_v != 0.0) bad(problems, base + "offset_v", "invalid");   // an alternating signal is centred by itself
+    if (input.nominal_voltage_v != 0.0 && input.quantity != "current") bad(problems, base + "nominal_voltage_v", "invalid");
+    std::size_t label_characters = 0;
+    if (!input.label.empty() && (!net::valid_utf8(input.label, &label_characters) || label_characters > 40)) bad(problems, base + "label", "invalid");
+  }
+  std::size_t meter_count = 0;
+  for (const MeterSetting& meter : s.meters) if (meter.enabled) ++meter_count;
+  if (meter_count + analog_count > kMaxChannels) bad(problems, "analogs", "too_many");
   return problems;
 }
 
@@ -527,6 +684,19 @@ inline std::string to_json(const Settings& s, bool secrets) {
   w.key("meters").begin_array();
   for (const MeterSetting& meter : s.meters) {
     w.begin_object().field("enabled", meter.enabled).field("channel", meter.channel).field("label", meter.label).field("model", meter.model).field("address", meter.address).end_object();
+  }
+  w.end_array();
+  w.key("zigbee").begin_object().field("enabled", s.zigbee.enabled).field("rx", s.zigbee.rx).field("tx", s.zigbee.tx).field("reset", s.zigbee.reset).field("bootloader", s.zigbee.bootloader)
+      .field("baud", s.zigbee.baud).field("port", s.zigbee.port).field("allowed_client", s.zigbee.allowed_client).end_object();
+  w.key("relays").begin_array();
+  for (const RelaySetting& relay : s.relays) {
+    w.begin_object().field("enabled", relay.enabled).field("name", relay.name).field("label", relay.label).field("pin", relay.pin).field("active_low", relay.active_low).end_object();
+  }
+  w.end_array();
+  w.key("analogs").begin_array();
+  for (const AnalogSetting& input : s.analogs) {
+    w.begin_object().field("enabled", input.enabled).field("channel", input.channel).field("label", input.label).field("pin", input.pin).field("quantity", input.quantity).field("mode", input.mode)
+        .key("scale").number(input.scale).key("offset_v").number(input.offset_v).key("zero_below").number(input.zero_below).key("nominal_voltage_v").number(input.nominal_voltage_v).end_object();
   }
   w.end_array();
   w.key("web").begin_object().field("mode", to_text(s.web)).end_object();

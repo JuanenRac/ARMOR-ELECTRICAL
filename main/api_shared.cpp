@@ -15,14 +15,18 @@ extern "C" {
 #include "esp_system.h"
 #include "esp_timer.h"
 }
+#include "analog_inputs.hpp"
 #include "clock_sync.hpp"
 #include "core/board_s3.hpp"
 #include "core/json.hpp"
+#include "core/zigbee_bridge.hpp"
 #include "mqtt_link.hpp"
 #include "network.hpp"
 #include "node_store.hpp"
 #include "electrical_manager.hpp"
+#include "relay_outputs.hpp"
 #include "web_server.hpp"
+#include "zigbee_bridge.hpp"
 
 namespace armor::api {
 
@@ -164,6 +168,22 @@ std::string meters_json() {
     const char* use = info.use == board::PinUse::kFree ? "free" : info.use == board::PinUse::kCaution ? "caution" : "reserved";
     const char* reason = info.reason == board::Reserved::kFlash ? "flash" : info.reason == board::Reserved::kPsram ? "psram" : info.reason == board::Reserved::kUsb ? "usb" : info.reason == board::Reserved::kEthernet ? "ethernet" : info.reason == board::Reserved::kCamera ? "camera" : "";
     w.begin_object().field("gpio", gpio).field("use", use).field("reason", reason).field("note", info.note).field("on_header", info.on_header).end_object();
+  }
+  w.end_array().end_object();
+  return w.str();
+}
+
+std::string io_json() {
+  const config::Settings s = store::settings();
+  json::Writer w;
+  w.begin_object().key("zigbee").raw(zigbee::status_json(s.zigbee, zigbee_bridge::status()));
+  w.key("relays").raw(relay_outputs::json());
+  w.key("analogs").begin_array();
+  const auto inputs = analoginputs::status();
+  for (std::size_t i = 0; i < board::kAnalogCount; ++i) {
+    const analoginputs::InputStatus& in = inputs[i];
+    w.begin_object().field("input", static_cast<int>(i + 1)).field("enabled", in.enabled).field("state", in.state).field("error", in.error)
+        .key("millivolts").number(in.millivolts, 1).key("value").number(in.value, 3).key("samples").integer(in.samples).end_object();
   }
   w.end_array().end_object();
   return w.str();

@@ -39,7 +39,9 @@ extern "C" {
 #include "network.hpp"
 #include "electrical_manager.hpp"
 #include "node_store.hpp"
+#include "relay_outputs.hpp"
 #include "tls_cert.hpp"
+#include "zigbee_bridge.hpp"
 
 extern const std::uint8_t index_html_gz_start[] asm("_binary_index_html_gz_start");
 extern const std::uint8_t index_html_gz_end[] asm("_binary_index_html_gz_end");
@@ -399,6 +401,38 @@ esp_err_t get_meters(httpd_req_t* r) {
   return send_json(r, 200, api::meters_json());
 }
 
+esp_err_t get_io(httpd_req_t* r) {
+  Who who;
+  if (!require(r, who, false, false)) return ESP_OK;
+  return send_json(r, 200, api::io_json());
+}
+
+// Resets the Zigbee radio, or resets it into its serial boot loader (to be given a firmware over the bridge). Only an administrator.
+esp_err_t post_zigbee_radio(httpd_req_t* r) {
+  Who who;
+  if (!require(r, who, true, true)) return ESP_OK;
+  json::Value in;
+  if (!read_json(r, in)) return ESP_OK;
+  const std::string action = in.string_or("action", "");
+  if (action != "reset" && action != "bootloader") return send_error(r, 422, "invalid");
+  if (!zigbee_bridge::reset_radio(action == "bootloader")) return send_error(r, 409, "radio_not_available");
+  ESP_LOGW(kTag, "the Zigbee radio was %s by \"%s\"", action == "reset" ? "reset" : "reset into its boot loader", who.user.c_str());
+  return send_ok(r);
+}
+
+// Closes or opens a relay of the base board. Only an administrator; every relay starts open when the node starts.
+esp_err_t post_relay(httpd_req_t* r, const std::string& number) {
+  Who who;
+  if (!require(r, who, true, true)) return ESP_OK;
+  json::Value in;
+  if (!read_json(r, in)) return ESP_OK;
+  const json::Value* on = in.get("on");
+  if (on == nullptr || !on->is_bool() || number.size() != 1 || number[0] < '1' || number[0] > '8') return send_error(r, 422, "invalid");
+  if (!relay_outputs::set(static_cast<std::size_t>(number[0] - '1'), on->boolean)) return send_error(r, 409, "relay_not_available");
+  ESP_LOGW(kTag, "relay %s %s by \"%s\"", number.c_str(), on->boolean ? "closed" : "opened", who.user.c_str());
+  return send_ok(r);
+}
+
 esp_err_t get_readings(httpd_req_t* r) {
   Who who;
   if (!require(r, who, false, false)) return ESP_OK;
@@ -608,6 +642,7 @@ esp_err_t api_handler(httpd_req_t* r) {
     if (route == "config/export") return get_config_export(r);
     if (route == "meters") return get_meters(r);
     if (route == "readings") return get_readings(r);
+    if (route == "io") return get_io(r);
     if (route == "users") return get_users(r);
     if (route == "log") return get_log(r);
   } else if (method == HTTP_POST) {
@@ -620,6 +655,8 @@ esp_err_t api_handler(httpd_req_t* r) {
     if (route == "ota") return post_ota(r);
     if (route == "ota/switch") return post_ota_switch(r);
     if (route == "time") return post_time(r);
+    if (route == "zigbee/radio") return post_zigbee_radio(r);
+    if (route.compare(0, 7, "relays/") == 0) return post_relay(r, route.substr(7));
   } else if (method == HTTP_PUT) {
     if (route == "config") return put_config(r);
     if (route == "account") return put_account(r);

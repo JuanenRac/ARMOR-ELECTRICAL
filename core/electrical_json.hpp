@@ -36,11 +36,21 @@ struct ChannelExtra {
 
 inline const char* state_name(SwitchState state) { return state == SwitchState::kClosed ? "closed" : state == SwitchState::kOpen ? "open" : "unknown"; }
 
+/// A channel the node makes from one of its own analog inputs (core/analog.hpp): only what the input measures is set.
+struct AnalogChannel {
+  std::string id, label;
+  bool ac = false;
+  bool has_voltage = false, has_current = false, has_power = false, has_energy = false;
+  double voltage_v = 0, current_a = 0, power_w = 0, energy_kwh = 0;
+};
+
 /// The message of a node from the meters that have a fresh reading. `extras` (by channel id) adds the state of a switch and an alarm code; a meter's own alarm flag is
 /// always reported. At most sixteen channels go into one message. `switching_enabled` says whether this node's firmware may switch at all. `switches` is the already
-/// serialised array of the node's switches (`SwitchSet::switches_json`), or empty for a node that has none.
+/// serialised array of the node's switches (`SwitchSet::switches_json`), or empty for a node that has none. `analog` are the channels of the node's own analog inputs, after the
+/// meters' (the message holds sixteen channels in all).
 inline std::string message_json(const std::string& node_id, std::uint64_t timestamp_ms, bool switching_enabled, const std::vector<const MeterState*>& meters,
-                                const std::vector<std::pair<std::string, ChannelExtra>>& extras = {}, const std::string& switches = "") {
+                                const std::vector<std::pair<std::string, ChannelExtra>>& extras = {}, const std::string& switches = "",
+                                const std::vector<AnalogChannel>& analog = {}) {
   json::Writer w;
   w.begin_object().field("kind", "electrical").field("node_id", node_id).key("timestamp_ms").integer(static_cast<long long>(timestamp_ms));
   w.field("switching_enabled", switching_enabled);
@@ -61,6 +71,18 @@ inline std::string message_json(const std::string& node_id, std::uint64_t timest
       if (!extra.second.alarm_code.empty()) w.field("alarm_code", extra.second.alarm_code);
     }
     w.field("alarm", r.alarm);
+    w.end_object();
+    ++written;
+  }
+  for (const AnalogChannel& input : analog) {
+    if (written >= 16) break;
+    w.begin_object().field("id", input.id).field("domain", input.ac ? "ac" : "dc");
+    if (!input.label.empty()) w.field("label", input.label);
+    if (input.has_voltage) w.key("voltage_v").number(input.voltage_v, 2);
+    if (input.has_current) w.key("current_a").number(input.current_a, 3);
+    if (input.has_power) w.key("power_w").number(input.power_w, 1);
+    if (input.has_energy) w.key("energy_kwh").number(input.energy_kwh, 3);
+    w.field("alarm", false);
     w.end_object();
     ++written;
   }

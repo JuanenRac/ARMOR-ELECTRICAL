@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the meters at work: the task that runs core/meter_runner.hpp on the real serial line.
+// ARMOR-ELECTRICAL - the meters at work: the task that runs core/meter_runner.hpp on the real serial line (and, with no meter, only on the analog inputs).
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // What the node does on every turn (asking the meters, the states, the message) is in core/meter_runner.hpp and is tested on a computer; this file only opens the UART, gives the
@@ -16,6 +16,7 @@ extern "C" {
 #include "freertos/task.h"
 }
 #include "core/electrical_json.hpp"
+#include "analog_inputs.hpp"
 #include "mqtt_link.hpp"
 #include "uart_bus.hpp"
 
@@ -33,9 +34,18 @@ std::unique_ptr<Runner> g_runner;   // only the task touches it once it runs; th
 
 std::uint64_t uptime_ms() { return static_cast<std::uint64_t>(esp_timer_get_time()) / 1000ULL; }
 
+// A node whose only inputs are its analog pins has no meters and no serial line: the loop still turns (and makes the message) with a line that never has anything to say.
+class NoLine final : public uartbus::Line {
+ public:
+  std::size_t read(std::uint8_t*, std::size_t, unsigned wait_ms) override { vTaskDelay(pdMS_TO_TICKS(wait_ms)); return 0; }
+  bool write(const std::uint8_t*, std::size_t) override { return true; }
+};
+
 void bus_task(void*) {
   std::string error;
-  std::unique_ptr<uartbus::Line> line = uartbus::open(g_settings.bus.rx, g_settings.bus.tx, g_settings.bus.baud, error);
+  std::unique_ptr<uartbus::Line> line;
+  if (g_runner->any_meter()) line = uartbus::open(g_settings.bus.rx, g_settings.bus.tx, g_settings.bus.baud, error);
+  else line = std::make_unique<NoLine>();
   if (!line) {
     ESP_LOGE(kTag, "the serial line could not be opened (%s): the meters are not read", error.c_str());
     g_runner->set_line_failed(error);
@@ -43,7 +53,7 @@ void bus_task(void*) {
     vTaskDelete(nullptr);
     return;
   }
-  g_runner->set_line_open();
+  if (g_runner->any_meter()) g_runner->set_line_open();
   { std::lock_guard<std::mutex> guard(g_lock); g_bus = g_runner->bus(); }
   Clock clock;
   clock.uptime_ms = uptime_ms;
@@ -79,7 +89,10 @@ void start(const config::Settings& settings, Publish publish) {
     g_bus = g_runner->bus();
     g_meters = g_runner->meters();
   }
-  if (g_runner->any_meter()) xTaskCreate(bus_task, "meters", 6144, nullptr, 5, nullptr);
+  g_runner->set_analog_provider([] { return analoginputs::channels(); });
+  bool any_analog = false;
+  for (const config::AnalogSetting& input : settings.analogs) any_analog = any_analog || input.enabled;
+  if (g_runner->any_meter() || any_analog) xTaskCreate(bus_task, "meters", 6144, nullptr, 5, nullptr);
 }
 
 BusStatus bus() { std::lock_guard<std::mutex> guard(g_lock); return g_bus; }

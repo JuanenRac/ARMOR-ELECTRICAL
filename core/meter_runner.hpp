@@ -85,6 +85,8 @@ class Runner {
   }
 
   bool any_meter() const { return !slots_.empty(); }
+  // The node's own analog inputs: asked for at every round, and their channels go after the meters' in the message.
+  void set_analog_provider(std::function<std::vector<electrical::AnalogChannel>()> provider) { analog_ = std::move(provider); }
   void set_line_open() { bus_.state = "running"; }
   void set_line_failed(const std::string& why) { bus_.state = "error"; bus_.error = why; }
 
@@ -113,7 +115,7 @@ class Runner {
     if (after - last_publish_ms_ >= static_cast<std::uint64_t>(settings_.bus.poll_s) * 1000ULL) {
       last_publish_ms_ = after;
       const std::uint64_t stamp = clock.wall_clock_is_set() ? clock.wall_clock_ms() : after;
-      message_ = electrical::message_json(settings_.node_id, stamp, false, bus_engine_->fresh(after));
+      message_ = electrical::message_json(settings_.node_id, stamp, false, bus_engine_->fresh(after), {}, "", analog_ ? analog_() : std::vector<electrical::AnalogChannel>{});
       ++bus_.messages;
       outcome.message = true;
     }
@@ -145,6 +147,7 @@ class Runner {
   BusStatus bus_;
   std::array<MeterStatus, config::kMeterCount> meters_;
   std::vector<std::size_t> slots_;   // the panel's number of each meter of the bus
+  std::function<std::vector<electrical::AnalogChannel>()> analog_;
   std::unique_ptr<electrical::PzemBus> bus_engine_;
   std::uint8_t buffer_[64] = {};
   std::string message_;

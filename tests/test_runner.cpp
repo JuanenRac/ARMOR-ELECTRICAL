@@ -254,6 +254,38 @@ static void test_sixteen_meters() {
   CHECK(world.asked.size() >= 32 && world.asked[0] == 1 && world.asked[15] == 16 && world.asked[16] == 1);
 }
 
+// The node's own analog inputs: a node with no meter still makes its message from them, and with meters theirs come first.
+static void test_analog_inputs() {
+  electrical::AnalogChannel battery;
+  battery.id = "battery"; battery.label = "Battery"; battery.has_voltage = true; battery.voltage_v = 12.34;
+  const auto provider = [battery] { return std::vector<electrical::AnalogChannel>{battery}; };
+  {
+    World world;   // nothing is on the line: no meter is enabled
+    Runner runner(settings_with({}));
+    runner.set_analog_provider(provider);
+    const Tally tally = run(runner, world, 6);
+    CHECK(tally.messages >= 2 && world.asked.empty() && runner.bus().state == "disabled");
+    CHECK(contains(runner.message(), "\"id\":\"battery\"") && contains(runner.message(), "\"voltage_v\":12.34") && contains(runner.message(), "\"domain\":\"dc\""));
+  }
+  {
+    World world;
+    world.answers[1] = reply(1, kAc);
+    Runner runner(settings_with({{true, "grid", "Red", "ac", 1}}));
+    runner.set_analog_provider(provider);
+    runner.set_line_open();
+    run(runner, world, 6);
+    const std::string& message = runner.message();
+    CHECK(contains(message, "\"id\":\"grid\"") && contains(message, "\"id\":\"battery\"") && message.find("\"id\":\"grid\"") < message.find("\"id\":\"battery\""));
+  }
+  {
+    World world;   // an input that has nothing to say (no fresh reading) is simply not in the message
+    Runner runner(settings_with({}));
+    runner.set_analog_provider([] { return std::vector<electrical::AnalogChannel>{}; });
+    run(runner, world, 4);
+    CHECK(contains(runner.message(), "\"channels\":[]"));
+  }
+}
+
 int main() {
   test_no_meter();
   test_one_meter();
@@ -265,6 +297,7 @@ int main() {
   test_the_clock_of_the_message();
   test_the_polling_period();
   test_sixteen_meters();
+  test_analog_inputs();
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

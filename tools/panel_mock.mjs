@@ -33,16 +33,24 @@ const config = {
   v: 1, node: { id: "electrical-a1b2c3", name: "House panel", hostname: "" },
   uplink: wired ? "ethernet" : "wifi", ip: { dhcp: true, address: "", netmask: "255.255.255.0", gateway: "", dns1: "", dns2: "" },
   ap: { enabled: true, ssid: "ARMOR-ELECTRICAL-A1B2C3", security: "wpa2", password_set: true, channel: 0, hidden: false, max_clients: 8, tx_power_dbm: 15, bandwidth_mhz: 20, country: "ES" },
-  sta: { enabled: true, ssid: "HomeRouter", password_set: true },
-  mqtt: { enabled: true, uri: "mqtt://192.168.0.180:18883", username: "electrical-node-electrical-a1b2c3", password_set: true, heartbeat_s: 10, ntp: "pool.ntp.org" },
+  sta: { enabled: true, ssid: "HomeRouter", password_set: true, backup: [] },
+  mqtt: { enabled: true, uri: "mqtt://192.168.0.180:18883", username: "electrical-node-electrical-a1b2c3", password_set: true, heartbeat_s: 10, ntp: "pool.ntp.org", backup: [] },
   bus: { rx: 16, tx: 15, baud: 9600, poll_s: 2 },
   meters: Array.from({ length: 16 }, (_, i) => ({
     enabled: i < 4, channel: ["grid", "heater", "dc-bus", "oven"][i] ?? `meter${i + 1}`, label: ["Grid input", "Water heater", "Battery bus", ""][i] ?? "", model: i === 2 ? "dc" : "ac", address: i + 1,
   })),
+  zigbee: { enabled: true, rx: 18, tx: 17, reset: 21, bootloader: 47, baud: 115200, port: 8888, allowed_client: "192.168.0.180" },
+  relays: Array.from({ length: 8 }, (_, i) => ({ enabled: i < 2, name: ["lights", "pump"][i] ?? `relay${i + 1}`, label: ["Hall lights", ""][i] ?? "", pin: wired ? [38, 39, 40, 41, 42, 43, 44, 48][i] : [38, 39, 40, 41, 42, 11, 12, 13][i], active_low: i === 1 })),
+  analogs: Array.from({ length: 8 }, (_, i) => ({ enabled: i < 2, channel: ["battery", "oven"][i] ?? `analog${i + 1}`, label: ["Battery", ""][i] ?? "", pin: [1, 2, 4, 5, 6, 7, 3, -1][i], quantity: i === 1 ? "current" : "voltage", mode: i === 1 ? "ac" : "dc",
+    scale: i === 1 ? 30 : 11, offset_v: 0, zero_below: i === 1 ? 0.3 : 0, nominal_voltage_v: i === 1 ? 230 : 0 })),
+  time: { ntp_enabled: true, ntp: "pool.ntp.org", zone: "CET-1CEST,M3.5.0,M10.5.0/3" },
+  system: { auto_restart_hours: 0 },
   web: { mode: "both" },
   ble: { mode: "setup" },
   ui: { language: "en" },
 };
+// the relays the node drives: every one starts open
+const relayOn = new Map();
 
 const catalog = [];
 for (let gpio = 0; gpio <= 48; ++gpio) {
@@ -86,6 +94,19 @@ const readings = () => {
   return channels.length ? [{ kind: "electrical", node_id: config.node.id, timestamp_ms: Date.now(), switching_enabled: false, channels }] : [];
 };
 
+// What the base board shows: the radio's bridge, the relays and the analog inputs, as the firmware's /api/v1/io does
+const io = () => {
+  const tick = Math.floor((Date.now() - started) / 2000);
+  const z = config.zigbee;
+  return {
+    zigbee: { enabled: z.enabled, state: z.enabled ? "connected" : "disabled", error: "", port: z.port, baud: z.baud, allowed_client: z.allowed_client, client: z.enabled ? z.allowed_client : "", to_radio: 120 + tick * 9, from_radio: 4096 + tick * 61, connections: 1, refused: 0, dropped: 0, has_reset: z.reset >= 0, has_bootloader: z.bootloader >= 0 },
+    relays: config.relays.map((r, i) => ({ relay: i + 1, enabled: r.enabled, name: r.name, label: r.label, pin: r.pin, on: r.enabled && relayOn.get(i) === true })),
+    analogs: config.analogs.map((a, i) => a.enabled
+      ? { input: i + 1, enabled: true, state: "reading", error: "", millivolts: a.quantity === "current" ? 1650 + (tick % 5) : 1100, value: a.quantity === "current" ? 21.213 : 12.1, samples: 4000 }
+      : { input: i + 1, enabled: false, state: "disabled", error: "", millivolts: 0, value: 0, samples: 0 }),
+  };
+};
+
 const json = (response, code, body, headers = {}) => { response.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers }); response.end(JSON.stringify(body)); };
 const bodyOf = request => new Promise(resolve => { const chunks = []; request.on("data", c => chunks.push(c)); request.on("end", () => resolve(Buffer.concat(chunks))); });
 const tokenOf = request => /armor_session=([0-9a-f]+)/.exec(request.headers.cookie ?? "")?.[1] ?? "";
@@ -108,6 +129,11 @@ const problems = doc => {
   if (doc.ap?.enabled && doc.ap.security !== "open" && doc.ap.password !== undefined && doc.ap.password.length > 0 && doc.ap.password.length < 8) list.push({ path: "ap.password", code: "invalid_key" });
   if (doc.mqtt?.enabled && !/^mqtts?:\/\/.+/.test(doc.mqtt.uri ?? "")) list.push({ path: "mqtt.uri", code: "invalid" });
   if (doc.bus && (![1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].includes(doc.bus.baud ?? 9600))) list.push({ path: "bus.baud", code: "range" });
+  if (doc.zigbee?.enabled) {
+    if (!/^\d+\.\d+\.\d+\.\d+$/.test(doc.zigbee.allowed_client ?? "")) list.push({ path: "zigbee.allowed_client", code: doc.zigbee.allowed_client ? "invalid" : "required" });
+    if (!(doc.zigbee.port >= 1024 && doc.zigbee.port <= 65535)) list.push({ path: "zigbee.port", code: "range" });
+  }
+  (doc.analogs ?? []).forEach((a, i) => { if (a.enabled && !(a.pin >= 1 && a.pin <= 10)) list.push({ path: `analogs.${i}.pin`, code: a.pin < 0 ? "required" : "not_analog" }); });
   const seen = new Map();
   (doc.meters ?? []).forEach((m, i) => {
     if (!m.enabled) return;
@@ -166,7 +192,7 @@ const server = createServer(async (request, response) => {
     if (list.length) return json(response, 422, { error: "invalid", problems: list });
     for (const key of Object.keys(body)) {
       const value = body[key];
-      if (key === "meters" && Array.isArray(value)) value.forEach((m, i) => Object.assign(config.meters[i], m));
+      if ((key === "meters" || key === "relays" || key === "analogs") && Array.isArray(value)) value.forEach((m, i) => Object.assign(config[key][i], m));
       else if (value && typeof value === "object" && !Array.isArray(value) && config[key] && typeof config[key] === "object") Object.assign(config[key], value);
       else config[key] = value;
     }
@@ -175,6 +201,21 @@ const server = createServer(async (request, response) => {
   }
   if (method === "GET" && route === "meters") return json(response, 200, { bus: busStatus(), meters: meters(), catalog });
   if (method === "GET" && route === "readings") return json(response, 200, readings());
+  if (method === "GET" && route === "io") return json(response, 200, io());
+  if (method === "POST" && route === "zigbee/radio") {
+    if (!needAdmin()) return;
+    if (!["reset", "bootloader"].includes(body.action)) return json(response, 422, { error: "invalid" });
+    if (!config.zigbee.enabled || config.zigbee.reset < 0 || (body.action === "bootloader" && config.zigbee.bootloader < 0)) return json(response, 409, { error: "radio_not_available" });
+    return json(response, 200, { ok: true, restart_required: false });
+  }
+  if (method === "POST" && route.startsWith("relays/")) {
+    if (!needAdmin()) return;
+    const index = Number(route.slice(7)) - 1;
+    if (typeof body.on !== "boolean" || !(index >= 0 && index < 8)) return json(response, 422, { error: "invalid" });
+    if (!config.relays[index].enabled) return json(response, 409, { error: "relay_not_available" });
+    relayOn.set(index, body.on);
+    return json(response, 200, { ok: true, restart_required: false });
+  }
   if (method === "GET" && route === "users") { if (!needAdmin()) return; return json(response, 200, [...users].map(([name, u]) => ({ name, role: u.role }))); }
   if (method === "POST" && route === "users") {
     if (!needAdmin()) return;
