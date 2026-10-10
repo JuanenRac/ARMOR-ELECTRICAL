@@ -108,7 +108,7 @@ extern "C" void app_main() {
 
   // The meters run first: on the bench their statistics are the first thing to look at, with or without a network. A node in setup reads nothing yet.
   if (!setup) {
-    armor::relay_outputs::start(settings);   // every relay starts open
+    armor::relay_outputs::start(settings, settings.node_id);   // every relay starts open
     armor::analoginputs::start(settings);
   }
   if (!setup) armor::manager::start(settings, [](const std::string& topic, const std::string& payload) { armor::mqtt_link::publish(topic, payload); });

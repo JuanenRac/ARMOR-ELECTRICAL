@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here.
 
+## [0.2.4] - Every node can update itself from GitHub
+
+- **The node can look for a newer firmware on GitHub and install it** (*Firmware and log -> Check GitHub for a new version*), next to - never instead of - the upload of a file: it asks the repository's latest release, offers it only when it is newer and the release carries the SHA-256 of the image, downloads **the image built for this board** (`armor_electrical-<board>.bin`) straight into the other firmware slot with a progress bar, and installs it only when the hash matches; then it restarts into it. Administrators only; it needs the node to reach the Internet. The code is the one the radar node already had, now shared by every node (`main/github_update.*`, `core/semver.hpp`, `core/release_assets.hpp` in ARMOR-COMMON's firmware base).
+- **The panel and its tests:** the *Firmware and log* page has the card in the seven languages, the stand-in node (`tools/panel_mock.mjs`) answers the three routes (`GET /api/v1/ota/check`, `POST /api/v1/ota/install`, `GET /api/v1/ota/progress`), and the host tests check the comparison of versions and, for a release with and without an image per board, that a board never picks an image that is not its own.
+- **The base board's pin constants moved to their own file** (`core/base_board.hpp`) so that `core/board_s3.hpp` stays identical in every node.
+
 ## [0.2.3] - The relays as devices of the house: the server can switch them
 
 - **A relay is a device of the device layer.** With the new setting `remote.relays` (off by default) every enabled relay publishes `armor/device/<node>/<relay>/state` (`{"on":true}`, when it changes and every half minute) with an `availability` message, and obeys `armor/device/<node>/<relay>/set` with `ON`, `OFF` or `TOGGLE` - the convention the radar node already uses for the pins its panel maps. In Studio the relay is added in *Devices* with the connection **ARMOR node** and the name `<node>/<relay>`; the server then switches it with its own rules (a risk that asks first, only an administrator for the critical ones). Anything else in a command (a number, a sentence, a pulse) is ignored and logged.

@@ -9,15 +9,15 @@
 #include <cstddef>
 #include <string>
 
-#include "board_s3.hpp"
-#include "electrical_config.hpp"
+#include "base_board.hpp"
+#include "io_config.hpp"
 #include "json.hpp"
 
 namespace armor::relays {
 
 class Bank {
  public:
-  explicit Bank(const config::Settings& settings) : settings_(settings.relays) {}
+  explicit Bank(const config::IoSettings& settings) : settings_(settings.relays) {}
 
   bool enabled(std::size_t index) const { return index < settings_.size() && settings_[index].enabled; }
   bool is_on(std::size_t index) const { return enabled(index) && on_[index]; }

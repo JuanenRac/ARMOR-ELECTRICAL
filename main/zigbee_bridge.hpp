@@ -3,13 +3,13 @@
 #pragma once
 #include <string>
 
-#include "core/electrical_config.hpp"
+#include "core/io_config.hpp"
 #include "core/zigbee_bridge.hpp"
 
 namespace armor::zigbee_bridge {
 
 // Opens the radio's UART (UART2) and listens on the TCP port when the settings turn the bridge on; does nothing otherwise. Call it once the network is up.
-void start(const config::Settings& settings);
+void start(const config::IoSettings& settings);
 
 zigbee::Status status();
 

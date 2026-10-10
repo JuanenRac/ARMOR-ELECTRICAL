@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-#include "electrical_config.hpp"
+#include "io_config.hpp"
 #include "json.hpp"
 #include "net_text.hpp"
 

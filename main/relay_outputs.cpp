@@ -27,7 +27,8 @@ constexpr unsigned kRepublishEveryMs = 30000;
 
 std::mutex g_lock;
 std::unique_ptr<relays::Bank> g_bank;
-config::Settings g_settings;
+config::IoSettings g_settings;
+std::string g_node_id;
 relays::LinkWatch g_watch;
 bool g_fell_back = false;
 
@@ -42,8 +43,8 @@ void put(std::size_t index) {
 void publish_one(std::size_t index) {
   if (!g_settings.remote.relays || !g_bank->enabled(index)) return;
   const std::string& name = g_bank->name(index);
-  mqtt_link::publish(relays::topic(g_settings.node_id, name, "state"), relays::report(g_bank->is_on(index)));
-  mqtt_link::publish(relays::topic(g_settings.node_id, name, "availability"), "online");
+  mqtt_link::publish(relays::topic(g_node_id, name, "state"), relays::report(g_bank->is_on(index)));
+  mqtt_link::publish(relays::topic(g_node_id, name, "availability"), "online");
 }
 void publish_all_locked() { for (std::size_t i = 0; i < board::kRelayCount; ++i) publish_one(i); }
 
@@ -73,9 +74,10 @@ void watch_task(void*) {
 }
 }  // namespace
 
-void start(const config::Settings& settings) {
+void start(const config::IoSettings& settings, const std::string& node_id) {
   std::lock_guard<std::mutex> guard(g_lock);
   g_settings = settings;
+  g_node_id = node_id;
   g_bank = std::make_unique<relays::Bank>(settings);
   for (std::size_t i = 0; i < board::kRelayCount; ++i) {
     if (!g_bank->enabled(i)) continue;
@@ -87,14 +89,14 @@ void start(const config::Settings& settings) {
   }
   if (!settings.remote.relays) return;
   // the broker may move them: listen for the commands, and say what they are every time the broker is (re)connected
-  mqtt_link::subscribe(relays::command_filter(settings.node_id),
+  mqtt_link::subscribe(relays::command_filter(node_id),
       [](const std::string& topic, const std::string& payload) {
-        const std::string name = relays::relay_of_command_topic(g_settings.node_id, topic);
+        const std::string name = relays::relay_of_command_topic(g_node_id, topic);
         if (!name.empty()) command(name, payload);
       },
       [] { std::lock_guard<std::mutex> guard(g_lock); publish_all_locked(); });
   xTaskCreate(watch_task, "relay-watch", 4096, nullptr, 3, nullptr);
-  ESP_LOGI(kTag, "the broker may move the relays (armor/device/%s/<relay>/set)%s", settings.node_id.c_str(), settings.remote.link_timeout_s > 0 ? ", and they fall back to open without it" : "");
+  ESP_LOGI(kTag, "the broker may move the relays (armor/device/%s/<relay>/set)%s", node_id.c_str(), settings.remote.link_timeout_s > 0 ? ", and they fall back to open without it" : "");
 }
 
 bool set(std::size_t index, bool on) {
@@ -119,6 +121,11 @@ Outcome command(const std::string& relay, const std::string& payload) {
 std::string json() {
   std::lock_guard<std::mutex> guard(g_lock);
   return g_bank ? g_bank->json() : "[]";
+}
+
+int index_of(const std::string& name) {
+  std::lock_guard<std::mutex> guard(g_lock);
+  return g_bank ? g_bank->find(name) : -1;
 }
 
 bool remote_enabled() {

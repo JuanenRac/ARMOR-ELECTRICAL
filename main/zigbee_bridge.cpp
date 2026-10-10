@@ -195,7 +195,7 @@ void bridge_task(void*) {
 }
 }  // namespace
 
-void start(const config::Settings& settings) {
+void start(const config::IoSettings& settings) {
   g_setting = settings.zigbee;
   if (!g_setting.enabled) return;
   g_arbiter = std::make_unique<zigbee::Arbiter>(static_cast<std::uint64_t>(g_setting.fallback_after_s) * 1000ULL, now_ms());

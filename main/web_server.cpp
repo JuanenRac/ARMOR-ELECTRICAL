@@ -32,6 +32,7 @@ extern "C" {
 #include "core/json.hpp"
 #include "core/web_policy.hpp"
 #include "entropy.hpp"
+#include "github_update.hpp"
 #include "log_buffer.hpp"
 #include "mqtt_link.hpp"
 #include "api_shared.hpp"
@@ -625,6 +626,51 @@ esp_err_t post_ota(httpd_req_t* r) {
   return send_json(r, 200, w.str());
 }
 
+// The GitHub counterpart of post_ota(): checking for a release, and installing it, next to (never instead of) the manual upload above.
+bool g_ota_restart_scheduled = false;
+
+esp_err_t get_ota_check(httpd_req_t* r) {
+  Who who;
+  if (!require(r, who, true, false)) return ESP_OK;
+  const github_update::CheckResult result = github_update::check(board::kId);
+  json::Writer w;
+  w.begin_object().field("ok", result.ok);
+  if (result.ok) w.field("current_version", esp_app_get_description()->version).field("latest_version", result.latest_version).field("update_available", result.update_available);
+  else w.field("error", result.error);
+  w.end_object();
+  return send_json(r, 200, w.str());
+}
+
+// The install runs in a task of its own (the download takes a while): this only starts it and the panel asks how far it is.
+esp_err_t post_ota_install(httpd_req_t* r) {
+  Who who;
+  if (!require(r, who, true, true)) return ESP_OK;
+  const github_update::CheckResult checked = github_update::check(board::kId);
+  if (!checked.ok) return send_error(r, 502, checked.error.c_str());
+  if (checked.asset_url.empty()) return send_error(r, 404, "no_asset");
+  if (checked.sha256.empty()) return send_error(r, 422, "no_checksum");
+  if (!github_update::start(checked.asset_url, checked.sha256)) return send_error(r, 409, "ota_busy");
+  ESP_LOGW(kTag, "installing firmware %s from GitHub, started by \"%s\"", checked.latest_version.c_str(), who.user.c_str());
+  g_ota_restart_scheduled = false;
+  json::Writer w;
+  w.begin_object().field("ok", true).field("started", true).end_object();
+  return send_json(r, 200, w.str());
+}
+
+esp_err_t get_ota_progress(httpd_req_t* r) {
+  Who who;
+  if (!require(r, who, true, false)) return ESP_OK;
+  const github_update::Progress p = github_update::progress();
+  // Once the new image is set to boot the node restarts, a moment after the panel has been told.
+  if (p.state == "done" && !g_ota_restart_scheduled) { g_ota_restart_scheduled = true; restart_after(2500); }
+  json::Writer w;
+  w.begin_object().field("state", p.state).field("got", static_cast<long long>(p.got)).field("total", static_cast<long long>(p.total));
+  if (!p.error.empty()) w.field("error", p.error);
+  if (!p.version.empty()) w.field("version", p.version);
+  w.end_object();
+  return send_json(r, 200, w.str());
+}
+
 // ---- dispatch -----------------------------------------------------------------------------------------------------------------------
 
 esp_err_t api_handler(httpd_req_t* r) {
@@ -645,6 +691,8 @@ esp_err_t api_handler(httpd_req_t* r) {
     if (route == "io") return get_io(r);
     if (route == "users") return get_users(r);
     if (route == "log") return get_log(r);
+    if (route == "ota/check") return get_ota_check(r);
+    if (route == "ota/progress") return get_ota_progress(r);
   } else if (method == HTTP_POST) {
     if (route == "setup") return post_setup(r);
     if (route == "login") return post_login(r);
@@ -654,6 +702,7 @@ esp_err_t api_handler(httpd_req_t* r) {
     if (route == "factory-reset") return post_factory_reset(r);
     if (route == "ota") return post_ota(r);
     if (route == "ota/switch") return post_ota_switch(r);
+    if (route == "ota/install") return post_ota_install(r);
     if (route == "time") return post_time(r);
     if (route == "zigbee/radio") return post_zigbee_radio(r);
     if (route.compare(0, 7, "relays/") == 0) return post_relay(r, route.substr(7));

@@ -14,7 +14,7 @@
 #include <string>
 #include <string_view>
 
-#include "electrical_config.hpp"
+#include "config_common.hpp"
 #include "json.hpp"
 #include "node_id.hpp"
 
