@@ -6,6 +6,7 @@
 #include "mqtt_link.hpp"
 
 #include <atomic>
+#include <mutex>
 #include <ctime>
 extern "C" {
 #include <sys/time.h>
@@ -23,6 +24,9 @@ constexpr char kTag[] = "armor-mqtt";
 
 config::Settings g_settings;
 esp_mqtt_client_handle_t g_client = nullptr;
+// The client is replaced when the node moves to another saved broker, while other tasks publish: every use of it, and its replacement, go through this lock. The old client is stopped
+// AFTER it has been taken out under the lock, never inside it: stopping waits for the client's own task, which may be waiting for this lock in one of its callbacks.
+std::mutex g_client_lock;
 std::atomic<bool> g_connected{false};
 std::atomic<bool> g_enabled{false};
 std::atomic<std::uint32_t> g_published{0};
@@ -32,6 +36,13 @@ std::atomic<std::uint32_t> g_dropped{0};
 // next one, the same way network.cpp does for Wi-Fi, after the connection has stayed down for a while; it never touches a
 // broker that is still working.
 int g_broker_index = 0;
+
+// Hands one message to the client, if there is one; a negative number says it was not accepted.
+int client_publish(const char* topic, const char* data, int length, int qos) {
+  std::lock_guard<std::mutex> guard(g_client_lock);
+  return g_client == nullptr ? -1 : esp_mqtt_client_publish(g_client, topic, data, length, qos, 0);
+}
+
 
 config::Broker current_broker(const config::Settings& s, int index) {
   if (index <= 0 || static_cast<std::size_t>(index) > s.mqtt.backup.size()) return {s.mqtt.uri, s.mqtt.username, s.mqtt.password};
@@ -61,9 +72,10 @@ void start_client(const config::Broker& broker) {
   extern const char ca_pem_start[] asm("_binary_ca_pem_start");
   config.broker.verification.certificate = ca_pem_start;
 #endif
-  g_client = esp_mqtt_client_init(&config);
-  ESP_ERROR_CHECK(esp_mqtt_client_register_event(g_client, MQTT_EVENT_ANY, on_mqtt, nullptr));
-  ESP_ERROR_CHECK(esp_mqtt_client_start(g_client));
+  esp_mqtt_client_handle_t client = esp_mqtt_client_init(&config);
+  ESP_ERROR_CHECK(esp_mqtt_client_register_event(client, MQTT_EVENT_ANY, on_mqtt, nullptr));
+  { std::lock_guard<std::mutex> guard(g_client_lock); g_client = client; }   // before it starts: its first events may publish
+  ESP_ERROR_CHECK(esp_mqtt_client_start(client));
 }
 
 constexpr int kBrokerCheckEverySeconds = 10;
@@ -84,7 +96,9 @@ void broker_watchdog_task(void*) {
     g_broker_index = (g_broker_index + 1) % total;
     const config::Broker broker = current_broker(g_settings, g_broker_index);
     ESP_LOGW(kTag, "the broker has not answered in a while: trying the next saved one (%s)", broker.uri.c_str());
-    if (g_client != nullptr) { esp_mqtt_client_stop(g_client); esp_mqtt_client_destroy(g_client); g_client = nullptr; }
+    esp_mqtt_client_handle_t old = nullptr;
+    { std::lock_guard<std::mutex> guard(g_client_lock); old = g_client; g_client = nullptr; }
+    if (old != nullptr) { esp_mqtt_client_stop(old); esp_mqtt_client_destroy(old); }
     start_client(broker);
   }
 }
@@ -119,10 +133,11 @@ std::uint64_t wall_clock_ms() {
   return static_cast<std::uint64_t>(tv.tv_sec) * 1000ULL + static_cast<std::uint64_t>(tv.tv_usec) / 1000ULL;
 }
 
+// A node without a clock still publishes: its readings carry the time since it started instead (see the callers), and the server stamps them with the time it receives them.
 void publish(const std::string& topic, const std::string& payload) {
   if (!g_enabled) return;
-  if (!g_connected || g_client == nullptr || !clock_is_set()) { ++g_dropped; return; }
-  if (esp_mqtt_client_publish(g_client, topic.c_str(), payload.c_str(), static_cast<int>(payload.size()), 0, 0) >= 0) ++g_published;
+  if (!g_connected) { ++g_dropped; return; }
+  if (client_publish(topic.c_str(), payload.c_str(), static_cast<int>(payload.size()), 0) >= 0) ++g_published;
   else ++g_dropped;
 }
 

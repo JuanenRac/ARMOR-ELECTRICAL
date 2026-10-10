@@ -168,6 +168,26 @@ static void test_bus() {
   CHECK(none.next_tx(0).empty());
 }
 
+// An RS485 adapter that hears its own request, and a stray byte on the line: the answer is still found.
+static void test_echo_and_stray_bytes() {
+  const std::vector<MeterConfig> meters = {{"grid", "", Model::kAc, 1}};
+  const std::vector<std::uint8_t> good = reply(1, kAcRegisters);
+  for (int variant = 0; variant < 3; ++variant) {
+    PzemBus bus(meters, 1000);
+    const std::vector<std::uint8_t> request = bus.next_tx(0);
+    CHECK(request.size() == pzem::kRequestLength);
+    std::vector<std::uint8_t> heard;
+    if (variant == 0) heard = request;                      // the echo of the request, then the answer
+    if (variant == 1) heard = {0x00, 0xFF};                 // two stray bytes, then the answer
+    if (variant == 2) heard = request;                      // the echo arrives in a piece of its own, the answer in another
+    heard.insert(heard.end(), good.begin(), good.end());
+    if (variant == 2) { bus.on_rx(heard.data(), request.size(), 5); bus.on_rx(heard.data() + request.size(), good.size(), 20); }
+    else bus.on_rx(heard.data(), heard.size(), 20);
+    CHECK(bus.meters()[0].replies_ok == 1 && bus.meters()[0].replies_bad == 0);
+    CHECK(bus.meters()[0].reading.voltage_v == 231.0 || bus.meters()[0].have_reading);
+  }
+}
+
 static void test_message() {
   std::vector<MeterConfig> meters = {{"grid", "Grid input", Model::kAc, 1}, {"dc-bus", "", Model::kDc, 7}};
   Line line(meters, 1000);
@@ -210,6 +230,7 @@ int main() {
   test_crc_and_requests();
   test_decoding();
   test_bus();
+  test_echo_and_stray_bytes();
   test_message();
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;

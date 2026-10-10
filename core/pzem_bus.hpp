@@ -4,6 +4,7 @@
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <cstddef>
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -50,8 +51,9 @@ class PzemBus {
     if (!pzem::build_read_request(meters_[at_].config.model, meters_[at_].config.address, request)) { advance(now_ms); return {}; }
     waiting_ = true;
     buffer_.clear();
+    last_request_.assign(request.begin(), request.end());
     deadline_ms_ = now_ms + kReplyTimeoutMs;
-    return std::vector<std::uint8_t>(request.begin(), request.end());
+    return last_request_;
   }
 
   /// Bytes that arrived. A reply is whole when it has the length of the meter's answer (or an exception's five bytes).
@@ -59,6 +61,7 @@ class PzemBus {
     if (!waiting_) return;                                  // nobody asked: noise or a late reply
     for (std::size_t i = 0; i < length && buffer_.size() < 64; ++i) buffer_.push_back(data[i]);
     MeterState& meter = meters_[at_];
+    resync(meter.config.address);
     const std::size_t whole = pzem::reply_length(meter.config.model);
     const bool exception = buffer_.size() >= 2 && buffer_[1] == (0x04 | 0x80);
     if (buffer_.size() < (exception ? 5 : whole)) return;
@@ -80,6 +83,20 @@ class PzemBus {
   }
 
  private:
+  // An RS485 adapter that listens while it sends hands the request back before the answer, and a line can carry a stray byte: what comes before the answer is dropped. First the
+  // echo of our own request, whole (it is never an answer: an answer starts with the meter's address and function 0x04 or 0x84, a request with its address and the same function
+  // but a different length), then stray bytes in front of this meter's answer. Address 0xF8 answers whichever meter is on the line, so it is left alone.
+  void resync(std::uint8_t address) {
+    if (buffer_.size() >= last_request_.size() && !last_request_.empty() && std::equal(last_request_.begin(), last_request_.end(), buffer_.begin()))
+      buffer_.erase(buffer_.begin(), buffer_.begin() + static_cast<std::ptrdiff_t>(last_request_.size()));
+    if (address == 0xF8 || buffer_.empty() || buffer_.front() == address) return;
+    // stray bytes in front: the answer starts where this meter's address is followed by its function (or the exception's); when there is no such place the buffer is left alone
+    // and is judged as it is (an answer of another meter is reported as such, not thrown away)
+    for (std::size_t i = 1; i + 1 < buffer_.size(); ++i) {
+      if (buffer_[i] == address && (buffer_[i + 1] == 0x04 || buffer_[i + 1] == (0x04 | 0x80))) { buffer_.erase(buffer_.begin(), buffer_.begin() + static_cast<std::ptrdiff_t>(i)); return; }
+    }
+  }
+
   void on_timeout(std::uint64_t now_ms) {
     MeterState& meter = meters_[at_];
     ++meter.timeouts; ++meter.misses_in_a_row;
@@ -94,7 +111,7 @@ class PzemBus {
   }
 
   std::vector<MeterState> meters_;
-  std::vector<std::uint8_t> buffer_;
+  std::vector<std::uint8_t> buffer_, last_request_;
   std::uint64_t cycle_ms_, deadline_ms_ = 0, next_ms_ = 0, cycle_started_ms_ = 0;
   std::size_t at_ = 0;
   bool waiting_ = false;
