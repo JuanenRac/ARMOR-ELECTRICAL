@@ -63,3 +63,11 @@ Nothing here has run on a board and no radio has been connected. To confirm with
 ## Safety
 
 The radio is the door to every Zigbee device of the house (plugs, breakers, locks, sirens). The allowed address is the only lock the node adds: keep the node and the server on a network you control, and remember that Zigbee2MQTT's own frontend and the broker have their own access rules. See [SAFETY.md](SAFETY.md).
+
+## What is known about the firmware of this module (from its public projects)
+
+- The Ebyte E72-2G4M20S1E is a CC2652P module with its own power amplifier and RF switch. Koenkk's *Z-Stack-firmware* repository carries Z-Stack 3.x **coordinator** and **router** images for the CC2652P family; the E72-specific project *egony/cc2652p_E72-2G4M20S1E* reports that this module's RF generator and RF-switch settings are not the ones of the LaunchPad images and ships its own coordinator image (its `firmware/coordinator` folder), so which image to flash has to be checked against both before the first one.
+- The first image goes in over **JTAG** (as a CC1352P1F in the programmer's list); after that the serial bootloader (BSL) can be used, and some modules arrive with it enabled already, which cannot be told in advance. The bridge's reset and bootloader lines (see above) are for that second case.
+- Zigbee2MQTT talks to it at **115200 baud without hardware flow control** (`rtscts: false`), the speed this bridge keeps its UART at.
+- A router image exists in the same repository (`router/Z-Stack_3.x.0`), which is what the other PoE nodes of the house would run to extend the mesh.
+- None of this has been tried with this project's boards: nothing has been flashed, and the choice between the images is still open.
