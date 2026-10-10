@@ -100,6 +100,18 @@ static void test_zigbee_settings() {
   s.zigbee.reset = 17; CHECK(has(config::validate(s), "zigbee.reset", "conflict")); s.zigbee.reset = board::kZigbeePins.reset;
   s.zigbee.bootloader = 22; CHECK(has(config::validate(s), "zigbee.bootloader", "reserved")); s.zigbee.bootloader = board::kZigbeePins.bootloader;
   CHECK(config::validate(s).empty());
+  // the second client (an alarm panel that takes the radio over): optional, a usable address, not the first one
+  CHECK(s.zigbee.fallback_client.empty() && s.zigbee.fallback_after_s == 30);
+  s.zigbee.fallback_client = "192.168.1.20"; CHECK(config::validate(s).empty());
+  for (const char* bad : {"192.168.1", "0.0.0.0", "host", "192.168.1.20/24"}) { s.zigbee.fallback_client = bad; CHECK(has(config::validate(s), "zigbee.fallback_client", "invalid")); }
+  s.zigbee.fallback_client = s.zigbee.allowed_client; CHECK(has(config::validate(s), "zigbee.fallback_client", "conflict"));
+  s.zigbee.fallback_client = "192.168.1.20";
+  for (int seconds : {5, 30, 600}) { s.zigbee.fallback_after_s = seconds; CHECK(config::validate(s).empty()); }
+  json::Value one;
+  config::Problems found;
+  config::Settings read = s;
+  CHECK(json::parse("{\"zigbee\":{\"fallback_after_s\":4}}", one)); config::read_settings(one, read, found); CHECK(has(found, "zigbee.fallback_after_s", "range"));
+  s.zigbee.fallback_after_s = 30; s.zigbee.fallback_client = "";
   // off, none of it is checked: a node that does not use the bridge is not held back by what is left in it
   s.zigbee.enabled = false; s.zigbee.allowed_client = ""; s.zigbee.rx = -1; s.zigbee.baud = 1;
   CHECK(config::validate(s).empty());
@@ -295,6 +307,39 @@ static void test_bridge() {
   CHECK(!boot[2].reset_low && !boot[2].bootloader_low && boot[2].hold_ms == 0);           // both let go
   for (const std::vector<zigbee::Step>* sequence : {&plain, &boot}) CHECK(!sequence->back().reset_low && !sequence->back().bootloader_low);   // a sequence never leaves a line held
 
+  // two clients: the primary (the server) and the fallback (a panel); everybody else is none
+  config::ZigbeeSetting two; two.enabled = true; two.allowed_client = "192.168.1.10"; two.fallback_client = "192.168.1.20";
+  const std::uint32_t server = (192u << 24) | (168u << 16) | (1u << 8) | 10u, panel = (192u << 24) | (168u << 16) | (1u << 8) | 20u, other = (192u << 24) | (168u << 16) | (1u << 8) | 30u;
+  CHECK(zigbee::classify(two, server) == zigbee::Role::kPrimary && zigbee::classify(two, panel) == zigbee::Role::kFallback && zigbee::classify(two, other) == zigbee::Role::kNone);
+  config::ZigbeeSetting one_only = two; one_only.fallback_client.clear();
+  CHECK(zigbee::classify(one_only, panel) == zigbee::Role::kNone && zigbee::classify(one_only, server) == zigbee::Role::kPrimary);
+  CHECK(std::string(zigbee::role_text(zigbee::Role::kPrimary)) == "primary" && std::string(zigbee::role_text(zigbee::Role::kFallback)) == "fallback" && std::string(zigbee::role_text(zigbee::Role::kNone)).empty());
+  using zigbee::Role; using Verdict = zigbee::Arbiter::Verdict;
+  {
+    zigbee::Arbiter arbiter(30000, 1000);   // the bridge started at 1 s; the panel waits 30 s
+    CHECK(arbiter.offer(Role::kNone, 100000) == Verdict::kRefuse);
+    CHECK(arbiter.offer(Role::kFallback, 20000) == Verdict::kRefuse);              // the primary has been away only 19 s since the start
+    CHECK(arbiter.offer(Role::kFallback, 31000) == Verdict::kAccept);              // 30 s of absence
+    CHECK(arbiter.offer(Role::kPrimary, 2000) == Verdict::kAccept);                // the primary may always connect
+    arbiter.accepted(Role::kPrimary, 2000);
+    CHECK(arbiter.current() == Role::kPrimary && arbiter.takeovers() == 0);
+    CHECK(arbiter.offer(Role::kFallback, 500000) == Verdict::kRefuse);             // never while the primary is connected, however long
+    arbiter.released(100000);                                                      // the primary leaves
+    CHECK(arbiter.current() == Role::kNone && arbiter.offer(Role::kFallback, 120000) == Verdict::kRefuse && arbiter.offer(Role::kFallback, 130000) == Verdict::kAccept);
+    arbiter.accepted(Role::kFallback, 130000);
+    CHECK(arbiter.current() == Role::kFallback && arbiter.takeovers() == 1);
+    CHECK(arbiter.offer(Role::kFallback, 140000) == Verdict::kAccept);             // the panel itself reconnecting replaces its old connection
+    CHECK(arbiter.offer(Role::kPrimary, 140000) == Verdict::kAccept);              // and the primary takes the line back
+    arbiter.accepted(Role::kPrimary, 140000);
+    CHECK(arbiter.current() == Role::kPrimary && arbiter.takeovers() == 1);
+    arbiter.released(200000);                                                      // the clock of the absence restarts at each departure of the primary
+    CHECK(arbiter.offer(Role::kFallback, 210000) == Verdict::kRefuse && arbiter.offer(Role::kFallback, 230000) == Verdict::kAccept);
+    // the fallback leaving does not restart that clock
+    arbiter.accepted(Role::kFallback, 230000);
+    arbiter.released(240000);
+    CHECK(arbiter.offer(Role::kFallback, 241000) == Verdict::kAccept);
+  }
+
   // what the panel shows
   config::ZigbeeSetting setting; setting.enabled = true; setting.allowed_client = "192.168.1.10";
   zigbee::Status status; status.state = "connected"; status.client = "192.168.1.10"; status.to_radio = 120; status.from_radio = 4096; status.connections = 2; status.refused = 1; status.has_reset = true;
@@ -302,6 +347,7 @@ static void test_bridge() {
   CHECK(json::parse(zigbee::status_json(setting, status), shown));
   CHECK(shown.string_or("state", "") == "connected" && shown.integer_or("port", 0, 0, 65535) == 8888 && shown.integer_or("from_radio", 0, 0, 1000000) == 4096 && shown.integer_or("refused", 0, 0, 100) == 1);
   CHECK(shown.bool_or("has_reset", false) && !shown.bool_or("has_bootloader", true));
+  CHECK(shown.string_or("role", "x").empty() && shown.integer_or("takeovers", -1, 0, 100) == 0 && shown.integer_or("fallback_after_s", 0, 0, 1000) == 30 && shown.get("fallback_client") != nullptr);
 }
 
 // ---- the stored document -------------------------------------------------------------------------------------------------------------

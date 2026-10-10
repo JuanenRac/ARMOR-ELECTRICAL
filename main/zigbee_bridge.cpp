@@ -1,12 +1,14 @@
 // ARMOR-ELECTRICAL - the Zigbee radio of the base board: UART2 to one TCP client, byte for byte. Nothing here has run on a board.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
-// The node does not read what goes through: it is a cable. One client at a time, and only the address the settings name; a second connection from that address replaces the first (a
-// client that vanished without closing would otherwise hold the radio until the TCP keep-alive noticed). Whatever the radio says while nobody is connected is dropped and counted.
+// The node does not read what goes through: it is a cable. One client at a time, and only the addresses the settings name: the primary (the server) and, if set, a fallback (an alarm
+// panel) that may take the radio over only while the primary has been away for a while (core/zigbee_bridge.hpp, Arbiter). A second connection from the client that holds the radio
+// replaces the first (a client that vanished without closing would otherwise hold it until the TCP keep-alive noticed), and the primary takes the radio back from the fallback. Whatever the radio says while nobody is connected is dropped and counted.
 // The radio's reset and boot lines are driven open-drain: low, or let go - the module has its own pull-ups, so the node never fights them.
 #include "zigbee_bridge.hpp"
 
 #include <cstring>
+#include <memory>
 #include <mutex>
 extern "C" {
 #include <fcntl.h>
@@ -18,6 +20,7 @@ extern "C" {
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 }
@@ -31,6 +34,9 @@ std::mutex g_lock;
 zigbee::Status g_status;
 config::ZigbeeSetting g_setting;
 std::mutex g_radio_lock;   // one reset at a time
+std::unique_ptr<zigbee::Arbiter> g_arbiter;   // only the bridge's task touches it
+
+std::uint64_t now_ms() { return static_cast<std::uint64_t>(esp_timer_get_time()) / 1000ULL; }
 
 void set_state(const char* state, const char* error = "") {
   std::lock_guard<std::mutex> guard(g_lock);
@@ -84,8 +90,10 @@ int listen_on(int port) {
 void close_client(int& client) {
   if (client >= 0) close(client);
   client = -1;
+  g_arbiter->released(now_ms());
   std::lock_guard<std::mutex> guard(g_lock);
   g_status.client.clear();
+  g_status.role.clear();
   g_status.state = "waiting";
 }
 
@@ -108,7 +116,7 @@ void bridge_task(void*) {
     vTaskDelay(pdMS_TO_TICKS(5000));
   }
   set_state("waiting");
-  ESP_LOGI(kTag, "the Zigbee radio is on UART2 at %d baud, offered on TCP port %d to %s only", g_setting.baud, g_setting.port, g_setting.allowed_client.c_str());
+  ESP_LOGI(kTag, "the Zigbee radio is on UART2 at %d baud, offered on TCP port %d to %s%s%s only", g_setting.baud, g_setting.port, g_setting.allowed_client.c_str(), g_setting.fallback_client.empty() ? "" : " and, as a fallback, ", g_setting.fallback_client.c_str());
   int client = -1;
   std::uint8_t buffer[512];
   for (;;) {
@@ -125,13 +133,15 @@ void bridge_task(void*) {
         const int accepted = accept(listener, reinterpret_cast<sockaddr*>(&peer), &length);
         if (accepted >= 0) {
           const std::uint32_t address = ntohl(peer.sin_addr.s_addr);
-          if (!zigbee::client_allowed(g_setting.allowed_client, address)) {
+          const zigbee::Role role = zigbee::classify(g_setting, address);
+          if (g_arbiter->offer(role, now_ms()) != zigbee::Arbiter::Verdict::kAccept) {
             close(accepted);
             std::lock_guard<std::mutex> guard(g_lock);
             ++g_status.refused;
-            ESP_LOGW(kTag, "a connection from %s was refused", net::ipv4_text(address).c_str());
+            ESP_LOGW(kTag, "a connection from %s was refused%s", net::ipv4_text(address).c_str(), role == zigbee::Role::kFallback ? " (the primary client is still there or has not been away long enough)" : "");
           } else {
-            if (client >= 0) close(client);   // the same client again: the old connection is gone
+            if (client >= 0) { close(client); g_arbiter->released(now_ms()); }   // the same client again, or the primary taking the radio back: the old connection is gone
+            g_arbiter->accepted(role, now_ms());
             client = accepted;
             const int yes = 1;
             setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof yes);
@@ -146,9 +156,11 @@ void bridge_task(void*) {
               std::lock_guard<std::mutex> guard(g_lock);
               g_status.state = "connected";
               g_status.client = net::ipv4_text(address);
+              g_status.role = zigbee::role_text(role);
+              g_status.takeovers = g_arbiter->takeovers();
               ++g_status.connections;
             }
-            ESP_LOGI(kTag, "Zigbee2MQTT connected from %s", net::ipv4_text(address).c_str());
+            ESP_LOGI(kTag, "the %s client connected from %s", zigbee::role_text(role), net::ipv4_text(address).c_str());
           }
         }
       }
@@ -186,6 +198,7 @@ void bridge_task(void*) {
 void start(const config::Settings& settings) {
   g_setting = settings.zigbee;
   if (!g_setting.enabled) return;
+  g_arbiter = std::make_unique<zigbee::Arbiter>(static_cast<std::uint64_t>(g_setting.fallback_after_s) * 1000ULL, now_ms());
   {
     std::lock_guard<std::mutex> guard(g_lock);
     g_status.state = "starting";

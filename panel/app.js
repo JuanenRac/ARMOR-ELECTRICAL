@@ -470,6 +470,7 @@ function zbPill(state) {
   const plain = state === "disabled" || state === "starting" || state === "waiting";
   return el("span", { class: "pill " + (state === "connected" ? "ok" : plain ? "" : "bad") }, t("zb_state_" + state));
 }
+const zbClientText = z => (z.client ? t(z.role === "fallback" ? "zbClientFallback" : "zbClient", z.client) : "");
 const zbLiveText = z => t("zbCounters", z.to_radio || 0, z.from_radio || 0, z.connections || 0, z.refused || 0);
 
 async function radioAction(action) {
@@ -490,10 +491,11 @@ function zigbeePage() {
           el("div", { class: "row" }, field("zbRx", "zigbee.rx", { type: "select", number: true, options: pinOptions(cfg.rx, true, "zigbee.rx") }), field("zbTx", "zigbee.tx", { type: "select", number: true, options: pinOptions(cfg.tx, true, "zigbee.tx") })),
           el("div", { class: "row" }, field("zbReset", "zigbee.reset", { type: "select", number: true, options: pinOptions(cfg.reset, true, "zigbee.reset") }), field("zbBoot", "zigbee.bootloader", { type: "select", number: true, options: pinOptions(cfg.bootloader, true, "zigbee.bootloader") })),
           el("div", { class: "row" }, field("zbBaud", "zigbee.baud", { type: "select", number: true, options: ZIGBEE_BAUDS.map(b => [b, String(b)]) }), field("zbPort", "zigbee.port", { type: "number", min: 1024, max: 65535 })),
-          field("zbAllowed", "zigbee.allowed_client", { max: 15, placeholder: "192.168.0.180", hint: t("zbAllowedHint") })] : null),
+          field("zbAllowed", "zigbee.allowed_client", { max: 15, placeholder: "192.168.0.180", hint: t("zbAllowedHint") }),
+          el("div", { class: "row" }, field("zbFallback", "zigbee.fallback_client", { max: 15, placeholder: "192.168.0.60", hint: t("zbFallbackHint") }), field("zbFallbackAfter", "zigbee.fallback_after_s", { type: "number", min: 5, max: 600 }))] : null),
       z.enabled ? el("section", { class: "card" }, el("h2", {}, t("zbStatus")),
         el("div", { class: "actions" }, el("span", { id: "zb-pill" }, zbPill(z.state)), el("span", { class: "muted", id: "zb-live" }, zbLiveText(z))),
-        el("p", { class: "muted", id: "zb-client" }, z.client ? t("zbClient", z.client) : ""),
+        el("p", { class: "muted", id: "zb-client" }, zbClientText(z)),
         z.error ? el("p", { class: "err" }, t("zbe_" + z.error)) : null,
         isAdmin() && z.has_reset ? el("div", { class: "actions" },
           el("button", { class: "b", onclick: () => radioAction("reset") }, t("zbResetBtn")),
@@ -740,7 +742,7 @@ function patchLive() {
     const z = S.io.zigbee, live = document.getElementById("zb-live"), pill = document.getElementById("zb-pill"), client = document.getElementById("zb-client");
     if (live && z) live.textContent = zbLiveText(z);
     if (pill && z) pill.replaceChildren(zbPill(z.state));
-    if (client && z) client.textContent = z.client ? t("zbClient", z.client) : "";
+    if (client && z) client.textContent = zbClientText(z);
     (S.io.analogs || []).forEach((a, i) => {
       const text = document.getElementById("analog-live-" + i), apill = document.getElementById("analog-pill-" + i);
       if (text && S.cfg.analogs[i]) text.textContent = a.state === "reading" ? analogLiveText(i, a) : "";

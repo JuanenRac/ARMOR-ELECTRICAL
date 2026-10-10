@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here.
 
+## [0.2.2] - A second client for the Zigbee radio: an alarm panel that takes over while the server is away
+
+- **A fallback client for the Zigbee radio.** Besides the server that runs Zigbee2MQTT (the primary, `zigbee.allowed_client`), the bridge can name a second address (`zigbee.fallback_client`, for example an alarm panel). The fallback is accepted only while the primary is not connected and has been away for `zigbee.fallback_after_s` seconds (30 by default, 5 to 600); the primary may always connect and takes the radio back from the fallback. Any other address is still refused. The node still interprets nothing: what the fallback says to the radio is its own business. The rules (`Arbiter` in `core/zigbee_bridge.hpp`) are tested on a computer: the wait, the primary's priority, the fallback reconnecting, and the clock of the absence restarting only when the primary leaves.
+- **The panel** has the two new settings on the *Zigbee radio* page and shows which client holds the radio (the primary, or the fallback while the server is away), in the seven languages; the status carries `role` and `takeovers`.
+
 ## [0.2.1] - The base board: a Zigbee radio, relay outputs and analog inputs
 
 - **A Zigbee radio, lent to Zigbee2MQTT.** The base board carries a Zigbee coordinator module on its own serial line (UART2). The node hands that line over TCP, byte for byte, to **one client** - Zigbee2MQTT on the server - and only to the address named in the settings (`zigbee.allowed_client`, required while the bridge is on); a connection from any other address is closed at once and counted, and a second one from the allowed address replaces the first. The radio's reset and boot-loader lines are driven open-drain (low, or let go) from the panel's two buttons, to restart the radio or to give it a firmware through the bridge. The rules (who may connect, the order and the pauses of the reset) are in `core/zigbee_bridge.hpp`, tested on a computer; `docs/ZIGBEE.md` explains the Zigbee2MQTT lines and how the radio gets its firmware, and lists what is not yet verified on a module.

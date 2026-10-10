@@ -10,7 +10,8 @@ Nothing in the node interprets what passes: it is a cable. That is deliberate. T
 
 ## What the node does
 
-- **One client, one address.** The bridge listens on a TCP port (8888 by default) and accepts only the IPv4 address named in the settings (`zigbee.allowed_client`, required while the bridge is on). A connection from any other address is closed at once and counted. A second connection from the allowed address replaces the first (a client that vanished without closing would otherwise hold the radio until the keep-alive noticed). TCP keep-alive and a send timeout stop a dead client from holding the bridge.
+- **One client at a time, two addresses at most.** The bridge listens on a TCP port (8888 by default) and accepts only the IPv4 address named in the settings (`zigbee.allowed_client`, the **primary**: the server that runs Zigbee2MQTT; required while the bridge is on) and, optionally, a second one (`zigbee.fallback_client`, the **fallback**: for example an alarm panel). A connection from any other address is closed at once and counted. A second connection from the client that holds the radio replaces the first (a client that vanished without closing would otherwise hold the radio until the keep-alive noticed). TCP keep-alive and a send timeout stop a dead client from holding the bridge.
+- **The fallback only gets the radio while the primary is away.** It is accepted only when the primary is not connected and has been away for `zigbee.fallback_after_s` seconds (30 by default; counted from the moment it last left, or from the start of the bridge). The primary may always connect, and when it does it takes the radio back from the fallback. The rules are in `core/zigbee_bridge.hpp` (`Arbiter`), tested on a computer; the status shows who holds the radio (`role`) and how many times the fallback took it over (`takeovers`). The node does not interpret anything the fallback does: what it sends and what it understands is the fallback's business.
 - **Whatever the radio says while nobody is connected is dropped** and counted (`dropped`), never buffered.
 - **The radio's two control lines.** `reset` drives the radio's RESET_N and `bootloader` its serial-boot pin (DIO15, active low). Both are driven **open-drain**: low, or let go; the node never drives either high. The panel's two buttons use them: *Reset the radio* (RESET_N low for 50 ms, then let go) and *Radio to boot loader* (the boot line low before RESET_N is released, kept low for 150 ms, then both let go). An administrator only; the order and the pauses are in `core/zigbee_bridge.hpp` and tested on a computer.
 - **Status** (`GET /api/v1/io`, the *Zigbee radio* page): the state (`starting`, `waiting` for Zigbee2MQTT, `connected`, `error` with `uart`, `pins` or `listen`), the client, the bytes each way, the connections and the refusals.
@@ -24,7 +25,9 @@ Nothing in the node interprets what passes: it is a cable. That is deliberate. T
 | `zigbee.reset` / `zigbee.bootloader` | board profile | The GPIO that drives RESET_N / DIO15. -1: not wired (the matching button disappears). |
 | `zigbee.baud` | 115200 | The speed of the radio's firmware: 115200 (a Z-Stack coordinator) or 230400 (the maker's own). |
 | `zigbee.port` | 8888 | The TCP port, 1024 to 65535. |
-| `zigbee.allowed_client` | empty | The one address that may connect. Required. |
+| `zigbee.allowed_client` | empty | The primary: the one address that may always connect (the server). Required. |
+| `zigbee.fallback_client` | empty | Optional second address (an alarm panel) that may take the radio over while the primary is away. Not the same as the primary. |
+| `zigbee.fallback_after_s` | 30 | Seconds the primary must have been away (5 to 600). |
 
 The pins may not be reserved by the board, shared with the meters' line, a relay or an analog input, or each other. The settings apply after a restart of the node.
 

@@ -106,7 +106,9 @@ struct ZigbeeSetting {
   int bootloader = -1;         // drives the radio's serial-boot pin (active low); -1: not wired
   int baud = 115200;           // what the radio's firmware speaks (a Z-Stack coordinator: 115200)
   int port = 8888;             // the TCP port the node listens on
-  std::string allowed_client;  // the one IPv4 address that may connect: required while the bridge is on
+  std::string allowed_client;  // the one IPv4 address that may connect (the server that runs Zigbee2MQTT): required while the bridge is on
+  std::string fallback_client; // optionally a second address (an alarm panel) that may take the radio over while the first has been away for fallback_after_s; empty: none
+  int fallback_after_s = 30;   // how long the first client must have been away before the second may connect
 };
 
 // One relay output: the node drives the pin, whatever is behind it (a driver, the relay, the load) is the installer's. Every relay starts open (off) when the node starts.
@@ -394,6 +396,8 @@ inline void read_settings(const json::Value& document, Settings& s, Problems& pr
     read_int(*zigbee, "baud", s.zigbee.baud, 1200, 1000000, "zigbee.baud", problems);
     read_int(*zigbee, "port", s.zigbee.port, 1, 65535, "zigbee.port", problems);
     read_text(*zigbee, "allowed_client", s.zigbee.allowed_client, 15, "zigbee.allowed_client", problems);
+    read_text(*zigbee, "fallback_client", s.zigbee.fallback_client, 15, "zigbee.fallback_client", problems);
+    read_int(*zigbee, "fallback_after_s", s.zigbee.fallback_after_s, 5, 600, "zigbee.fallback_after_s", problems);
   }
   if (const json::Value* relays = document.get("relays"); relays != nullptr) {
     if (!relays->is_array() || relays->items.size() > board::kRelayCount) bad(problems, "relays", "invalid");
@@ -601,6 +605,11 @@ inline Problems validate(const Settings& s) {
     std::uint32_t client = 0;
     if (s.zigbee.allowed_client.empty()) bad(problems, "zigbee.allowed_client", "required");
     else if (!net::parse_ipv4(s.zigbee.allowed_client, client) || !net::usable_host_address(client)) bad(problems, "zigbee.allowed_client", "invalid");
+    std::uint32_t second = 0;
+    if (!s.zigbee.fallback_client.empty()) {
+      if (!net::parse_ipv4(s.zigbee.fallback_client, second) || !net::usable_host_address(second)) bad(problems, "zigbee.fallback_client", "invalid");
+      else if (second == client) bad(problems, "zigbee.fallback_client", "conflict");
+    }
   }
 
   // the relay outputs: each has its own name and its own pin, which may not be reserved
@@ -687,7 +696,7 @@ inline std::string to_json(const Settings& s, bool secrets) {
   }
   w.end_array();
   w.key("zigbee").begin_object().field("enabled", s.zigbee.enabled).field("rx", s.zigbee.rx).field("tx", s.zigbee.tx).field("reset", s.zigbee.reset).field("bootloader", s.zigbee.bootloader)
-      .field("baud", s.zigbee.baud).field("port", s.zigbee.port).field("allowed_client", s.zigbee.allowed_client).end_object();
+      .field("baud", s.zigbee.baud).field("port", s.zigbee.port).field("allowed_client", s.zigbee.allowed_client).field("fallback_client", s.zigbee.fallback_client).field("fallback_after_s", s.zigbee.fallback_after_s).end_object();
   w.key("relays").begin_array();
   for (const RelaySetting& relay : s.relays) {
     w.begin_object().field("enabled", relay.enabled).field("name", relay.name).field("label", relay.label).field("pin", relay.pin).field("active_low", relay.active_low).end_object();
