@@ -286,6 +286,34 @@ static void test_analog_inputs() {
   }
 }
 
+static void test_two_lines() {
+  // a PZEM-004T on the first line and a PZEM-017 on the second, both with address 1: an address only has to be its own on its line
+  World first, second;
+  first.answers[1] = reply(1, kAc);
+  second.answers[1] = reply(1, kDc);
+  config::MeterSetting ac{true, "grid", "", "ac", 1};
+  config::MeterSetting dc{true, "dc-bus", "", "dc", 1};
+  dc.line = 2;
+  config::Settings settings = settings_with({ac, dc});
+  settings.bus2.rx = 41; settings.bus2.tx = 42; settings.bus2.de = 40;
+  Runner runner(settings);
+  CHECK(runner.line_in_use(0) && runner.line_in_use(1) && runner.bus(1).state == "starting" && runner.bus(1).de == 40 && runner.meters()[1].line == 2);
+  runner.set_line_open(0); runner.set_line_open(1);
+  const Clock clock = first.clock();
+  while (first.now < 5000 + 10000) {
+    second.now = first.now;
+    runner.step(first, &second, clock);
+  }
+  CHECK(runner.meters()[0].state == "reading" && runner.meters()[0].voltage_v == 230.5);
+  CHECK(runner.meters()[1].state == "reading" && runner.meters()[1].voltage_v == 52.14 && runner.meters()[1].model == "dc");
+  CHECK(runner.bus(0).bytes_tx > 0 && runner.bus(1).bytes_tx > 0 && runner.bus(1).bytes_rx > 0);
+  CHECK(contains(runner.message(), "\"id\":\"grid\"") && contains(runner.message(), "\"id\":\"dc-bus\""));
+  // the second line failing leaves the first one alone
+  Runner broken(settings);
+  broken.set_line_open(0); broken.set_line_failed("pins", 1);
+  CHECK(broken.bus(1).state == "error" && broken.bus(1).error == "pins" && broken.bus(0).state == "running");
+}
+
 int main() {
   test_no_meter();
   test_one_meter();
@@ -298,6 +326,7 @@ int main() {
   test_the_polling_period();
   test_sixteen_meters();
   test_analog_inputs();
+  test_two_lines();
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

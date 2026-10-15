@@ -8,6 +8,8 @@ CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 # A node that stops answering must recover by itself: the task watchdog resets a stuck task.
 CONFIG_ESP_TASK_WDT_EN=y
+# The stack each task has left is read from FreeRTOS (the panel shows it, and the log warns when a task is short of it).
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
 
 # Two application slots for over-the-air updates (partitions.csv); the boot loader goes back to the previous image when a new one does not confirm itself.
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y

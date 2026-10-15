@@ -15,8 +15,10 @@ extern "C" {
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_random.h"
 #include "mqtt_client.h"
 }
+#include "core/backoff.hpp"
 #include "core/mqtt_topic.hpp"
 #include "network.hpp"
 
@@ -30,6 +32,9 @@ esp_mqtt_client_handle_t g_client = nullptr;
 // AFTER it has been taken out under the lock, never inside it: stopping waits for the client's own task, which may be waiting for this lock in one of its callbacks.
 std::mutex g_client_lock;
 std::atomic<bool> g_connected{false};
+retry::Backoff g_mqtt_backoff(1000, 60000);        // the wait before the broker is tried again grows from 1 s to 60 s (with a little scatter)
+esp_timer_handle_t g_retry_timer = nullptr;
+std::atomic<bool> g_retry_pending{false};
 std::atomic<bool> g_enabled{false};
 std::atomic<std::uint32_t> g_published{0};
 std::atomic<std::uint32_t> g_dropped{0};
@@ -59,17 +64,33 @@ config::Broker current_broker(const config::Settings& s, int index) {
 }
 int broker_count(const config::Settings& s) { return 1 + static_cast<int>(s.mqtt.backup.size()); }
 
+// The client does not reconnect by itself (see start_client): after a failure it is asked to, after a wait that grows with every failure in a row. One timer, one try at a time.
+void retry_now(void*) {
+  g_retry_pending = false;
+  esp_mqtt_client_handle_t client = nullptr;
+  { std::lock_guard<std::mutex> guard(g_client_lock); client = g_client; }
+  if (client != nullptr && !g_connected) esp_mqtt_client_reconnect(client);
+}
+
+void schedule_retry() {
+  if (g_retry_timer == nullptr || g_retry_pending.exchange(true)) return;
+  const std::uint32_t wait_ms = g_mqtt_backoff.next(esp_random());
+  ESP_LOGW(kTag, "the broker will be tried again in %.1f s", wait_ms / 1000.0);
+  esp_timer_start_once(g_retry_timer, static_cast<std::uint64_t>(wait_ms) * 1000ULL);
+}
+
 void on_mqtt(void*, esp_event_base_t, int32_t event_id, void* data) {
   auto* event = static_cast<esp_mqtt_event_handle_t>(data);
   switch (event_id) {
     case MQTT_EVENT_CONNECTED:
       g_connected = true;
+      g_mqtt_backoff.reset();
       ESP_LOGI(kTag, "MQTT connected to %s", current_broker(g_settings, g_broker_index).uri.c_str());
       for (const Subscription& subscription : g_subscriptions) esp_mqtt_client_subscribe(event->client, subscription.filter.c_str(), 1);
       for (const Subscription& subscription : g_subscriptions) if (subscription.on_connected) subscription.on_connected();
       break;
-    case MQTT_EVENT_DISCONNECTED: g_connected = false; ESP_LOGW(kTag, "MQTT disconnected"); break;
-    case MQTT_EVENT_ERROR: ESP_LOGW(kTag, "MQTT error (the broker refused the identity, or is not reachable)"); break;
+    case MQTT_EVENT_DISCONNECTED: g_connected = false; ESP_LOGW(kTag, "MQTT disconnected"); schedule_retry(); break;
+    case MQTT_EVENT_ERROR: ESP_LOGW(kTag, "MQTT error (the broker refused the identity, or is not reachable)"); schedule_retry(); break;
     case MQTT_EVENT_DATA: {
       if (event->data_len != event->total_data_len || event->current_data_offset != 0) break;   // a command is a few bytes: never a fragment
       const std::string topic(event->topic, static_cast<std::size_t>(event->topic_len));
@@ -90,6 +111,7 @@ void start_client(const config::Broker& broker) {
   config.credentials.username = broker.username.c_str();
   config.credentials.authentication.password = broker.password.c_str();
   config.session.keepalive = g_settings.mqtt.heartbeat_s * 2;
+  config.network.disable_auto_reconnect = true;   // the retries are ours (a wait that grows), not the client's fixed ten seconds
 #ifdef ARMOR_MQTT_HAS_CA  // certs/ca.pem exists: main/CMakeLists.txt embeds it
   extern const char ca_pem_start[] asm("_binary_ca_pem_start");
   config.broker.verification.certificate = ca_pem_start;
@@ -129,6 +151,10 @@ void broker_watchdog_task(void*) {
 void link_task(void*) {
   while (!network::has_ip()) vTaskDelay(pdMS_TO_TICKS(500));
   // The clock itself is clock_sync.cpp's (it starts without a broker too).
+  esp_timer_create_args_t retry{};
+  retry.callback = &retry_now;
+  retry.name = "mqtt-retry";
+  esp_timer_create(&retry, &g_retry_timer);
   start_client(current_broker(g_settings, g_broker_index));
   xTaskCreate(broker_watchdog_task, "mqtt-link-wd", 4096, nullptr, 2, nullptr);
   vTaskDelete(nullptr);

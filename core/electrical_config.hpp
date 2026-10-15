@@ -6,7 +6,8 @@
 // written back to the panel: a section sent without a password (or with an empty one) keeps the stored one, and "password_set" tells the panel that
 // there is one.
 //
-// A node has ONE serial line (a hardware UART) with up to sixteen energy meters on it, each with its own address and the channel it makes in the message.
+// A node has one serial line (a hardware UART) with up to sixteen energy meters on it, each with its own address and the channel it makes in the message; a second, independent
+// line (UART0, the console being on the USB) lets the PZEM-004T meters (TTL) and the PZEM-017 (RS485) work together. Each line can name a driver-enable pin for an RS485 adapter.
 // Nothing here can make a node write to a meter. The base board adds three more things the same document sets: a Zigbee radio on its own serial line that the node hands to
 // the network (a serial-to-TCP bridge for Zigbee2MQTT), up to eight relay outputs and up to eight analog inputs (a voltage or a current, read by the ADC).
 #pragma once
@@ -37,8 +38,9 @@ constexpr std::size_t kMaxChannels = 16;   // what one message carries: the mete
 struct BusSetting {
   int rx = -1;        // the GPIO that receives the meters' TX line
   int tx = -1;        // the GPIO that sends to the meters' RX line
+  int de = -1;        // the GPIO of an RS485 adapter's driver-enable (and receiver-enable) pins: the UART drives it high while it sends (half duplex); -1: none (TTL or an adapter that turns itself)
   int baud = 9600;
-  int poll_s = 2;     // seconds between two rounds of readings
+  int poll_s = 2;     // seconds between two rounds of readings (the second line takes the first one's)
 };
 
 // One meter on the line: which channel of the message it makes, and how to talk to it.
@@ -47,7 +49,8 @@ struct MeterSetting {
   std::string channel;     // the channel id in the message (armor/electrical/<node>/state): lowercase letters, digits, - and _
   std::string label;       // its name, or empty
   std::string model = "ac";   // "ac" (PZEM-004T v3) or "dc" (PZEM-017)
-  int address = 1;         // its Modbus address on the line (1 to 247)
+  int address = 1;         // its Modbus address on its line (1 to 247)
+  int line = 1;            // which serial line it is on: 1 or 2
 };
 
 // One analog input: what the ADC sees on the pin becomes a channel of the node's message.
@@ -70,6 +73,7 @@ struct AnalogSetting {
 
 struct Settings : NodeSettings, IoSettings {   // what every node has (core/node_settings.hpp) and the base board's own (core/io_config.hpp), plus the line of the meters and the analog inputs
   BusSetting bus;
+  BusSetting bus2;   // the second line; unused while no meter says line 2
   std::array<MeterSetting, kMeterCount> meters;
   std::array<AnalogSetting, board::kAnalogCount> analogs;
 };
@@ -105,8 +109,15 @@ inline void read_settings(const json::Value& document, Settings& s, Problems& pr
   if (const json::Value* bus = document.get("bus"); bus != nullptr && bus->is_object()) {
     read_int(*bus, "rx", s.bus.rx, -1, board::kLastGpio, "bus.rx", problems);
     read_int(*bus, "tx", s.bus.tx, -1, board::kLastGpio, "bus.tx", problems);
+    read_int(*bus, "de", s.bus.de, -1, board::kLastGpio, "bus.de", problems);
     read_int(*bus, "baud", s.bus.baud, 1200, 115200, "bus.baud", problems);
     read_int(*bus, "poll_s", s.bus.poll_s, 1, 3600, "bus.poll_s", problems);
+  }
+  if (const json::Value* bus2 = document.get("bus2"); bus2 != nullptr && bus2->is_object()) {
+    read_int(*bus2, "rx", s.bus2.rx, -1, board::kLastGpio, "bus2.rx", problems);
+    read_int(*bus2, "tx", s.bus2.tx, -1, board::kLastGpio, "bus2.tx", problems);
+    read_int(*bus2, "de", s.bus2.de, -1, board::kLastGpio, "bus2.de", problems);
+    read_int(*bus2, "baud", s.bus2.baud, 1200, 115200, "bus2.baud", problems);
   }
   if (const json::Value* meters = document.get("meters"); meters != nullptr) {
     if (!meters->is_array() || meters->items.size() > kMeterCount) bad(problems, "meters", "invalid");
@@ -120,6 +131,7 @@ inline void read_settings(const json::Value& document, Settings& s, Problems& pr
       read_text(item, "label", meter.label, 40, base + "label", problems);
       read_text(item, "model", meter.model, 4, base + "model", problems);
       read_int(item, "address", meter.address, 1, 247, base + "address", problems);
+      read_int(item, "line", meter.line, 1, 2, base + "line", problems);
     }
   }
   io_read(document, s, problems);
@@ -158,7 +170,8 @@ inline Problems validate(const Settings& s) {
     if (!claims.claim(gpio, who)) bad(problems, path, "conflict");
   };
   std::vector<std::string> channels;
-  std::vector<int> addresses;
+  std::array<std::vector<int>, 2> addresses;   // an address only has to be its own on its line
+  std::array<bool, 2> in_use{false, false};
   bool any = false;
   for (std::size_t i = 0; i < kMeterCount; ++i) {
     const MeterSetting& meter = s.meters[i];
@@ -169,17 +182,28 @@ inline Problems validate(const Settings& s) {
     else if (std::find(channels.begin(), channels.end(), meter.channel) != channels.end()) bad(problems, base + "channel", "conflict");
     else channels.push_back(meter.channel);
     if (meter.model != "ac" && meter.model != "dc") bad(problems, base + "model", "invalid");
+    const int line = meter.line == 2 ? 1 : 0;
+    if (meter.line != 1 && meter.line != 2) bad(problems, base + "line", "range");
+    else in_use[line] = true;
     if (meter.address < 1 || meter.address > 247) bad(problems, base + "address", "range");
-    else if (std::find(addresses.begin(), addresses.end(), meter.address) != addresses.end()) bad(problems, base + "address", "conflict");
-    else addresses.push_back(meter.address);
+    else if (std::find(addresses[line].begin(), addresses[line].end(), meter.address) != addresses[line].end()) bad(problems, base + "address", "conflict");
+    else addresses[line].push_back(meter.address);
     std::size_t label_characters = 0;
     if (!meter.label.empty() && (!net::valid_utf8(meter.label, &label_characters) || label_characters > 40)) bad(problems, base + "label", "invalid");
   }
   if (any) {
-    if (s.bus.rx < 0) bad(problems, "bus.rx", "required"); else claim(s.bus.rx, "bus", "bus.rx");
-    if (s.bus.tx < 0) bad(problems, "bus.tx", "required"); else claim(s.bus.tx, "bus", "bus.tx");
-    if (std::find(allowed_bauds().begin(), allowed_bauds().end(), s.bus.baud) == allowed_bauds().end()) bad(problems, "bus.baud", "range");
     if (s.bus.poll_s < 1 || s.bus.poll_s > 3600) bad(problems, "bus.poll_s", "range");
+    const std::array<const BusSetting*, 2> lines{&s.bus, &s.bus2};
+    const std::array<const char*, 2> names{"bus", "bus2"};
+    for (int k = 0; k < 2; ++k) {
+      if (!in_use[k]) continue;
+      const BusSetting& line = *lines[k];
+      const std::string name = names[k];
+      if (line.rx < 0) bad(problems, name + ".rx", "required"); else claim(line.rx, name, name + ".rx");
+      if (line.tx < 0) bad(problems, name + ".tx", "required"); else claim(line.tx, name, name + ".tx");
+      if (line.de >= 0) claim(line.de, name, name + ".de");
+      if (std::find(allowed_bauds().begin(), allowed_bauds().end(), line.baud) == allowed_bauds().end()) bad(problems, name + ".baud", "range");
+    }
   }
 
   // the Zigbee radio, the relays and the broker moving them: the base board's own checks
@@ -219,13 +243,14 @@ inline std::string to_json(const Settings& s, bool secrets) {
   json::Writer w;
   w.begin_object();
   node_write_head(w, s, secrets);
-  w.key("bus").begin_object().field("rx", s.bus.rx).field("tx", s.bus.tx).field("baud", s.bus.baud).field("poll_s", s.bus.poll_s).end_object();
+  w.key("bus").begin_object().field("rx", s.bus.rx).field("tx", s.bus.tx).field("de", s.bus.de).field("baud", s.bus.baud).field("poll_s", s.bus.poll_s).end_object();
+  w.key("bus2").begin_object().field("rx", s.bus2.rx).field("tx", s.bus2.tx).field("de", s.bus2.de).field("baud", s.bus2.baud).end_object();
   w.key("meters").begin_array();
   for (const MeterSetting& meter : s.meters) {
-    w.begin_object().field("enabled", meter.enabled).field("channel", meter.channel).field("label", meter.label).field("model", meter.model).field("address", meter.address).end_object();
+    w.begin_object().field("enabled", meter.enabled).field("channel", meter.channel).field("label", meter.label).field("model", meter.model).field("address", meter.address).field("line", meter.line).end_object();
   }
   w.end_array();
-  io_write(w, s);
+  io_write(w, s, secrets);
   w.key("analogs").begin_array();
   for (const AnalogSetting& input : s.analogs) {
     w.begin_object().field("enabled", input.enabled).field("channel", input.channel).field("label", input.label).field("pin", input.pin).field("quantity", input.quantity).field("mode", input.mode)

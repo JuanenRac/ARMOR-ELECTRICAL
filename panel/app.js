@@ -418,7 +418,8 @@ function pinLabel(info) { return "GPIO " + info.gpio + (info.note ? " ⚠ " + t(
 function claimedGpios(exceptPath) {
   const used = new Set();
   const add = (path, gpio) => { if (path !== exceptPath && gpio >= 0) used.add(gpio); };
-  add("bus.rx", S.cfg.bus.rx); add("bus.tx", S.cfg.bus.tx);
+  add("bus.rx", S.cfg.bus.rx); add("bus.tx", S.cfg.bus.tx); add("bus.de", S.cfg.bus.de);
+  if (secondLineUsed()) { const b2 = S.cfg.bus2; add("bus2.rx", b2.rx); add("bus2.tx", b2.tx); add("bus2.de", b2.de); }
   const z = S.cfg.zigbee;
   if (z && z.enabled) { add("zigbee.rx", z.rx); add("zigbee.tx", z.tx); add("zigbee.reset", z.reset); add("zigbee.bootloader", z.bootloader); }
   (S.cfg.relays || []).forEach((r, i) => { if (r.enabled) add("relays." + i + ".pin", r.pin); });
@@ -433,13 +434,23 @@ function pinOptions(selected, includeNone, exceptPath) {
   return (includeNone ? [[-1, t("none")]] : []).concat(list);
 }
 
-function busCard() {
-  return el("section", { class: "card" }, el("h2", {}, t("busTitle")), el("p", { class: "muted" }, t("busIntro")),
-    el("div", { class: "row" }, field("busRx", "bus.rx", { type: "select", number: true, options: pinOptions(S.cfg.bus.rx, true, "bus.rx") }), field("busTx", "bus.tx", { type: "select", number: true, options: pinOptions(S.cfg.bus.tx, true, "bus.tx") })),
-    el("div", { class: "row" }, field("busBaud", "bus.baud", { type: "select", number: true, options: BAUDS.map(b => [b, String(b)]) }), field("busPoll", "bus.poll_s", { type: "number", min: 1, max: 3600 })),
-    S.bus && S.bus.state ? el("div", { class: "actions" }, psPill(S.bus.state), el("span", { class: "muted", id: "bus-live" }, t("busCounters", S.bus.bytes_tx, S.bus.bytes_rx, S.bus.messages))) : null,
-    S.bus && S.bus.error ? el("p", { class: "err" }, t("be_" + S.bus.error)) : null);
+// Whether any enabled meter says it is on the second serial line.
+const secondLineUsed = () => (S.cfg.meters || []).some(m => m.enabled && m.line === 2);
+
+// One serial line: its pins (with the driver-enable of an RS485 adapter), its speed and how it is doing. `prefix` is "bus" (the first line) or "bus2" (the second).
+function lineCard(prefix, status, title, intro, withPoll) {
+  const cfg = S.cfg[prefix], pin = key => field(prefix === "bus" ? "bus" + key : "bus2" + key, prefix + "." + key.toLowerCase(), { type: "select", number: true, options: pinOptions(cfg[key.toLowerCase()], true, prefix + "." + key.toLowerCase()) });
+  return el("section", { class: "card" }, el("h2", {}, title), el("p", { class: "muted" }, intro),
+    el("div", { class: "row" }, pin("Rx"), pin("Tx")),
+    el("div", { class: "row" }, pin("De"), field(prefix === "bus" ? "busBaud" : "bus2Baud", prefix + ".baud", { type: "select", number: true, options: BAUDS.map(b => [b, String(b)]) })),
+    withPoll ? el("div", { class: "row" }, field("busPoll", "bus.poll_s", { type: "number", min: 1, max: 3600 })) : null,
+    el("p", { class: "hint" }, t("busDeHint")),
+    status && status.state && status.state !== "disabled" ? el("div", { class: "actions" }, psPill(status.state), el("span", { class: "muted", id: prefix + "-live" }, t("busCounters", status.bytes_tx, status.bytes_rx, status.messages || 0))) : null,
+    status && status.error ? el("p", { class: "err" }, t("be_" + status.error)) : null);
 }
+
+const busCard = () => lineCard("bus", S.bus, t("busTitle"), t("busIntro"), true);
+const bus2Card = () => lineCard("bus2", S.bus2, t("bus2Title"), t("bus2Intro"), false);
 
 function meterCard(index) {
   const cfg = S.cfg.meters[index], base = "meters." + index + ".", st = meterStatus(index);
@@ -447,7 +458,7 @@ function meterCard(index) {
     field("meterEnabled", base + "enabled", { type: "checkbox", rerender: true }),
     cfg.enabled ? [
       el("div", { class: "row" }, field("meterChannel", base + "channel", { max: 32, hint: t("meterChannelHint") }), field("meterLabel", base + "label", { max: 40 })),
-      el("div", { class: "row" }, field("meterModel", base + "model", { type: "select", options: [["ac", t("meterModelAc")], ["dc", t("meterModelDc")]] }), field("meterAddress", base + "address", { type: "number", min: 1, max: 247 })),
+      el("div", { class: "row" }, field("meterModel", base + "model", { type: "select", options: [["ac", t("meterModelAc")], ["dc", t("meterModelDc")]] }), field("meterAddress", base + "address", { type: "number", min: 1, max: 247 }), field("meterLine", base + "line", { type: "select", number: true, rerender: true, options: [[1, t("meterLine1")], [2, t("meterLine2")]] })),
       st.enabled ? el("div", { class: "actions" }, psPill(st.state), el("span", { class: "muted", id: "meter-live-" + index }, meterLiveText(st))) : null,
       st.enabled && st.error ? el("p", { class: "err" }, meterErrorText(st)) : null,
       st.state === "silent" || st.state === "garbled" || st.state === "waiting" ? el("p", { class: "hint" }, t("mhint_" + st.state)) : null] : null);
@@ -455,7 +466,7 @@ function meterCard(index) {
 
 function metersPage() {
   return el("div", {}, note(t("metersWarn")), el("p", { class: "muted" }, t("metersIntro")), note(t("metersRestart"), "info"),
-    el("div", { class: "grid wide" }, [busCard()].concat(Array.from({ length: 16 }, (_, i) => i).map(meterCard))));
+    el("div", { class: "grid wide" }, [busCard(), bus2Card()].concat(Array.from({ length: 16 }, (_, i) => i).map(meterCard))));
 }
 
 
@@ -547,9 +558,26 @@ function analogCard(index) {
       st.error ? el("p", { class: "err" }, L["ane_" + st.error] ? t("ane_" + st.error) : st.error) : null] : null);
 }
 
+// The token of the direct API: never shown once saved; "Generate" makes a random one (the browser's own generator) and shows it once, to be copied.
+let generatedToken = "";
+function tokenField() {
+  const generate = () => {
+    const bytes = new Uint8Array(24);
+    crypto.getRandomValues(bytes);
+    generatedToken = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+    setValue("remote.token", generatedToken);
+    render();
+  };
+  return el("div", { class: "field" }, el("span", {}, t("remoteToken")),
+    generatedToken ? el("div", {}, el("code", { class: "mono", id: "remote-token-shown" }, generatedToken), el("p", { class: "hint" }, t("remoteTokenShown"))) : el("p", { class: "muted" }, S.cfg.remote.token_set ? t("remoteTokenSet") : ""),
+    isAdmin() ? el("button", { type: "button", id: "remote-token-generate", onclick: generate }, t("remoteTokenGenerate")) : null);
+}
+
 function remoteCard() {
   const node = S.session.node_id;
   return el("section", { class: "card" }, el("h2", {}, t("remoteTitle")), el("p", { class: "muted" }, t("remoteHelp")),
+    field("remoteHttp", "remote.http", { type: "checkbox", rerender: true }),
+    S.cfg.remote.http ? [el("p", { class: "hint" }, t("remoteHttpHint")), tokenField()] : null,
     field("remoteRelays", "remote.relays", { type: "checkbox", rerender: true }),
     S.cfg.remote.relays ? [field("remoteTimeout", "remote.link_timeout_s", { type: "number", min: 0, max: 86400, hint: t("remoteTimeoutHint") }), el("p", { class: "hint" }, t("remoteStudio", node))] : null);
 }
@@ -752,7 +780,7 @@ async function setClockFromBrowser() {
 async function refreshLive() {
   const [status, meters, readings, io] = await Promise.all([api("GET", "status"), api("GET", "meters"), api("GET", "readings"), api("GET", "io")]);
   if (status.ok) S.status = status.data;
-  if (meters.ok) { S.catalog = meters.data.catalog; S.meters = meters.data.meters; S.bus = meters.data.bus; }
+  if (meters.ok) { S.catalog = meters.data.catalog; S.meters = meters.data.meters; S.bus = meters.data.bus; S.bus2 = meters.data.bus2; }
   if (readings.ok) S.readings = readings.data;
   if (io.ok) S.io = io.data;
 }

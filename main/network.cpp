@@ -16,6 +16,7 @@ extern "C" {
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
+#include "esp_random.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
@@ -25,6 +26,7 @@ extern "C" {
 #if defined(ARMOR_BOARD_S3_ETH)
 #include "board_ethernet.hpp"
 #endif
+#include "core/backoff.hpp"
 #include "core/net_text.hpp"
 
 namespace armor::network {
@@ -48,6 +50,7 @@ std::mutex g_scan_lock;
 // exists, the next one in the list is tried - the same backup networks a phone or laptop would remember, tried in order.
 int g_sta_index = 0;
 int g_sta_attempts = 0;
+retry::Backoff g_wifi_backoff(1000, 30000);   // the wait between tries of the same network grows from 1 s to 30 s (with a little scatter)
 // While the rescue access point is the only way into the node and someone is on it, the station stays quiet: every try at a Wi-Fi network that is not
 // there scans all channels, the access point shares the radio, and the person's phone loses the network in the middle of whatever it was doing (found
 // on a bench: the rescue network vanished right after signing in to the panel).
@@ -183,6 +186,7 @@ void on_wifi_event(void*, esp_event_base_t, int32_t event_id, void* data) {
     case WIFI_EVENT_STA_START: esp_wifi_connect(); break;
     case WIFI_EVENT_STA_CONNECTED: {
       g_sta_attempts = 0;   // forget past failures of this network now that it has worked
+      g_wifi_backoff.reset();
       std::string ssid;
       {
       std::lock_guard<std::mutex> guard(g_lock);
@@ -229,8 +233,9 @@ void on_wifi_event(void*, esp_event_base_t, int32_t event_id, void* data) {
         apply_station_network(g_sta_index);
         break;
       }
-      ESP_LOGW(kTag, "the Wi-Fi network \"%s\" is not reachable (%s, reason %u): trying again in 3 s", ssid.c_str(), error, static_cast<unsigned>(event->reason));
-      if (g_reconnect_timer != nullptr) esp_timer_start_once(g_reconnect_timer, 3 * 1000 * 1000);
+      const std::uint32_t wait_ms = g_wifi_backoff.next(esp_random());
+      ESP_LOGW(kTag, "the Wi-Fi network \"%s\" is not reachable (%s, reason %u): trying again in %.1f s", ssid.c_str(), error, static_cast<unsigned>(event->reason), wait_ms / 1000.0);
+      if (g_reconnect_timer != nullptr) esp_timer_start_once(g_reconnect_timer, static_cast<std::uint64_t>(wait_ms) * 1000ULL);
       break;
     }
     default: break;

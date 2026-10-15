@@ -17,7 +17,8 @@ using Publish = std::function<void(const std::string& topic, const std::string& 
 // Starts the task when at least one meter is enabled. `publish` gets the node's message (topic, JSON) every round.
 void start(const config::Settings& settings, Publish publish);
 
-BusStatus bus();
+// The state of serial line 0 (the first) or 1 (the second).
+BusStatus bus(int line = 0);
 
 MeterStatus meter(std::size_t index);
 

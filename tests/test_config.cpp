@@ -113,7 +113,7 @@ static void test_document() {
   s.meters[3] = {true, "pv-dc", "Campo solar", "dc", 9};
   const std::string stored = config::to_json(s, true), shown = config::to_json(s, false);
   CHECK(stored.find("una-clave-larga") != std::string::npos && shown.find("una-clave-larga") == std::string::npos && shown.find("\"password_set\":true") != std::string::npos);
-  CHECK(shown.find("\"meters\":[") != std::string::npos && shown.find("\"bus\":{\"rx\":16,\"tx\":15,\"baud\":19200,\"poll_s\":5}") != std::string::npos);
+  CHECK(shown.find("\"meters\":[") != std::string::npos && shown.find("\"bus\":{\"rx\":16,\"tx\":15,\"de\":-1,\"baud\":19200,\"poll_s\":5}") != std::string::npos);
   config::Settings back;
   config::Problems problems;
   CHECK(config::load(stored, config::default_settings("000000"), back, problems) && back.sta.password == "una-clave-larga" && back.node_id == s.node_id);
@@ -167,12 +167,46 @@ static void test_wifi_board_has_no_ethernet() {
   CHECK(config::to_json(valid_settings(), false).find("\"uplink\":\"wifi\"") != std::string::npos);
 }
 
+static void test_second_line_and_driver_enable() {
+  config::Settings s = valid_settings();
+  CHECK(s.bus.de == -1 && s.bus2.rx == -1 && s.bus2.tx == -1 && s.meters[0].line == 1);
+  s.meters[0].enabled = true; s.meters[0].channel = "grid";
+  s.bus.de = 14;
+  CHECK(config::validate(s).empty());                 // a driver-enable pin on the first line
+  s.bus.de = s.bus.rx;
+  CHECK(has(config::validate(s), "bus.de", "conflict"));
+  s.bus.de = 33;
+  CHECK(has(config::validate(s), "bus.de", "reserved"));
+  s.bus.de = -1;
+  // a meter on line 2 needs the pins of line 2, and may reuse an address of line 1
+  s.meters[1].enabled = true; s.meters[1].channel = "dc"; s.meters[1].model = "dc"; s.meters[1].line = 2; s.meters[1].address = 1;
+  CHECK(has(config::validate(s), "bus2.rx", "required") && has(config::validate(s), "bus2.tx", "required"));
+  s.bus2.rx = 41; s.bus2.tx = 42; s.bus2.de = 40; s.bus2.baud = 19200;
+  CHECK(config::validate(s).empty());
+  s.meters[1].address = 1; s.meters[1].line = 1;
+  CHECK(has(config::validate(s), "meters.1.address", "conflict"));   // the same address on the same line
+  s.meters[1].line = 3;
+  CHECK(has(config::validate(s), "meters.1.line", "range"));
+  s.meters[1].line = 2;
+  s.bus2.rx = s.bus.rx;
+  CHECK(has(config::validate(s), "bus2.rx", "conflict"));
+  s.bus2.rx = 41;
+  // it survives a round trip through the document
+  config::Settings back;
+  config::Problems problems;
+  CHECK(config::load(config::to_json(s, true), valid_settings(), back, problems));
+  CHECK(back.bus2.rx == 41 && back.bus2.tx == 42 && back.bus2.de == 40 && back.bus2.baud == 19200 && back.meters[1].line == 2 && back.bus.de == -1);
+  config::Settings bad;
+  CHECK(!config::load("{\"meters\":[{\"line\":9}]}", valid_settings(), bad, problems) && has(problems, "meters.0.line", "range"));
+}
+
 int main() {
   test_defaults();
   test_meters();
   test_line();
   test_document();
   test_wifi_board_has_no_ethernet();
+  test_second_line_and_driver_enable();
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

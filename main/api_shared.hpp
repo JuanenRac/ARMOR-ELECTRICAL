@@ -10,6 +10,8 @@ namespace armor::api {
 
 std::string version_text();
 std::string status_json();          // node, network, broker, the line and the meters, as the Overview page shows them
+// What a central that holds the node's token reads: {"node_id":..,"message":{..the last message of the node..},"relays":[..]}.
+std::string remote_state_json();
 std::string meters_json();          // {"bus":{...},"meters":[...],"catalog":[...]}: the state of the line and of the sixteen meters, and the pins the board offers
 std::string io_json();              // {"zigbee":{...},"relays":[...],"analogs":[...]}: the Zigbee bridge, the relay outputs and the analog inputs of the base board
 std::string readings_json();        // the last message of the node, in an array: what it publishes

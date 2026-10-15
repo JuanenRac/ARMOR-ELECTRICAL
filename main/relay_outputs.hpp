@@ -5,6 +5,7 @@
 #include <string>
 
 #include "core/io_config.hpp"
+#include "core/relay_remote.hpp"
 
 namespace armor::relay_outputs {
 
@@ -24,6 +25,10 @@ int index_of(const std::string& name);
 
 // Tells the relay with this name what the broker said (a word: ON, OFF, TOGGLE).
 Outcome command(const std::string& relay, const std::string& payload);
+
+// What a central that holds the node's token (core/central_link.hpp) asked of a relay by name: moves it (on, off or toggle) when it is an enabled relay, whatever the broker's setting
+// (this path has no broker); `now_on` says where the relay is after. kUnknownRelay when there is no such relay.
+Outcome command_direct(const std::string& relay, relays::Action action, bool& now_on);
 
 // [{"relay":1,"enabled":true,"name":"..","label":"..","pin":38,"on":false}, ...]
 std::string json();

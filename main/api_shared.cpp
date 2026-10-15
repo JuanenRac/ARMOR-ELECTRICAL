@@ -22,6 +22,7 @@ extern "C" {
 #include "core/zigbee_bridge.hpp"
 #include "mqtt_link.hpp"
 #include "network.hpp"
+#include "task_health.hpp"
 #include "node_store.hpp"
 #include "electrical_manager.hpp"
 #include "relay_outputs.hpp"
@@ -69,15 +70,15 @@ void write_network(json::Writer& w) {
       .field("ap_clients", n.ap_clients).field("sta_connected", n.sta_connected).field("sta_ssid", n.sta_ssid).field("sta_error", n.sta_error).field("sta_rssi", n.sta_rssi).end_object();
 }
 
-void write_bus(json::Writer& w) {
-  const manager::BusStatus b = manager::bus();
-  w.begin_object().field("state", b.state).field("error", b.error).field("rx", b.rx).field("tx", b.tx).field("baud", b.baud).field("poll_s", b.poll_s)
+void write_bus(json::Writer& w, int line = 0) {
+  const manager::BusStatus b = manager::bus(line);
+  w.begin_object().field("state", b.state).field("error", b.error).field("rx", b.rx).field("tx", b.tx).field("de", b.de).field("baud", b.baud).field("poll_s", b.poll_s)
       .field("bytes_rx", static_cast<long long>(b.bytes_rx)).field("bytes_tx", static_cast<long long>(b.bytes_tx)).field("messages", static_cast<long long>(b.messages)).end_object();
 }
 
 void write_meter(json::Writer& w, std::size_t index) {
   const manager::MeterStatus s = manager::meter(index);
-  w.begin_object().field("meter", s.number).field("enabled", s.enabled).field("channel", s.channel).field("label", s.label).field("model", s.model).field("address", s.address)
+  w.begin_object().field("meter", s.number).field("enabled", s.enabled).field("channel", s.channel).field("label", s.label).field("model", s.model).field("address", s.address).field("line", s.line)
       .field("state", s.state).field("error", s.error).field("replies_ok", static_cast<long long>(s.replies_ok)).field("replies_bad", static_cast<long long>(s.replies_bad))
       .field("timeouts", static_cast<long long>(s.timeouts));
   if (s.have_reading) {
@@ -147,11 +148,22 @@ std::string status_json() {
       .field("dropped", static_cast<long long>(m.dropped)).end_object();
   const web::TlsStatus tls = web::tls_status();
   w.key("web").begin_object().field("mode", tls.mode).field("https", tls.running).field("cert_sha256", tls.fingerprint).end_object();
+  w.key("tasks").raw(taskhealth::json());
+  taskhealth::warn_if_low();
   w.key("bus");
   write_bus(w);
+  w.key("bus2");
+  write_bus(w, 1);
   w.key("meters").begin_array();
   for (std::size_t i = 0; i < config::kMeterCount; ++i) write_meter(w, i);
   w.end_array().end_object();
+  return w.str();
+}
+
+std::string remote_state_json() {
+  json::Writer w;
+  const std::string message = manager::last_message();
+  w.begin_object().field("node_id", store::settings().node_id).key("message").raw(message.empty() ? "null" : message).key("relays").raw(relay_outputs::json()).end_object();
   return w.str();
 }
 
@@ -159,6 +171,8 @@ std::string meters_json() {
   json::Writer w;
   w.begin_object().key("bus");
   write_bus(w);
+  w.key("bus2");
+  write_bus(w, 1);
   w.key("meters").begin_array();
   for (std::size_t i = 0; i < config::kMeterCount; ++i) write_meter(w, i);
   w.end_array().key("catalog").begin_array();

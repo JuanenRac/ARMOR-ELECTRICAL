@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "base_board.hpp"
+#include "central_link.hpp"
 #include "config_common.hpp"
 #include "net_text.hpp"
 
@@ -44,6 +45,8 @@ struct RelaySetting {
 struct Remote {
   bool relays = false;
   int link_timeout_s = 0;
+  bool http = false;       // whether a central may read the node and move its relays through the node's own HTTP API (core/central_link.hpp), with `token`, no broker needed
+  std::string token;       // the bearer token of that API (a secret: the panel only learns that one is set)
 };
 
 // The speeds the Zigbee radio's firmware may use (a Z-Stack coordinator: 115200; the maker's own firmware: 230400).
@@ -98,6 +101,8 @@ inline void io_read(const json::Value& document, IoSettings& io, Problems& probl
   if (const json::Value* remote = document.get("remote"); remote != nullptr && remote->is_object()) {
     read_bool(*remote, "relays", s.remote.relays, "remote.relays", problems);
     read_int(*remote, "link_timeout_s", s.remote.link_timeout_s, 0, 86400, "remote.link_timeout_s", problems);
+    read_bool(*remote, "http", s.remote.http, "remote.http", problems);
+    read_secret(*remote, "token", s.remote.token, "remote.token", problems);
   }
 }
 
@@ -141,10 +146,14 @@ inline void io_validate(const IoSettings& io, bool broker_enabled, Claim&& claim
   // the broker moving the relays: it needs a broker, and a fall back time is 0 (never) or at least ten seconds
   if (s.remote.relays && !broker_enabled) bad(problems, "remote.relays", "needs_broker");
   if (s.remote.link_timeout_s != 0 && s.remote.link_timeout_s < 10) bad(problems, "remote.link_timeout_s", "range");
+  // the direct API for a central: it needs a token that cannot be guessed (and nothing else: it works with no broker at all)
+  if (!s.remote.token.empty() && !central::valid_token(s.remote.token)) bad(problems, "remote.token", "invalid");
+  if (s.remote.http && s.remote.token.empty()) bad(problems, "remote.token", "required");
 
 }
 
-inline void io_write(json::Writer& w, const IoSettings& io) {
+// `secrets`: true writes the token of the direct API (for flash storage); false only says whether one is set (for the panel).
+inline void io_write(json::Writer& w, const IoSettings& io, bool secrets = false) {
   const IoSettings& s = io;
   w.key("zigbee").begin_object().field("enabled", s.zigbee.enabled).field("rx", s.zigbee.rx).field("tx", s.zigbee.tx).field("reset", s.zigbee.reset).field("bootloader", s.zigbee.bootloader)
       .field("baud", s.zigbee.baud).field("port", s.zigbee.port).field("allowed_client", s.zigbee.allowed_client).field("fallback_client", s.zigbee.fallback_client).field("fallback_after_s", s.zigbee.fallback_after_s).end_object();
@@ -153,7 +162,9 @@ inline void io_write(json::Writer& w, const IoSettings& io) {
     w.begin_object().field("enabled", relay.enabled).field("name", relay.name).field("label", relay.label).field("pin", relay.pin).field("active_low", relay.active_low).end_object();
   }
   w.end_array();
-  w.key("remote").begin_object().field("relays", s.remote.relays).field("link_timeout_s", s.remote.link_timeout_s).end_object();
+  w.key("remote").begin_object().field("relays", s.remote.relays).field("link_timeout_s", s.remote.link_timeout_s).field("http", s.remote.http);
+  if (secrets) w.field("token", s.remote.token); else w.field("token_set", !s.remote.token.empty());
+  w.end_object();
 }
 
 }  // namespace armor::config

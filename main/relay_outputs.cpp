@@ -118,6 +118,19 @@ Outcome command(const std::string& relay, const std::string& payload) {
   return Outcome::kOk;
 }
 
+Outcome command_direct(const std::string& relay, relays::Action action, bool& now_on) {
+  std::lock_guard<std::mutex> guard(g_lock);
+  if (!g_bank) return Outcome::kUnknownRelay;
+  const int index = g_bank->find(relay);
+  if (index < 0) { ESP_LOGW(kTag, "a command from the central for \"%s\" was ignored: no such relay", relay.c_str()); return Outcome::kUnknownRelay; }
+  if (action == relays::Action::kNone) return Outcome::kNotUnderstood;
+  const std::size_t i = static_cast<std::size_t>(index);
+  const bool on = action == relays::Action::kToggle ? !g_bank->is_on(i) : action == relays::Action::kOn;
+  drive(i, on, "the central");
+  now_on = g_bank->is_on(i);
+  return Outcome::kOk;
+}
+
 std::string json() {
   std::lock_guard<std::mutex> guard(g_lock);
   return g_bank ? g_bank->json() : "[]";

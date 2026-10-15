@@ -27,6 +27,7 @@ extern "C" {
 }
 #include "core/netplan.hpp"
 #include "log_buffer.hpp"
+#include "improv_serial.hpp"
 #include "ble_provision.hpp"
 #include "clock_sync.hpp"
 #include "mqtt_link.hpp"
@@ -121,6 +122,7 @@ extern "C" void app_main() {
   }
   if (!network_ok) ESP_LOGE(kTag, "the network could not be started: the node stays local");
   armor::clocksync::start(settings);
+  armor::improv_serial::start();   // Improv Wi-Fi over the USB cable (ESP Web Tools)
   const bool panel_ok = network_ok && armor::web::start(settings);
   armor::mqtt_link::start(settings);
   if (!setup) armor::zigbee_bridge::start(settings);   // the radio's serial line, lent to one client once the network is up

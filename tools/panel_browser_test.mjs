@@ -77,6 +77,8 @@ try {
   check("meter states are shown with their hints", body.includes("reading") && body.includes("silent") && body.includes("The meter does not answer"));
   const selects = await ev("document.querySelectorAll('select').length");
   check("the line has its pin and speed selects", selects >= 3, String(selects));
+  check("the second serial line and the driver-enable pin are offered", body.includes("Second serial line") && body.includes("Driver-enable pin (RS485)") && body.includes("RX pin of line 2"));
+  check("each meter says which line it is on", (body.match(/Line 1/g) ?? []).length >= 4);
   await shot(`epanel-${board}-meters.png`);
 
   // the live counters change on their own without losing what is typed
@@ -149,11 +151,19 @@ try {
   await goto("io");
   body = await text();
   check("the page has eight relays and eight analog inputs", [1, 2, 8].every(n => body.includes(`Relay ${n}`)) && [1, 2, 8].every(n => body.includes(`Input ${n}`)) && body.includes("Relay outputs") && body.includes("Analog inputs"), body.slice(0, 300));
+  check("the direct API for a central is offered with its token", body.includes("Let a central read and command this node over HTTP"));
+  await ev(`(() => { const box = [...document.querySelectorAll('label')].find(l => l.textContent.includes('Let a central read')); box.querySelector('input').click(); })()`);
+  await sleep(300);
+  check("turning it on shows how to use the token and a button to make one", (await text()).includes("Authorization: Bearer") && (await text()).includes("Generate a new token"));
+  await ev(`document.getElementById('remote-token-generate').click()`);
+  await sleep(300);
+  const shownToken = await ev(`document.getElementById('remote-token-shown') ? document.getElementById('remote-token-shown').textContent : ''`);
+  check("a generated token is long, shown once and put in the settings", /^[0-9a-f]{48}$/.test(shownToken) && (await text()).includes("Copy it now"), shownToken);
   check("the warnings about the relays and about 3.3 V are shown", body.includes("starts open when the node starts") && body.includes("more than 3.3 V"));
   check("the analog inputs show what the pin reads", body.includes("mV at the pin") && body.includes("21.213 A"), body.slice(0, 400));
   check("a running relay shows its state and a button", body.includes("open") && body.includes("Close"));
   check("the broker's control of the relays is off by default and explained", body.includes("Let the broker move the relays") && body.includes("armor/device/<node>/<relay>") && !body.includes("Fall back to open after"));
-  await ev(`(() => { const c = [...document.querySelectorAll('section.card')].find(x => x.querySelector('h2')?.textContent.startsWith('The broker moves the relays')); const box = c.querySelector('input[type=checkbox]'); box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await ev(`(() => { const c = [...document.querySelectorAll('section.card')].find(x => x.querySelector('h2')?.textContent.startsWith('The broker moves the relays')); const box = [...c.querySelectorAll('label')].find(l => l.textContent.includes('Let the broker move the relays')).querySelector('input'); box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await sleep(400);
   body = await text();
   check("turning it on shows the fall back time and how to add the devices in Studio", body.includes("Fall back to open after") && body.includes("electrical-a1b2c3/<relay name>") && body.includes("electrical-relays electrical-a1b2c3 on"), body.slice(0, 200));
