@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here.
 
+## [0.2.6] - No deadlock between the relays and the broker
+
+- **A message is never published while a lock of the node is held:** `mqtt_link::publish()` puts the message in a short queue (48, the oldest dropped first) and a task of its own hands it to the client. Before, a task that held a lock of its module and published could wait for the client's own lock while the client, running the handler of an incoming command, waited for that module lock: both for ever, with nothing to restart the board. The rule "without the broker for N seconds, every relay opens" depends on this.
+- **The task watchdog restarts the board:** it panics after 10 s (it only printed before) and the tasks that guard the outputs now report to it.
+
 ## [0.2.5] - RS485 with a direction pin, a second serial line and a central that needs no broker
 
 - **A driver-enable pin for an RS485 adapter** (`bus.de`): the PZEM-017 has no TTL side, and an adapter that needs its direction pin driven now has one. The line is put in RS485 half-duplex mode on that pin: raised while the node sends, no echo read back (a request that comes back anyway is still dropped, as before).

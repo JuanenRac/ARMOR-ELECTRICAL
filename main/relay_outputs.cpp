@@ -15,6 +15,7 @@ extern "C" {
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_task_wdt.h"
 }
 #include "core/relay_bank.hpp"
 #include "core/relay_remote.hpp"
@@ -58,8 +59,10 @@ void drive(std::size_t index, bool on, const char* who) {
 // Every half minute the state is said again (a server that restarted learns it), and a relay that was closed falls back to open when the broker has been lost for long enough.
 void watch_task(void*) {
   std::uint64_t last_publish = 0;
+  esp_task_wdt_add(nullptr);   // the fall back to open must not depend on a task that can hang unseen
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(1000));
+    esp_task_wdt_reset();
     std::lock_guard<std::mutex> guard(g_lock);
     const std::uint64_t now = now_ms();
     g_watch.update(mqtt_link::connected(), now);

@@ -42,6 +42,7 @@
 * **Die Basisplatine** (die Platine, die das ESP32-S3-Modul trägt): ein Zigbee-Funkmodul an einer eigenen seriellen Leitung, die der Knoten per TCP Byte für Byte an Zigbee2MQTT auf dem Server und an keine andere Adresse außer einem einzigen Ersatz, den Sie nennen können weiterreicht ([das Funkmodul](docs/ZIGBEE.md)); bis zu acht Relaisausgänge, die ein Administrator im Panel schließt oder öffnet und die immer offen starten; und bis zu acht Analogeingänge (eine Spannung über einen Teiler, ein Strom von einer Zange oder einem Hall-Sensor), die zu Kanälen der Meldung des Knotens werden. Der Pinvorschlag und seine Gründe stehen in [der Basisplatine](docs/BASE_BOARD.md). Nichts davon lief je auf einer Platine.
 * **Konfiguration vom Handy über Bluetooth,** derselbe Kanal wie beim Radarknoten: Die ARMOR-App findet den Knoten als `ARMOR-XXXXXX` und stellt Name, WLAN, Adresse, Broker und Bluetooth-Modus mit den Benutzern und dem Einrichtungscode des Panels ein ([das Protokoll](docs/BLE_PROVISIONING.md)). Er lauscht nur, solange der Knoten keinen Benutzer hat, sofern nichts anderes eingestellt ist. Der Funkteil lief noch nie auf einer Platine.
 * **Noch nicht:** die Firmware auf einer Platine, die Hardware, jede Messung einer echten Anlage und jedes Schalten.
+* **Kein Deadlock zwischen den Relais und dem Broker:** Nachrichten laufen über eine Warteschlange mit eigener Aufgabe, sodass keine Aufgabe eine Sperre hält, während sie auf den Client des Brokers wartet, und der Watchdog startet die Platine neu, wenn die Aufgabe stehen bleibt, die die Relais beim Verlust des Brokers öffnet.
 
 ## 📂 Struktur des Repositorys
 
@@ -60,7 +61,7 @@ ARMOR-ELECTRICAL/
 ## 🛠️ Entwicklungsumgebung
 
 ```bash
-cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 375,292 checks: the meters (53), the loop that asks them (62), the settings (73), Bluetooth (68), the interlock rules (135,736), the switch set (239,300)
+cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 375.928 checks: the meters (53), the loop that asks them (62), the settings (73), Bluetooth (68), the interlock rules (135,736), the switch set (239,300)
 build/host/emit_samples | python tests/check_samples.py                                     # the messages, against ARMOR-COMMON
 node tools/panel_mock.mjs --user admin:adminpass123                                         # the panel without a board
 tools/build_node.sh generic                                                                 # the firmware image for the N16R8 board in the ESP-IDF container: dist/generic-s3-wifi.bin
@@ -86,6 +87,7 @@ Siehe den [Entwurf](docs/DESIGN.md), die [Sicherheitshinweise](docs/SAFETY.md), 
 * **[ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO)** - Web-Konsole: Kameras, Radar, Alarme, Solarenergie und 2D/3D-Standortdesigner
 * **[ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL)** - Android-Bedienclient mit Live-Radar in 2D/3D
 * **[ARMOR-SERVER-AI](https://github.com/JuanenRac/ARMOR-SERVER-AI)** - Visuelle Inferenzrichtlinie, die ihre Entscheidungen erklärt und nie handelt
+* **[ARMOR-VISION](https://github.com/JuanenRac/ARMOR-VISION)** - Kamerazonen, Masken und Erkennungsregeln für den Jetson Orin NX
 * **[ARMOR-VOICE-AI](https://github.com/JuanenRac/ARMOR-VOICE-AI)** - Offline-Sprachabsichten mit einer nicht fälschbaren Bestätigung
 * **[ARMOR-HARDWARE](https://github.com/JuanenRac/ARMOR-HARDWARE)** - Gehäuse, Elektronik und die Abnahmematrix am Prüfstand
 * **[ARMOR-DEVOPS](https://github.com/JuanenRac/ARMOR-DEVOPS)** - Bereitstellung, CM5-Prüfstand, Backup und TLS

@@ -42,6 +42,7 @@
 * **ベースボード**（ESP32-S3 モジュールを載せる基板）：専用のシリアル回線につないだ Zigbee 無線を、ノードがバイト単位で TCP 経由でサーバーの Zigbee2MQTT にだけ（指定できる 1 つの予備アドレス以外には渡さず）貸し出します（[無線](docs/ZIGBEE.md)）。管理者がパネルから閉じたり開いたりでき、常に開いた状態で起動するリレー出力が最大 8 個。ノードのメッセージのチャンネルになるアナログ入力が最大 8 個（分圧器経由の電圧、クランプまたはホールセンサーの電流）。ピンの提案とその理由は[ベースボード](docs/BASE_BOARD.md)にあります。いずれも基板ではまだ動作していません。
 * **スマートフォンから Bluetooth で設定：** レーダーノードと同じチャンネルです。ARMOR アプリがノードを `ARMOR-XXXXXX` として見つけ、パネルのユーザーとセットアップコードを使って、名前、Wi-Fi、アドレス、ブローカー、Bluetooth モードを設定します（[プロトコル](docs/BLE_PROVISIONING.md)）。設定を変えない限り、ノードにユーザーがいない間だけ待ち受けます。無線部分は基板ではまだ動作していません。
 * **まだ：** 基板上で動作するファームウェア、ハードウェア、実際の設備での計測、そして開閉。
+* **リレーとブローカーのデッドロックなし：** メッセージは専用タスクが処理するキューを通るため、ブローカーのクライアントを待つ間にロックを保持するタスクはなく、ブローカーを失ったときにリレーを開くタスクが止まるとウォッチドッグが基板を再起動します。
 
 ## 📂 リポジトリの構成
 
@@ -60,7 +61,7 @@ ARMOR-ELECTRICAL/
 ## 🛠️ 開発環境
 
 ```bash
-cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 375,292 checks: the meters (53), the loop that asks them (62), the settings (73), Bluetooth (68), the interlock rules (135,736), the switch set (239,300)
+cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 375,928 checks: the meters (53), the loop that asks them (62), the settings (73), Bluetooth (68), the interlock rules (135,736), the switch set (239,300)
 build/host/emit_samples | python tests/check_samples.py                                     # the messages, against ARMOR-COMMON
 node tools/panel_mock.mjs --user admin:adminpass123                                         # the panel without a board
 tools/build_node.sh generic                                                                 # the firmware image for the N16R8 board in the ESP-IDF container: dist/generic-s3-wifi.bin
@@ -86,6 +87,7 @@ See the [firmware guide](docs/NODE_FIRMWARE.md) and the [Bluetooth channel](docs
 * **[ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO)** - Web コンソール：カメラ、レーダー、アラーム、太陽光発電、2D/3D サイト設計
 * **[ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL)** - リアルタイム 2D/3D レーダー付きの Android オペレータークライアント
 * **[ARMOR-SERVER-AI](https://github.com/JuanenRac/ARMOR-SERVER-AI)** - 判断を説明し、決して動作しない視覚推論ポリシー
+* **[ARMOR-VISION](https://github.com/JuanenRac/ARMOR-VISION)** - Jetson Orin NX 向けのカメラのゾーン、マスク、検知ルール
 * **[ARMOR-VOICE-AI](https://github.com/JuanenRac/ARMOR-VOICE-AI)** - 偽造できない確認を備えたオフライン音声インテント
 * **[ARMOR-HARDWARE](https://github.com/JuanenRac/ARMOR-HARDWARE)** - 筐体、電子部品、ベンチ受け入れマトリクス
 * **[ARMOR-DEVOPS](https://github.com/JuanenRac/ARMOR-DEVOPS)** - デプロイ、CM5 テストベンチ、バックアップ、TLS

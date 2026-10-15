@@ -42,6 +42,7 @@
 * **The base board** (the board that carries the ESP32-S3 module): a Zigbee radio on its own serial line that the node lends over TCP, byte for byte, to Zigbee2MQTT on the server and to no other address than the one fallback you may name ([the radio](docs/ZIGBEE.md)); up to eight relay outputs that an administrator closes or opens from the panel and that always start open; and up to eight analog inputs (a voltage through a divider, a current from a clamp or a Hall sensor) that become channels of the node's message. The pin proposal and its reasons are in [the base board](docs/BASE_BOARD.md). None of it has run on a board.
 * **Configuration from a phone over Bluetooth,** the same channel as the radar node's: the ARMOR app finds the node as `ARMOR-XXXXXX` and sets its name, Wi-Fi, address, broker and Bluetooth mode with the panel's users and set-up code ([the protocol](docs/BLE_PROVISIONING.md)). It listens only while the node has no user, unless told otherwise. The radio side has never run on a board.
 * **Not yet:** the firmware running on a board, the hardware, any measurement of a real installation and any switching.
+* **No deadlock between the relays and the broker:** messages go through a queue handled by a task of its own, so that no task holds a lock while waiting for the broker's client, and the watchdog restarts the board if the task that opens the relays when the broker is lost stops.
 
 ## 📂 Repository Structure
 
@@ -60,7 +61,7 @@ ARMOR-ELECTRICAL/
 ## 🛠️ Development Environment
 
 ```bash
-cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 375,292 checks: the meters (53), the loop that asks them (62), the settings (73), Bluetooth (68), the interlock rules (135,736), the switch set (239,300)
+cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 375,928 checks: the meters (53), the loop that asks them (62), the settings (73), Bluetooth (68), the interlock rules (135,736), the switch set (239,300)
 build/host/emit_samples | python tests/check_samples.py                                     # the messages, against ARMOR-COMMON
 node tools/panel_mock.mjs --user admin:adminpass123                                         # the panel without a board
 tools/build_node.sh generic                                                                 # the firmware image for the N16R8 board in the ESP-IDF container: dist/generic-s3-wifi.bin
@@ -86,6 +87,7 @@ See the [design](docs/DESIGN.md), the [safety notes](docs/SAFETY.md), the [rules
 * **[ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO)** - Web console: cameras, radar, alarms, solar energy and the 2D/3D site designer
 * **[ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL)** - Android operator client with a live 2D/3D radar
 * **[ARMOR-SERVER-AI](https://github.com/JuanenRac/ARMOR-SERVER-AI)** - Visual inference policy that explains its decisions and never actuates
+* **[ARMOR-VISION](https://github.com/JuanenRac/ARMOR-VISION)** - Camera zones, masks and detection rules for the Jetson Orin NX
 * **[ARMOR-VOICE-AI](https://github.com/JuanenRac/ARMOR-VOICE-AI)** - Offline voice intents with a confirmation that cannot be forged
 * **[ARMOR-HARDWARE](https://github.com/JuanenRac/ARMOR-HARDWARE)** - Enclosures, electronics and the bench acceptance matrix
 * **[ARMOR-DEVOPS](https://github.com/JuanenRac/ARMOR-DEVOPS)** - Deployment, the CM5 test bench, backup and TLS

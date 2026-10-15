@@ -6,6 +6,7 @@
 #include "mqtt_link.hpp"
 
 #include <atomic>
+#include <deque>
 #include <mutex>
 #include <ctime>
 #include <vector>
@@ -14,6 +15,7 @@ extern "C" {
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "esp_random.h"
 #include "mqtt_client.h"
@@ -55,6 +57,32 @@ int g_broker_index = 0;
 int client_publish(const char* topic, const char* data, int length, int qos) {
   std::lock_guard<std::mutex> guard(g_client_lock);
   return g_client == nullptr ? -1 : esp_mqtt_client_publish(g_client, topic, data, length, qos, 0);
+}
+
+// publish() never waits for the client: the client holds its own lock while it runs the handlers of the incoming messages, and such a handler may be waiting for a lock of its module
+// while the task that holds that lock publishes - each waiting for the other, for ever, with the watchdog of the idle tasks seeing nothing. A message goes into a short queue, in order,
+// and a task of its own hands it to the client without holding anything. When the queue is full the oldest message is dropped (the newest state is the one that matters).
+struct Outgoing { std::string topic; std::string payload; };
+std::mutex g_out_lock;
+std::deque<Outgoing> g_out;
+SemaphoreHandle_t g_out_ready = nullptr;
+constexpr std::size_t kOutMax = 48;
+
+void outgoing_task(void*) {
+  for (;;) {
+    xSemaphoreTake(g_out_ready, pdMS_TO_TICKS(1000));
+    for (;;) {
+      Outgoing next;
+      {
+        std::lock_guard<std::mutex> guard(g_out_lock);
+        if (g_out.empty()) break;
+        next = std::move(g_out.front());
+        g_out.pop_front();
+      }
+      if (g_connected && client_publish(next.topic.c_str(), next.payload.c_str(), static_cast<int>(next.payload.size()), 0) >= 0) ++g_published;
+      else ++g_dropped;
+    }
+  }
 }
 
 
@@ -169,6 +197,8 @@ void start(const config::Settings& settings) {
     return;
   }
   g_enabled = true;
+  g_out_ready = xSemaphoreCreateBinary();
+  xTaskCreate(outgoing_task, "mqtt-out", 4096, nullptr, 4, nullptr);
   xTaskCreate(link_task, "mqtt-link", 6144, nullptr, 4, nullptr);
 }
 
@@ -187,10 +217,14 @@ std::uint64_t wall_clock_ms() {
 
 // A node without a clock still publishes: its readings carry the time since it started instead (see the callers), and the server stamps them with the time it receives them.
 void publish(const std::string& topic, const std::string& payload) {
-  if (!g_enabled) return;
+  if (!g_enabled || g_out_ready == nullptr) return;
   if (!g_connected) { ++g_dropped; return; }
-  if (client_publish(topic.c_str(), payload.c_str(), static_cast<int>(payload.size()), 0) >= 0) ++g_published;
-  else ++g_dropped;
+  {
+    std::lock_guard<std::mutex> guard(g_out_lock);
+    if (g_out.size() >= kOutMax) { g_out.pop_front(); ++g_dropped; }
+    g_out.push_back({topic, payload});
+  }
+  xSemaphoreGive(g_out_ready);
 }
 
 Status status() {

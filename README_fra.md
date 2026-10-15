@@ -42,6 +42,7 @@
 * **La carte de base** (celle qui porte le module ESP32-S3) : une radio Zigbee sur sa propre ligne série que le nœud prête par TCP, octet par octet, à Zigbee2MQTT sur le serveur et à aucune autre adresse hormis un unique client de secours que vous pouvez indiquer ([la radio](docs/ZIGBEE.md)) ; jusqu'à huit sorties relais qu'un administrateur ferme ou ouvre depuis le panneau et qui démarrent toujours ouvertes ; et jusqu'à huit entrées analogiques (une tension par un diviseur, un courant d'une pince ou d'un capteur à effet Hall) qui deviennent des canaux du message du nœud. La proposition de broches et ses raisons sont dans [la carte de base](docs/BASE_BOARD.md). Rien de tout cela n'a tourné sur une carte.
 * **Configuration depuis le téléphone en Bluetooth,** le même canal que celui du nœud radar : l'app ARMOR trouve le nœud sous le nom `ARMOR-XXXXXX` et règle son nom, son Wi-Fi, son adresse, son broker et son mode Bluetooth avec les utilisateurs et le code de mise en service du panneau ([le protocole](docs/BLE_PROVISIONING.md)). Il n'écoute que tant que le nœud n'a pas d'utilisateur, sauf réglage contraire. La partie radio n'a jamais tourné sur une carte.
 * **Pas encore :** le firmware qui tourne sur une carte, le matériel, toute mesure d'une installation réelle et toute commutation.
+* **Pas d'interblocage entre les relais et le broker :** les messages passent par une file gérée par une tâche propre, de sorte qu'aucune tâche ne garde un verrou en attendant le client du broker, et le chien de garde redémarre la carte si la tâche qui ouvre les relais à la perte du broker s'arrête.
 
 ## 📂 Structure du dépôt
 
@@ -60,7 +61,7 @@ ARMOR-ELECTRICAL/
 ## 🛠️ Environnement de développement
 
 ```bash
-cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 375,292 checks: the meters (53), the loop that asks them (62), the settings (73), Bluetooth (68), the interlock rules (135,736), the switch set (239,300)
+cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 375 928 checks: the meters (53), the loop that asks them (62), the settings (73), Bluetooth (68), the interlock rules (135,736), the switch set (239,300)
 build/host/emit_samples | python tests/check_samples.py                                     # the messages, against ARMOR-COMMON
 node tools/panel_mock.mjs --user admin:adminpass123                                         # the panel without a board
 tools/build_node.sh generic                                                                 # the firmware image for the N16R8 board in the ESP-IDF container: dist/generic-s3-wifi.bin
@@ -86,6 +87,7 @@ Voir la [conception](docs/DESIGN.md), les [notes de sécurité](docs/SAFETY.md),
 * **[ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO)** - Console web : caméras, radar, alarmes, énergie solaire et concepteur de site 2D/3D
 * **[ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL)** - Client Android de l'opérateur avec radar 2D/3D en direct
 * **[ARMOR-SERVER-AI](https://github.com/JuanenRac/ARMOR-SERVER-AI)** - Politique d'inférence visuelle qui explique ses décisions et n'agit jamais
+* **[ARMOR-VISION](https://github.com/JuanenRac/ARMOR-VISION)** - Zones de caméra, masques et règles de détection pour la Jetson Orin NX
 * **[ARMOR-VOICE-AI](https://github.com/JuanenRac/ARMOR-VOICE-AI)** - Intentions vocales hors ligne avec une confirmation impossible à falsifier
 * **[ARMOR-HARDWARE](https://github.com/JuanenRac/ARMOR-HARDWARE)** - Boîtiers, électronique et matrice d'acceptation sur banc
 * **[ARMOR-DEVOPS](https://github.com/JuanenRac/ARMOR-DEVOPS)** - Déploiement, banc d'essai CM5, sauvegarde et TLS
