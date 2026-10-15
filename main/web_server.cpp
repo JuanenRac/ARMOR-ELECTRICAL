@@ -580,6 +580,26 @@ esp_err_t post_ota_switch(httpd_req_t* r) {
   return send_json(r, 200, w.str());
 }
 
+esp_err_t get_ota_copy(httpd_req_t* r) {
+  Who who;
+  if (!require(r, who, true, false)) return ESP_OK;
+  const github_update::CopyProgress p = github_update::copy_progress();
+  json::Writer w;
+  w.begin_object().field("state", p.state).field("done", static_cast<long long>(p.done)).field("total", static_cast<long long>(p.total)).field("error", p.error).field("version", p.version).end_object();
+  return send_json(r, 200, w.str());
+}
+
+// Copies the firmware that runs into the other slot, so both hold the same version. Nothing is switched and the node does not restart.
+esp_err_t post_ota_copy(httpd_req_t* r) {
+  Who who;
+  if (!require(r, who, true, true)) return ESP_OK;
+  if (!github_update::start_copy()) return send_error(r, 409, "ota_busy");
+  ESP_LOGW(kTag, "copy of the running firmware to the other slot, started by \"%s\"", who.user.c_str());
+  json::Writer w;
+  w.begin_object().field("ok", true).field("started", true).end_object();
+  return send_json(r, 200, w.str());
+}
+
 esp_err_t post_factory_reset(httpd_req_t* r) {
   Who who;
   if (!require(r, who, true, true)) return ESP_OK;
@@ -752,6 +772,7 @@ esp_err_t api_handler(httpd_req_t* r) {
     if (route == "log") return get_log(r);
     if (route == "ota/check") return get_ota_check(r);
     if (route == "ota/progress") return get_ota_progress(r);
+    if (route == "ota/copy") return get_ota_copy(r);
   } else if (method == HTTP_POST) {
     if (route == "setup") return post_setup(r);
     if (route == "login") return post_login(r);
@@ -761,6 +782,7 @@ esp_err_t api_handler(httpd_req_t* r) {
     if (route == "factory-reset") return post_factory_reset(r);
     if (route == "ota") return post_ota(r);
     if (route == "ota/switch") return post_ota_switch(r);
+    if (route == "ota/copy") return post_ota_copy(r);
     if (route == "ota/install") return post_ota_install(r);
     if (route == "time") return post_time(r);
     if (route == "zigbee/radio") return post_zigbee_radio(r);

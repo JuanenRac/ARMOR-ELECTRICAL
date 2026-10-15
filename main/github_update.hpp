@@ -44,6 +44,21 @@ struct Progress {
 bool start(const std::string& asset_url, const std::string& expected_sha256);   // false when an install is already running
 Progress progress();
 
+// Copies the firmware that runs into the other slot (ota_0 <-> ota_1), so both hold the same version: a copy to fall back to, or to keep when the other
+// slot is about to be used for something else. It runs in a task of its own like an install; the running slot is only read, the other one is erased and
+// written, the image is checked at the end and nothing is set to boot (switching slots is a separate step). `state` is "idle", "copying", "done" or "failed".
+struct CopyProgress {
+  std::string state = "idle";
+  std::size_t done = 0;
+  std::size_t total = 0;
+  std::string error;
+  std::string version;
+};
+bool start_copy();   // false when an install or a copy is already running
+CopyProgress copy_progress();
+// Changes every time a slot is written: whoever caches what a slot holds starts again when it changes.
+unsigned slot_generation();
+
 // Downloads `asset_url` (check()'s own, so only ever what GitHub itself published) straight into the next OTA slot - the same checks as
 // an upload (minimum size, the image's own magic byte, the project name) plus the hash: the image must hash to `expected_sha256` or it is thrown away - and sets it to boot. Does not restart; the caller decides when.
 InstallResult install(const std::string& asset_url, const std::string& expected_sha256);

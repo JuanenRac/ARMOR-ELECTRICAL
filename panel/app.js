@@ -706,6 +706,7 @@ function helpPage() {
 function slotCard() {
   const parts = ((S.status && S.status.flash && S.status.flash.partitions) || []).filter(p => p.app);
   const other = parts.find(p => !p.running);
+  const running = parts.find(p => p.running);
   const usable = !!(other && other.used);
   const result = el("p", { class: "muted" });
   return card(t("slotsTitle"), el("p", { class: "muted" }, t("slotsHelp")),
@@ -717,13 +718,33 @@ function slotCard() {
       S.rebooting = true; render();
       const wait = async () => { const q = await api("GET", "session"); if (q.ok) location.reload(); else setTimeout(wait, 2000); };
       setTimeout(wait, 4000);
-    } }, usable ? t("switchSlot", other.label) : t("switchSlotNone"))));
+    } }, usable ? t("switchSlot", other.label) : t("switchSlotNone")),
+    el("button", { class: "b", disabled: !isAdmin() || !running, onclick: async () => {
+      if (!running || !confirm(t("copyAsk", running.label, running.version, other ? other.label : ""))) return;
+      const start = await api("POST", "ota/copy", {});
+      if (!start.ok) { result.textContent = errorText(start.data.error); result.className = "err"; return; }
+      result.className = "muted";
+      const follow = async () => {
+        const q = await api("GET", "ota/copy");
+        if (!q.ok) { result.textContent = errorText(q.data.error); result.className = "err"; return; }
+        const d = q.data;
+        if (d.state === "copying") { result.textContent = t("copyRunning", d.total ? Math.round(d.done * 100 / d.total) : 0); setTimeout(follow, 700); return; }
+        if (d.state === "done") { result.textContent = t("copyDone", d.version || ""); await refreshLive(); render(); return; }
+        result.textContent = errorText(d.error || "unknown"); result.className = "err";
+      };
+      result.textContent = t("copyRunning", 0);
+      setTimeout(follow, 700);
+    } }, t("copySlot", running ? running.label : "", other ? other.label : ""))));
 }
 
 // Copies text to the clipboard. navigator.clipboard only exists on a secure page (HTTPS), and the panel is often opened over plain HTTP, so
 // there is a fallback through a hidden text area. The button says what happened for a moment.
 function copyText(text, button) {
-  const done = ok => { const label = button.textContent; button.textContent = ok ? t("copied") : t("copyFailed"); setTimeout(() => { button.textContent = label; }, 1500); };
+  const done = ok => {
+    const note = button.querySelector(".copy-note");
+    if (note) { note.textContent = ok ? t("copied") : t("copyFailed"); button.classList.toggle("bad", !ok); setTimeout(() => { note.textContent = ""; button.classList.remove("bad"); }, 1800); return; }
+    const label = button.textContent; button.textContent = ok ? t("copied") : t("copyFailed"); setTimeout(() => { button.textContent = label; }, 1500);
+  };
   const fallback = () => {
     const area = el("textarea", { style: "position:fixed;left:-1000px;top:0" }); area.value = text;
     document.body.appendChild(area); area.select();
@@ -732,6 +753,17 @@ function copyText(text, button) {
     area.remove(); done(ok);
   };
   if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(() => done(true), fallback); else fallback();
+}
+
+// The copy button of a log: a small icon (no words), "Copied" next to it for a moment.
+function copyButton(getText) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24"); svg.setAttribute("width", "16"); svg.setAttribute("height", "16"); svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor"); svg.setAttribute("stroke-width", "1.8"); svg.setAttribute("stroke-linecap", "round"); svg.setAttribute("stroke-linejoin", "round");
+  svg.innerHTML = '<rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>';
+  const note = el("span", { class: "copy-note", role: "status" });
+  const button = el("button", { class: "b copy-btn", type: "button", tip: "copyLog", "aria-label": t("copyLog"), onclick: e => copyText(getText(), e.currentTarget) }, svg, note);
+  return button;
 }
 
 function updatePage() {
@@ -766,7 +798,7 @@ function updatePage() {
         if (r.ok) { S.rebooting = true; render(); setTimeout(() => location.reload(), 6000); } else alert(errorText(r.data.error));
       } }, t("factoryTitle")))),
     card(t("logTitle"), logBox, el("div", { class: "actions" }, el("button", { class: "b", onclick: async () => { S.log = { next: 0, text: "" }; await refreshLog(); } }, t("refresh")),
-      el("button", { class: "b", tip: "copyLog", onclick: e => copyText(S.log.text, e.currentTarget) }, t("copyLog")))));
+      copyButton(() => S.log.text))));
 }
 
 // ---- data, polling and the shell -------------------------------------------------------------------------------------------------------

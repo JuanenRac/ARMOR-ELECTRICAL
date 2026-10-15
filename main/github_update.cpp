@@ -2,12 +2,17 @@
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include "github_update.hpp"
 
+#include <atomic>
 #include <cctype>
 #include <memory>
 #include <mutex>
+#include <cstdint>
 #include <cstring>
+#include <new>
 extern "C" {
 #include "esp_app_desc.h"
+#include "esp_image_format.h"
+#include "esp_partition.h"
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_heap_caps.h"
@@ -48,7 +53,9 @@ bool open_following_redirects(esp_http_client_handle_t client, int& length, int&
 // Where the install in progress stands (see start()).
 std::mutex g_lock;
 Progress g_progress;
+CopyProgress g_copy;
 bool g_running = false;
+std::atomic<unsigned> g_generation{0};
 struct Job { std::string url; std::string sha; };
 
 // A GET with no body, read fully into a bounded buffer. False on any network, HTTP or size problem.
@@ -186,6 +193,7 @@ InstallResult install(const std::string& asset_url, const std::string& expected_
   const esp_partition_t* target = esp_ota_get_next_update_partition(nullptr);
   if (target == nullptr) { result.error = "no_partition"; esp_http_client_close(client); esp_http_client_cleanup(client); return result; }
   esp_ota_handle_t handle = 0;
+  ++g_generation;   // beginning an update erases the slot: what was known of it is gone
   if (esp_ota_begin(target, total, &handle) != ESP_OK) { result.error = "ota_begin"; esp_http_client_close(client); esp_http_client_cleanup(client); return result; }
   mbedtls_sha256_context sha;
   mbedtls_sha256_init(&sha);
@@ -271,6 +279,68 @@ bool start(const std::string& asset_url, const std::string& expected_sha256) {
 Progress progress() {
   std::lock_guard<std::mutex> guard(g_lock);
   return g_progress;
+}
+
+unsigned slot_generation() { return g_generation.load(); }
+
+namespace {
+void finish_copy(const char* error, const std::string& version) {
+  std::lock_guard<std::mutex> guard(g_lock);
+  g_copy.state = error == nullptr ? "done" : "failed";
+  g_copy.error = error == nullptr ? "" : error;
+  g_copy.version = version;
+  g_running = false;
+}
+
+void copy_task(void*) {
+  const esp_partition_t* from = esp_ota_get_running_partition();
+  const esp_partition_t* to = esp_ota_get_next_update_partition(nullptr);
+  if (from == nullptr || to == nullptr || from == to) { finish_copy("no_slot", ""); vTaskDelete(nullptr); return; }
+  // How long the image is: the running slot is much bigger than the firmware in it, and only the firmware is copied.
+  const esp_partition_pos_t position{from->address, from->size};
+  esp_image_metadata_t metadata{};
+  if (esp_image_verify(ESP_IMAGE_VERIFY_SILENT, &position, &metadata) != ESP_OK || metadata.image_len == 0) { finish_copy("source_invalid", ""); vTaskDelete(nullptr); return; }
+  const std::size_t total = metadata.image_len;
+  { std::lock_guard<std::mutex> guard(g_lock); g_copy.total = total; g_copy.done = 0; }
+  esp_ota_handle_t handle = 0;
+  ++g_generation;
+  if (esp_ota_begin(to, total, &handle) != ESP_OK) { finish_copy("ota_begin", ""); vTaskDelete(nullptr); return; }
+  constexpr std::size_t kChunk = 4096;
+  std::unique_ptr<std::uint8_t[]> buffer(new (std::nothrow) std::uint8_t[kChunk]);
+  if (!buffer) { esp_ota_abort(handle); finish_copy("no_memory", ""); vTaskDelete(nullptr); return; }
+  for (std::size_t offset = 0; offset < total;) {
+    const std::size_t n = total - offset < kChunk ? total - offset : kChunk;
+    if (esp_partition_read(from, offset, buffer.get(), n) != ESP_OK) { esp_ota_abort(handle); finish_copy("read_failed", ""); vTaskDelete(nullptr); return; }
+    if (esp_ota_write(handle, buffer.get(), n) != ESP_OK) { esp_ota_abort(handle); finish_copy("ota_write", ""); vTaskDelete(nullptr); return; }
+    offset += n;
+    { std::lock_guard<std::mutex> guard(g_lock); g_copy.done = offset; }
+    if ((offset / kChunk) % 16 == 0) vTaskDelay(1);   // the other tasks of the node go on while the flash is written
+  }
+  if (esp_ota_end(handle) != ESP_OK) { finish_copy("image_invalid", ""); vTaskDelete(nullptr); return; }
+  ++g_generation;
+  esp_app_desc_t description{};
+  const bool known = esp_ota_get_partition_description(to, &description) == ESP_OK;
+  ESP_LOGW(kTag, "the firmware of %s was copied to %s (%u bytes)", from->label, to->label, static_cast<unsigned>(total));
+  finish_copy(nullptr, known ? description.version : "");
+  vTaskDelete(nullptr);
+}
+}  // namespace
+
+bool start_copy() {
+  {
+    std::lock_guard<std::mutex> guard(g_lock);
+    if (g_running) return false;
+    g_running = true;
+    g_copy = CopyProgress{};
+    g_copy.state = "copying";
+  }
+  if (xTaskCreate(copy_task, "slot-copy", 6144, nullptr, 4, nullptr) != pdPASS) finish_copy("no_task", "");
+  return true;
+}
+
+CopyProgress copy_progress() {
+  std::lock_guard<std::mutex> guard(g_lock);
+  return g_copy;
 }
 
 }  // namespace armor::github_update
