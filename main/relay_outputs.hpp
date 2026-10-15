@@ -23,7 +23,7 @@ enum class Outcome { kOk, kUnknownRelay, kNotUnderstood, kRemoteOff };
 // The index (0 to 7) of the enabled relay with this name, or -1.
 int index_of(const std::string& name);
 
-// Tells the relay with this name what the broker said (a word: ON or OFF; TOGGLE is refused, a repeated delivery would undo it).
+// Tells the relay with this name what the broker said (a word: ON, OFF, TOGGLE).
 Outcome command(const std::string& relay, const std::string& payload);
 
 // What a central that holds the node's token (core/central_link.hpp) asked of a relay by name: moves it (on, off or toggle) when it is an enabled relay, whatever the broker's setting

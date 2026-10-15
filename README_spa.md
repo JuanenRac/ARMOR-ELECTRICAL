@@ -26,7 +26,7 @@
 
 ---
 
-**Comprobación de honestidad - qué funciona hoy:** **Madurez: scaffolding.** El núcleo (las tramas de los contadores PZEM-004T v3 y PZEM-017, el bus que los pregunta, el mensaje del nodo y las reglas para maniobrar: 53 comprobaciones de los contadores y 135.736 de las reglas de maniobra) se prueba en un ordenador con contadores y contactores simulados, y ARMOR-COMMON acepta los mensajes que hace. El firmware del nodo (los ajustes, la línea serie y las páginas Contadores y Lecturas de su panel: 71 comprobaciones más) compila en el contenedor de ESP-IDF 5.4.2 para las dos placas. **Nunca ha corrido en una placa, no se ha conectado nada a un contador, a un contactor, a un relé ni a la radio, y nada de aquí maniobra nada por sí solo.**
+**Comprobación de honestidad - qué funciona hoy:** **Madurez: scaffolding.** El núcleo (las tramas de los contadores PZEM-004T v3 y PZEM-017, el bus que los pregunta, el mensaje del nodo y las reglas para maniobrar: 53 comprobaciones de los contadores y 135.736 de las reglas de maniobra) se prueba en un ordenador con contadores y contactores simulados, y ARMOR-COMMON acepta los mensajes que hace. El firmware del nodo (los ajustes, la línea serie y las páginas Contadores y Lecturas de su panel: 71 comprobaciones más) compila en el contenedor de ESP-IDF 5.4.2 para las dos placas. **Nunca ha corrido en una placa, no se ha conectado nada a un contador ni a un contactor, y nada de aquí maniobra nada.**
 
 ---
 
@@ -38,11 +38,9 @@
 * **Las reglas para maniobrar,** aparte de cualquier hardware: un controlador del cambio entre dos fuentes que nunca manda las dos, exige la maniobra permitida, el nodo armado justo antes y los dos contactores confirmados abiertos durante todo el tiempo muerto, y convierte un contactor que no muestra lo que se le ordenó en una avería que se queda hasta que se reconoce. **La maniobra está desactivada por defecto y nada maneja ningún hardware.**
 * **Las órdenes a un conmutador, sin activar:** el mensaje de estado puede llevar el estado de los conmutadores del nodo, y el contrato compartido tiene una orden (`arm`, y después `close_a` o `close_b` con un token de un solo uso, `open`, `acknowledge`) y la respuesta del nodo; el núcleo las lee y las contesta con las reglas anteriores, probado con los vectores compartidos y con contactores simulados. Ninguna imagen del firmware lo incluye, así que nada puede accionar un contactor, y ARMOR-SERVER se niega a enviar una orden si no se activó (`ARMOR_ELECTRICAL_SWITCHING=1`) y el ACL del broker no lo permite.
 * **Dónde se ve:** el *Diseñador eléctrico* de ARMOR-STUDIO dibuja la red de la casa y muestra en cada elemento lo que mide su canal; ARMOR-SERVER guarda las lecturas, su historial y las sumas.
-* **El firmware del nodo** (ESP32-S3-WROOM-1 N16R8 por Wi-Fi, o la Waveshare ESP32-S3-ETH por su cable): los ajustes, una línea serie para hasta dieciséis contadores y el panel web de los otros nodos (puesta en marcha, usuarios, Wi-Fi, broker, actualización por aire, HTTPS) con sus propias páginas de Contadores y Lecturas, en siete idiomas. Lee los contadores y las entradas analógicas; sus únicas salidas son los relés de la placa base, que un administrador conmuta desde el panel; las reglas para maniobrar no están enlazadas en él. Véase [el firmware](docs/NODE_FIRMWARE.md).
-* **La placa base** (la que lleva el módulo ESP32-S3): una radio Zigbee en su propia línea serie que el nodo presta por TCP, byte a byte, a Zigbee2MQTT en el servidor y a ninguna otra dirección salvo un único respaldo que puedes indicar ([la radio](docs/ZIGBEE.md)); hasta ocho salidas de relé que un administrador cierra o abre desde el panel y que siempre arrancan abiertas; y hasta ocho entradas analógicas (una tensión con un divisor, una corriente de una pinza o de un sensor Hall) que pasan a ser canales del mensaje del nodo. La propuesta de pines y sus motivos están en [la placa base](docs/BASE_BOARD.md). Nada de esto ha corrido en una placa.
+* **El firmware del nodo** (ESP32-S3-WROOM-1 N16R8 por Wi-Fi, o la Waveshare ESP32-S3-ETH por su cable): los ajustes, una línea serie para hasta dieciséis contadores y el panel web de los otros nodos (puesta en marcha, usuarios, Wi-Fi, broker, actualización por aire, HTTPS) con sus propias páginas de Contadores y Lecturas, en siete idiomas. Solo lee: las reglas para maniobrar no están enlazadas en él. Véase [el firmware](docs/NODE_FIRMWARE.md).
 * **Configuración desde el móvil por Bluetooth,** el mismo canal que el del nodo radar: la app ARMOR encuentra el nodo como `ARMOR-XXXXXX` y ajusta su nombre, Wi-Fi, dirección, broker y modo de Bluetooth con los usuarios y el código de puesta en marcha del panel ([el protocolo](docs/BLE_PROVISIONING.md)). Solo escucha mientras el nodo no tiene usuarios, salvo que se indique otra cosa. La parte de radio nunca ha corrido en una placa.
 * **Todavía no:** el firmware funcionando en una placa, el hardware, ninguna medida de una instalación real y ninguna maniobra.
-* **Sin bloqueo mutuo entre los relés y el broker:** los mensajes pasan por una cola atendida por una tarea propia, de modo que ninguna tarea retiene un bloqueo mientras espera al cliente del broker, y el perro guardián reinicia la placa si se para la tarea que abre los relés al perder el broker.
 
 ## 📂 Estructura del repositorio
 
@@ -61,7 +59,7 @@ ARMOR-ELECTRICAL/
 ## 🛠️ Entorno de desarrollo
 
 ```bash
-cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 375.928 checks: the meters (53), the loop that asks them (62), the settings (73), Bluetooth (68), the interlock rules (135,736), the switch set (239,300)
+cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 135,990 checks: the meters (53), the loop that asks them (62), the settings (71), Bluetooth (68), the switching rules (135,736)
 build/host/emit_samples | python tests/check_samples.py                                     # the messages, against ARMOR-COMMON
 node tools/panel_mock.mjs --user admin:adminpass123                                         # the panel without a board
 tools/build_node.sh generic                                                                 # the firmware image for the N16R8 board in the ESP-IDF container: dist/generic-s3-wifi.bin
@@ -80,14 +78,12 @@ Véanse el [diseño](docs/DESIGN.md), las [notas de seguridad](docs/SAFETY.md), 
 * **[ARMOR-RADAR](https://github.com/JuanenRac/ARMOR-RADAR)** - Firmware del nodo de campo para ESP32-S3 con tres radares y su propio panel web
 * **[ARMOR-SOLAR](https://github.com/JuanenRac/ARMOR-SOLAR)** - Protocolos de inversores y baterías solares y los mensajes de un nodo pasarela
 * **ARMOR-ELECTRICAL** (este repositorio) - Nodo eléctrico: contadores, el mensaje de las lecturas de la red y las reglas para maniobrar
-* **[ARMOR-ALARM](https://github.com/JuanenRac/ARMOR-ALARM)** - Nodo y central de alarma: zonas, armado, retardos, sirena y PIN, con el servidor o sin él
 * **[ARMOR-HMI](https://github.com/JuanenRac/ARMOR-HMI)** - Panel táctil: el estado del sistema en una pantalla de pared, armar y reconocer alarmas, y el hogar del asistente de voz
 * **[ARMOR-NETWORK](https://github.com/JuanenRac/ARMOR-NETWORK)** - La red local: sus dispositivos, internet y lo que cambia
 * **[ARMOR-SERVER](https://github.com/JuanenRac/ARMOR-SERVER)** - Coordinador central: telemetría, alarmas, dispositivos, lecturas solares y cámaras
 * **[ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO)** - Consola web: cámaras, radar, alarmas, energía solar y el diseñador de sitio 2D/3D
 * **[ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL)** - Cliente Android del operador con radar 2D/3D en vivo
 * **[ARMOR-SERVER-AI](https://github.com/JuanenRac/ARMOR-SERVER-AI)** - Política de inferencia visual que explica sus decisiones y nunca actúa
-* **[ARMOR-VISION](https://github.com/JuanenRac/ARMOR-VISION)** - Zonas de cámara, máscaras y reglas de detección para la Jetson Orin NX
 * **[ARMOR-VOICE-AI](https://github.com/JuanenRac/ARMOR-VOICE-AI)** - Intenciones de voz sin conexión con una confirmación imposible de falsificar
 * **[ARMOR-HARDWARE](https://github.com/JuanenRac/ARMOR-HARDWARE)** - Cajas, electrónica y la matriz de aceptación en banco
 * **[ARMOR-DEVOPS](https://github.com/JuanenRac/ARMOR-DEVOPS)** - Despliegue, el banco de pruebas de la CM5, copias de seguridad y TLS

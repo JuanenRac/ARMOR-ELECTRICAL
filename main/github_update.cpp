@@ -10,7 +10,9 @@ extern "C" {
 #include "esp_app_desc.h"
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "esp_ota_ops.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -50,7 +52,7 @@ bool g_running = false;
 struct Job { std::string url; std::string sha; };
 
 // A GET with no body, read fully into a bounded buffer. False on any network, HTTP or size problem.
-bool get_bounded(const std::string& url, const char* accept, std::string& out, std::string& error) {
+bool get_bounded_once(const std::string& url, const char* accept, std::string& out, std::string& error) {
   esp_http_client_config_t config{};
   config.url = url.c_str();
   config.crt_bundle_attach = esp_crt_bundle_attach;
@@ -82,6 +84,20 @@ bool get_bounded(const std::string& url, const char* accept, std::string& out, s
   esp_http_client_close(client);
   esp_http_client_cleanup(client);
   return ok;
+}
+
+// A connection that fails is tried again: the node may be answering a browser at the same moment, and a handshake that finds no memory left for a moment is not a lost network. Each
+// attempt starts from nothing (the client is made and freed inside), and the wait lets the other connection finish and give its memory back.
+bool get_bounded(const std::string& url, const char* accept, std::string& out, std::string& error) {
+  for (int attempt = 1; attempt <= 3; ++attempt) {
+    out.clear();
+    error.clear();
+    if (get_bounded_once(url, accept, out, error)) return true;
+    if (error != "connect_failed" && error != "read_error") return false;
+    ESP_LOGW(kTag, "the connection to GitHub failed (attempt %d of 3, %u bytes of internal memory free)", attempt, static_cast<unsigned>(esp_get_free_internal_heap_size()));
+    if (attempt < 3) vTaskDelay(pdMS_TO_TICKS(2500));
+  }
+  return false;
 }
 
 // The 64 hex digits at the start of a `sha256sum` line (a bare hash also works), in lowercase; empty when the text does not start with one.
@@ -154,7 +170,12 @@ InstallResult install(const std::string& asset_url, const std::string& expected_
   if (client == nullptr) { result.error = "client_init"; return result; }
   esp_http_client_set_header(client, "User-Agent", "ARMOR-ELECTRICAL");
   int length = 0, status = 0;
-  if (!open_following_redirects(client, length, status)) { result.error = "connect_failed"; esp_http_client_cleanup(client); return result; }
+  bool opened = false;
+  for (int attempt = 1; attempt <= 3 && !opened; ++attempt) {
+    opened = open_following_redirects(client, length, status);
+    if (!opened && attempt < 3) { ESP_LOGW(kTag, "the download did not connect (attempt %d of 3)", attempt); esp_http_client_close(client); vTaskDelay(pdMS_TO_TICKS(2500)); }
+  }
+  if (!opened) { result.error = "connect_failed"; esp_http_client_cleanup(client); return result; }
   if (status != 200 || length <= 0 || static_cast<std::size_t>(length) < kMinFirmware || static_cast<std::size_t>(length) > kMaxFirmware) {
     result.error = status != 200 ? "http_" + std::to_string(status) : "bad_size";
     esp_http_client_close(client); esp_http_client_cleanup(client);

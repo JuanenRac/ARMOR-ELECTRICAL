@@ -34,6 +34,8 @@ CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
 # The HTTPS panel: a second server with its own certificate; the TLS buffers are released while a connection is idle.
 CONFIG_ESP_HTTPS_SERVER_ENABLE=y
 CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+# The TLS buffers go to the external memory: with a browser on the HTTPS panel and the download from GitHub at the same time the internal memory ran out (alloc failed, connect_failed).
+CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
 CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA=y
 CONFIG_MBEDTLS_DYNAMIC_FREE_CA_CERT=y
 # The node makes its own certificate on the first boot in this task: mbedTLS needs several KB of stack to write a certificate (a 4 KB output buffer

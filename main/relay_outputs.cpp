@@ -115,10 +115,7 @@ Outcome command(const std::string& relay, const std::string& payload) {
   const int index = g_bank->find(relay);
   if (index < 0) { ESP_LOGW(kTag, "a command for \"%s\" was ignored: no such relay", relay.c_str()); return Outcome::kUnknownRelay; }
   const relays::Action action = relays::parse_command(payload);
-  if (action == relays::Action::kNone) { ESP_LOGW(kTag, "a command for \"%s\" was ignored: not ON or OFF", relay.c_str()); return Outcome::kNotUnderstood; }
-  // The broker may deliver a message twice (QoS 1): an ON or an OFF done twice leaves the relay as it should be, a TOGGLE done twice leaves it the wrong way round. A toggle is
-  // only accepted from the central that holds the node's token, over HTTP, where a request is answered once.
-  if (action == relays::Action::kToggle) { ESP_LOGW(kTag, "a TOGGLE for \"%s\" from the broker was ignored: send ON or OFF", relay.c_str()); return Outcome::kNotUnderstood; }
+  if (action == relays::Action::kNone) { ESP_LOGW(kTag, "a command for \"%s\" was ignored: not ON, OFF or TOGGLE", relay.c_str()); return Outcome::kNotUnderstood; }
   const std::size_t i = static_cast<std::size_t>(index);
   drive(i, action == relays::Action::kToggle ? !g_bank->is_on(i) : action == relays::Action::kOn, "the broker");
   return Outcome::kOk;

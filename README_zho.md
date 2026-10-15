@@ -26,7 +26,7 @@
 
 ---
 
-**诚实性检查 - 今天真正能运行的部分:** **成熟度：scaffolding。** 核心（PZEM-004T v3 和 PZEM-017 电表的帧、轮询它们的总线、节点的消息和开关规则：电表 53 项检查和开关规则 135,736 项检查）在电脑上用模拟的电表和接触器测试，其生成的消息被 ARMOR-COMMON 接受。节点固件（设置、串口线路以及面板的电表页和读数页：另有 71 项检查）在 ESP-IDF 5.4.2 容器中可为两种电路板编译。**它从未在电路板上运行过，没有连接任何电表、接触器、继电器或无线电，这里也不会自行开关任何东西。**
+**诚实性检查 - 今天真正能运行的部分:** **成熟度：scaffolding。** 核心（PZEM-004T v3 和 PZEM-017 电表的帧、轮询它们的总线、节点的消息和开关规则：电表 53 项检查和开关规则 135,736 项检查）在电脑上用模拟的电表和接触器测试，其生成的消息被 ARMOR-COMMON 接受。节点固件（设置、串口线路以及面板的电表页和读数页：另有 71 项检查）在 ESP-IDF 5.4.2 容器中可为两种电路板编译。**它从未在电路板上运行过，没有连接任何电表或接触器，这里也不会开关任何东西。**
 
 ---
 
@@ -38,11 +38,9 @@
 * **开关规则，** 与任何硬件无关：两个电源之间转换的控制器，绝不同时指令两者，要求开关操作被允许、节点在刚才已布防、两个接触器在整个死区时间内都被确认断开，并把没有显示所指令状态的接触器当作故障，直到被确认才消除。**开关默认关闭，没有任何硬件被驱动。**
 * **对开关的命令（未启用）：** 状态消息可以携带节点各开关的状态，共享契约中有一条命令（`arm`，然后带一次性令牌的 `close_a` 或 `close_b`、`open`、`acknowledge`）以及节点的应答；核心按上述规则读取并应答，已用共享向量和模拟接触器测试。没有任何固件镜像包含它，因此不能驱动任何接触器；除非已启用（`ARMOR_ELECTRICAL_SWITCHING=1`）且代理的 ACL 允许，ARMOR-SERVER 不会发送命令。
 * **在哪里显示：** ARMOR-STUDIO 的*电气设计器*绘制住宅的电网，并在每个元件上显示其通道的测量值；ARMOR-SERVER 保存读数、历史和合计。
-* **节点固件**（Wi-Fi 的 ESP32-S3-WROOM-1 N16R8，或有线的 Waveshare ESP32-S3-ETH）：设置、供最多十六块电表使用的一条串口线路，以及与其他节点相同的网页面板（设置、用户、Wi-Fi、代理、无线更新、HTTPS），另有自己的电表页和读数页（七种语言）。读取电表和模拟输入；它唯一的输出是底板上的继电器，由管理员在面板上切换；开关规则没有链接进去。参见[固件](docs/NODE_FIRMWARE.md)。
-* **底板**（承载 ESP32-S3 模块的电路板）：一个接在独立串口线上的 Zigbee 无线电，节点把它按字节通过 TCP 只借给服务器上的 Zigbee2MQTT，除您可指定的一个备用地址外不借给任何其他地址（[无线电](docs/ZIGBEE.md)）；最多八路继电器输出，由管理员在面板上闭合或断开，且始终以断开状态启动；以及最多八路模拟输入（经分压器的电压、来自钳表或霍尔传感器的电流），它们会成为节点消息中的通道。引脚方案及理由见[底板](docs/BASE_BOARD.md)。以上内容均尚未在电路板上运行过。
+* **节点固件**（Wi-Fi 的 ESP32-S3-WROOM-1 N16R8，或有线的 Waveshare ESP32-S3-ETH）：设置、供最多十六块电表使用的一条串口线路，以及与其他节点相同的网页面板（设置、用户、Wi-Fi、代理、无线更新、HTTPS），另有自己的电表页和读数页（七种语言）。只读取：开关规则没有链接进去。参见[固件](docs/NODE_FIRMWARE.md)。
 * **通过蓝牙用手机配置：** 与雷达节点相同的通道。ARMOR 应用会以 `ARMOR-XXXXXX` 找到节点，并使用面板的用户和设置码来设置其名称、Wi-Fi、地址、代理和蓝牙模式（[协议](docs/BLE_PROVISIONING.md)）。除非另行设置，它只在节点还没有用户时监听。无线部分从未在电路板上运行过。
 * **尚未完成：** 在电路板上运行的固件、硬件、对真实设施的任何测量以及任何开关操作。
-* **继电器与代理之间不会死锁：** 消息经由专用任务处理的队列发送，因此没有任务会在等待代理客户端时持有锁；若在代理丢失时负责断开继电器的任务停止，看门狗会重启开发板。
 
 ## 📂 仓库结构
 
@@ -61,7 +59,7 @@ ARMOR-ELECTRICAL/
 ## 🛠️ 开发环境
 
 ```bash
-cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 375,928 checks: the meters (53), the loop that asks them (62), the settings (73), Bluetooth (68), the interlock rules (135,736), the switch set (239,300)
+cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 135,990 checks: the meters (53), the loop that asks them (62), the settings (71), Bluetooth (68), the switching rules (135,736)
 build/host/emit_samples | python tests/check_samples.py                                     # the messages, against ARMOR-COMMON
 node tools/panel_mock.mjs --user admin:adminpass123                                         # the panel without a board
 tools/build_node.sh generic                                                                 # the firmware image for the N16R8 board in the ESP-IDF container: dist/generic-s3-wifi.bin
@@ -80,14 +78,12 @@ See the [firmware guide](docs/NODE_FIRMWARE.md) and the [Bluetooth channel](docs
 * **[ARMOR-RADAR](https://github.com/JuanenRac/ARMOR-RADAR)** - 适用于 ESP32-S3 的现场节点固件，带三个雷达和自带网页面板
 * **[ARMOR-SOLAR](https://github.com/JuanenRac/ARMOR-SOLAR)** - 太阳能逆变器与电池的协议，以及网关节点的消息
 * **ARMOR-ELECTRICAL** (本仓库) - 电气节点：电表、电网读数消息和开关规则
-* **[ARMOR-ALARM](https://github.com/JuanenRac/ARMOR-ALARM)** - 报警节点与报警主机：防区、布防、延时、警笛和 PIN，有无服务器均可
 * **[ARMOR-HMI](https://github.com/JuanenRac/ARMOR-HMI)** - 触摸面板：墙面屏幕上的系统状态、布防与确认，以及语音助手的所在
 * **[ARMOR-NETWORK](https://github.com/JuanenRac/ARMOR-NETWORK)** - 本地网络：其设备、互联网以及变化
 * **[ARMOR-SERVER](https://github.com/JuanenRac/ARMOR-SERVER)** - 中央协调器：遥测、报警、设备、太阳能读数和摄像头
 * **[ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO)** - 网页控制台：摄像头、雷达、报警、太阳能和 2D/3D 场地设计器
 * **[ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL)** - 带实时 2D/3D 雷达的 Android 操作员客户端
 * **[ARMOR-SERVER-AI](https://github.com/JuanenRac/ARMOR-SERVER-AI)** - 会解释决策且从不执行动作的视觉推理策略
-* **[ARMOR-VISION](https://github.com/JuanenRac/ARMOR-VISION)** - Jetson Orin NX 上的摄像头区域、遮罩与检测规则
 * **[ARMOR-VOICE-AI](https://github.com/JuanenRac/ARMOR-VOICE-AI)** - 带无法伪造确认的离线语音意图
 * **[ARMOR-HARDWARE](https://github.com/JuanenRac/ARMOR-HARDWARE)** - 外壳、电子器件和台架验收矩阵
 * **[ARMOR-DEVOPS](https://github.com/JuanenRac/ARMOR-DEVOPS)** - 部署、CM5 测试台、备份与 TLS

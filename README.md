@@ -26,7 +26,7 @@
 
 ---
 
-**Honesty check - what runs today:** **Maturity: scaffolding.** The core (the frames of the PZEM-004T v3 and PZEM-017 meters, the bus that asks them, the message of the node and the rules for switching: 53 checks of the meters and 135,736 of the switching rules) is tested on a computer with stand-in meters and contactors, and the messages it makes are accepted by ARMOR-COMMON. The firmware of the node (the settings, the serial line and the Meters and Readings pages of its panel: 71 more checks) builds in the ESP-IDF 5.4.2 container for both boards. **It has never run on a board, nothing has been connected to a meter, a contactor, a relay or the radio, and nothing here switches anything by itself.**
+**Honesty check - what runs today:** **Maturity: scaffolding.** The core (the frames of the PZEM-004T v3 and PZEM-017 meters, the bus that asks them, the message of the node and the rules for switching: 53 checks of the meters and 135,736 of the switching rules) is tested on a computer with stand-in meters and contactors, and the messages it makes are accepted by ARMOR-COMMON. The firmware of the node (the settings, the serial line and the Meters and Readings pages of its panel: 71 more checks) builds in the ESP-IDF 5.4.2 container for both boards. **It has never run on a board, nothing has been connected to a meter or a contactor, and nothing here switches anything.**
 
 ---
 
@@ -38,11 +38,9 @@
 * **The rules for switching,** apart from any hardware: a controller for the transfer between two sources that never commands both, needs the switching allowed, the node armed just before, both contactors confirmed open for the whole dead time, and turns a contactor that does not show what it was told into a fault that stays until it is acknowledged. **Switching is off by default and nothing drives any hardware.**
 * **The commands to a switch, not activated:** the state message can carry the state of the node's switches, and the shared contract has a command (`arm`, then `close_a` or `close_b` with a one-time token, `open`, `acknowledge`) and the node's answer; the core reads and answers them with the rules above, tested against the shared vectors and with stand-in contactors. No firmware image includes it, so nothing can drive a contactor, and ARMOR-SERVER refuses to send a command unless it was turned on (`ARMOR_ELECTRICAL_SWITCHING=1`) and the broker's ACL allows it.
 * **Where it shows:** the *Electrical Designer* of ARMOR-STUDIO draws the house's network and shows on each element what its channel measures; ARMOR-SERVER keeps the readings, their history and the sums.
-* **The firmware of the node** (ESP32-S3-WROOM-1 N16R8 on Wi-Fi, or the Waveshare ESP32-S3-ETH on its cable): the settings, one serial line for up to sixteen meters and the web panel of the other nodes (set-up, users, Wi-Fi, broker, update over the air, HTTPS) with its own Meters and Readings pages, in seven languages. It reads the meters and the analog inputs; its only outputs are the base board's relays, which an administrator switches from the panel; the rules for switching are not linked into it. See [the firmware](docs/NODE_FIRMWARE.md).
-* **The base board** (the board that carries the ESP32-S3 module): a Zigbee radio on its own serial line that the node lends over TCP, byte for byte, to Zigbee2MQTT on the server and to no other address than the one fallback you may name ([the radio](docs/ZIGBEE.md)); up to eight relay outputs that an administrator closes or opens from the panel and that always start open; and up to eight analog inputs (a voltage through a divider, a current from a clamp or a Hall sensor) that become channels of the node's message. The pin proposal and its reasons are in [the base board](docs/BASE_BOARD.md). None of it has run on a board.
+* **The firmware of the node** (ESP32-S3-WROOM-1 N16R8 on Wi-Fi, or the Waveshare ESP32-S3-ETH on its cable): the settings, one serial line for up to sixteen meters and the web panel of the other nodes (set-up, users, Wi-Fi, broker, update over the air, HTTPS) with its own Meters and Readings pages, in seven languages. It only reads: the rules for switching are not linked into it. See [the firmware](docs/NODE_FIRMWARE.md).
 * **Configuration from a phone over Bluetooth,** the same channel as the radar node's: the ARMOR app finds the node as `ARMOR-XXXXXX` and sets its name, Wi-Fi, address, broker and Bluetooth mode with the panel's users and set-up code ([the protocol](docs/BLE_PROVISIONING.md)). It listens only while the node has no user, unless told otherwise. The radio side has never run on a board.
 * **Not yet:** the firmware running on a board, the hardware, any measurement of a real installation and any switching.
-* **No deadlock between the relays and the broker:** messages go through a queue handled by a task of its own, so that no task holds a lock while waiting for the broker's client, and the watchdog restarts the board if the task that opens the relays when the broker is lost stops.
 
 ## 📂 Repository Structure
 
@@ -61,7 +59,7 @@ ARMOR-ELECTRICAL/
 ## 🛠️ Development Environment
 
 ```bash
-cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 375,928 checks: the meters (53), the loop that asks them (62), the settings (73), Bluetooth (68), the interlock rules (135,736), the switch set (239,300)
+cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 135,990 checks: the meters (53), the loop that asks them (62), the settings (71), Bluetooth (68), the switching rules (135,736)
 build/host/emit_samples | python tests/check_samples.py                                     # the messages, against ARMOR-COMMON
 node tools/panel_mock.mjs --user admin:adminpass123                                         # the panel without a board
 tools/build_node.sh generic                                                                 # the firmware image for the N16R8 board in the ESP-IDF container: dist/generic-s3-wifi.bin
@@ -80,14 +78,12 @@ See the [design](docs/DESIGN.md), the [safety notes](docs/SAFETY.md), the [rules
 * **[ARMOR-RADAR](https://github.com/JuanenRac/ARMOR-RADAR)** - Field-node firmware for ESP32-S3 with three radars and its own web panel
 * **[ARMOR-SOLAR](https://github.com/JuanenRac/ARMOR-SOLAR)** - Solar inverter and battery protocols and the messages of a gateway node
 * **ARMOR-ELECTRICAL** (this repository) - Electrical node: meters, the message of the network's readings and the rules for switching
-* **[ARMOR-ALARM](https://github.com/JuanenRac/ARMOR-ALARM)** - Alarm node and panel: zones, arming, delays, siren and PIN, with the server or without it
 * **[ARMOR-HMI](https://github.com/JuanenRac/ARMOR-HMI)** - Touch panel: the state of the system on a wall screen, arming and acknowledging, and the home of the voice assistant
 * **[ARMOR-NETWORK](https://github.com/JuanenRac/ARMOR-NETWORK)** - The local network: its devices, the internet and what changes
 * **[ARMOR-SERVER](https://github.com/JuanenRac/ARMOR-SERVER)** - Central coordinator: telemetry, alarms, devices, solar readings and cameras
 * **[ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO)** - Web console: cameras, radar, alarms, solar energy and the 2D/3D site designer
 * **[ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL)** - Android operator client with a live 2D/3D radar
 * **[ARMOR-SERVER-AI](https://github.com/JuanenRac/ARMOR-SERVER-AI)** - Visual inference policy that explains its decisions and never actuates
-* **[ARMOR-VISION](https://github.com/JuanenRac/ARMOR-VISION)** - Camera zones, masks and detection rules for the Jetson Orin NX
 * **[ARMOR-VOICE-AI](https://github.com/JuanenRac/ARMOR-VOICE-AI)** - Offline voice intents with a confirmation that cannot be forged
 * **[ARMOR-HARDWARE](https://github.com/JuanenRac/ARMOR-HARDWARE)** - Enclosures, electronics and the bench acceptance matrix
 * **[ARMOR-DEVOPS](https://github.com/JuanenRac/ARMOR-DEVOPS)** - Deployment, the CM5 test bench, backup and TLS
