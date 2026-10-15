@@ -182,7 +182,11 @@ class SessionTable {
   // Starts a session; when the table is full the one idle the longest is replaced.
   void create(std::string token, std::string user, Role role, std::uint64_t now_ms, bool remembered = false) {
     Session* slot = nullptr;
-    for (Session& session : sessions_) if (!session.used || now_ms - session.last_seen_ms > kSessionIdleMs) { slot = &session; break; }
+    // A free place first, then one whose owner has been idle longer than ITS OWN allowance (a "remember me" session lives thirty days, not thirty minutes: it used to be taken for
+    // free after thirty minutes, so logging in from a laptop threw the phone out), then the one idle the longest.
+    for (Session& session : sessions_) if (session.used && same_text(session.token, token)) { slot = &session; break; }   // the same token starts over, never twice
+    if (slot == nullptr) for (Session& session : sessions_) if (!session.used) { slot = &session; break; }
+    if (slot == nullptr) for (Session& session : sessions_) if (now_ms - session.last_seen_ms > (session.remembered ? kRememberedIdleMs : kSessionIdleMs)) { slot = &session; break; }
     if (slot == nullptr) slot = &*std::min_element(sessions_.begin(), sessions_.end(), [](const Session& a, const Session& b) { return a.last_seen_ms < b.last_seen_ms; });
     *slot = {std::move(token), std::move(user), role, now_ms, true, remembered};
   }

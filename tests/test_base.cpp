@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "../core/auth.hpp"
 #include "../core/backoff.hpp"
 #include "../core/improv.hpp"
 #include "../core/task_health.hpp"
@@ -160,7 +161,31 @@ static void test_task_health() {
   CHECK(health::tasks_json({}) == "[]" && health::low_count({}) == 0);
 }
 
+// ---- the sessions of the panel ------------------------------------------------------------------------------------------------------------
+
+static void test_remembered_session_is_not_taken_after_half_an_hour() {
+  using namespace armor::auth;
+  SessionTable table;
+  const std::string phone(40, 'p');
+  table.create(phone, "admin", Role::kAdmin, 1000, /*remembered=*/true);
+  // five more people come in 31 minutes later and fill the table (six places); the phone's session is remembered, so it is not idle for thirty days
+  const std::uint64_t later = 1000 + 31ULL * 60ULL * 1000ULL;
+  for (int i = 0; i < 5; ++i) table.create(std::string(40, static_cast<char>('a' + i)), "user", Role::kAdmin, later);
+  CHECK(table.touch(phone, later + 1) != nullptr);      // it is still there
+  // a plain session that has been idle too long is the one that goes when the table is full
+  SessionTable full;
+  for (int i = 0; i < 6; ++i) full.create(std::string(40, static_cast<char>('a' + i)), "user", Role::kAdmin, 1000);
+  full.create(std::string(40, 'z'), "new", Role::kAdmin, 1000 + 31ULL * 60ULL * 1000ULL);
+  CHECK(full.touch(std::string(40, 'z'), 1000 + 31ULL * 60ULL * 1000ULL + 1) != nullptr);
+  // with nothing idle, the one idle the longest is replaced
+  SessionTable busy;
+  for (int i = 0; i < 6; ++i) busy.create(std::string(40, static_cast<char>('a' + i)), "user", Role::kAdmin, 1000 + static_cast<std::uint64_t>(i) * 10);
+  busy.create(std::string(40, 'z'), "new", Role::kAdmin, 2000);
+  CHECK(busy.touch(std::string(40, 'a'), 2001) == nullptr && busy.touch(std::string(40, 'b'), 2001) != nullptr);
+}
+
 int main() {
+  test_remembered_session_is_not_taken_after_half_an_hour();
   test_backoff();
   test_improv_packets();
   test_improv_parser();

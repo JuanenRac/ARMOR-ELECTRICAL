@@ -176,10 +176,13 @@ bool read_body(httpd_req_t* r, std::string& body, std::size_t limit = kMaxBody) 
   if (r->content_len > limit) return false;
   body.resize(r->content_len);
   std::size_t got = 0;
+  std::int64_t last_data_us = esp_timer_get_time();
   while (got < r->content_len) {
     const int n = httpd_req_recv(r, body.data() + got, r->content_len - got);
-    if (n == HTTPD_SOCK_ERR_TIMEOUT) continue;
+    // A client that announces a body and sends nothing used to keep the only thread of the server here for ever: after fifteen seconds without a byte the request is given up.
+    if (n == HTTPD_SOCK_ERR_TIMEOUT) { if (esp_timer_get_time() - last_data_us > 15000000) return false; continue; }
     if (n <= 0) return false;
+    last_data_us = esp_timer_get_time();
     got += static_cast<std::size_t>(n);
   }
   return true;
@@ -634,9 +637,11 @@ esp_err_t post_ota(httpd_req_t* r) {
   static std::uint8_t chunk[2048];
   std::size_t got = 0;
   bool first = true;
+  std::int64_t last_chunk_us = esp_timer_get_time();
   while (got < total) {
     const int n = httpd_req_recv(r, reinterpret_cast<char*>(chunk), sizeof chunk < total - got ? sizeof chunk : total - got);
-    if (n == HTTPD_SOCK_ERR_TIMEOUT) continue;
+    if (n == HTTPD_SOCK_ERR_TIMEOUT) { if (esp_timer_get_time() - last_chunk_us > 15000000) { esp_ota_abort(handle); mbedtls_sha256_free(&sha); return send_error(r, 408, "upload_stalled"); } continue; }
+    last_chunk_us = esp_timer_get_time();
     if (n <= 0) { esp_ota_abort(handle); mbedtls_sha256_free(&sha); return send_error(r, 400, "upload_interrupted"); }
     if (first) {
       first = false;
@@ -663,6 +668,24 @@ esp_err_t post_ota(httpd_req_t* r) {
 // The GitHub counterpart of post_ota(): checking for a release, and installing it, next to (never instead of) the manual upload above.
 bool g_ota_restart_scheduled = false;
 
+// The restart after an installation from GitHub used to be scheduled only when the panel asked how far it was: with the browser closed the new image was set to boot and the node went
+// on with the old one until the next restart of any kind (a power cut) switched it, unannounced. Now a timer of its own watches the installation and restarts the node when it is done.
+void watch_install(void*) {
+  const github_update::Progress p = github_update::progress();
+  if (p.state == "done" && !g_ota_restart_scheduled) { g_ota_restart_scheduled = true; restart_after(2500); }
+}
+void start_install_watch() {
+  static esp_timer_handle_t timer = nullptr;
+  if (timer == nullptr) {
+    esp_timer_create_args_t args{};
+    args.callback = &watch_install;
+    args.name = "ota-watch";
+    if (esp_timer_create(&args, &timer) != ESP_OK) return;
+  }
+  esp_timer_stop(timer);
+  esp_timer_start_periodic(timer, 1000000ULL);   // it keeps looking: a new installation starts it again, and a restart ends it
+}
+
 esp_err_t get_ota_check(httpd_req_t* r) {
   Who who;
   if (!require(r, who, true, false)) return ESP_OK;
@@ -686,6 +709,7 @@ esp_err_t post_ota_install(httpd_req_t* r) {
   if (!github_update::start(checked.asset_url, checked.sha256)) return send_error(r, 409, "ota_busy");
   ESP_LOGW(kTag, "installing firmware %s from GitHub, started by \"%s\"", checked.latest_version.c_str(), who.user.c_str());
   g_ota_restart_scheduled = false;
+  start_install_watch();
   json::Writer w;
   w.begin_object().field("ok", true).field("started", true).end_object();
   return send_json(r, 200, w.str());

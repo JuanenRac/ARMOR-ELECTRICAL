@@ -157,9 +157,27 @@ constexpr int kBrokerBadRoundsBeforeSwitch = 3;   // about 30 s disconnected bef
 // while, and only when another saved broker exists - never while the one above still works.
 void broker_watchdog_task(void*) {
   int bad_rounds = 0;
+  int rounds_on_backup = 0;
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(kBrokerCheckEverySeconds * 1000));
-    if (g_connected) { bad_rounds = 0; continue; }
+    if (g_connected) {
+      bad_rounds = 0;
+      // On a saved broker that is not the first one for half an hour: the first one is tried again (it used to be forgotten until the next restart). If it is still down the watchdog
+      // moves on to the next saved one after the usual wait.
+      if (g_broker_index != 0 && ++rounds_on_backup * kBrokerCheckEverySeconds >= 1800) {
+        rounds_on_backup = 0;
+        g_broker_index = 0;
+        const config::Broker first = current_broker(g_settings, 0);
+        ESP_LOGI(kTag, "back to the first saved broker (%s) to see whether it answers again", first.uri.c_str());
+        esp_mqtt_client_handle_t old = nullptr;
+        { std::lock_guard<std::mutex> guard(g_client_lock); old = g_client; g_client = nullptr; }
+        g_connected = false;
+        if (old != nullptr) { esp_mqtt_client_stop(old); esp_mqtt_client_destroy(old); }
+        start_client(first);
+      }
+      continue;
+    }
+    rounds_on_backup = 0;
     const int total = broker_count(g_settings);
     if (total <= 1) continue;
     bad_rounds += 1;
