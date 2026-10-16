@@ -56,6 +56,15 @@
 * **带 PIN 的蓝牙配对：**六位 PIN 由设置码派生，打印在 USB 控制台上并向管理员显示在面板中；手机必须输入它才能写入节点的设置。
 * **尚未完成：** 在电路板上运行的固件、硬件、对真实设施的任何测量以及任何开关操作。
 
+## 🖼️ 屏幕截图
+
+在测试台上以 1920×1080 截取，使用示例数据，背后没有真实的安装。
+
+<table>
+<tr><td width="50%" valign="top"><img src="images/screenshots/overview.png" alt="概览：节点状态一目了然——网络、代理、固件及其上报内容。" width="100%"><br><sub>概览：节点状态一目了然——网络、代理、固件及其上报内容。</sub></td><td width="50%" valign="top"><img src="images/screenshots/meters.png" alt="电表：节点读取的电能表和模拟通道，各有名称和量程。" width="100%"><br><sub>电表：节点读取的电能表和模拟通道，各有名称和量程。</sub></td></tr>
+<tr><td width="50%" valign="top"><img src="images/screenshots/readings.png" alt="读数：节点此刻读取到的内容，以及每个数值的时效。" width="100%"><br><sub>读数：节点此刻读取到的内容，以及每个数值的时效。</sub></td><td width="50%" valign="top"><img src="images/screenshots/zigbee.png" alt="Zigbee 无线电：通往协调器模块的串口桥接、允许使用它的客户端以及桥接状态。" width="100%"><br><sub>Zigbee 无线电：通往协调器模块的串口桥接、允许使用它的客户端以及桥接状态。</sub></td></tr>
+</table>
+
 ## 🧩 在 A.R.M.O.R. 中的角色
 
 ARMOR-ELECTRICAL 通过电表测量住宅的交流和直流网络，并保存在电源之间切换的规则。它把读数发布给 [ARMOR-SERVER](https://github.com/JuanenRac/ARMOR-SERVER)，由后者保存历史和每日能量并触发报警；[ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO) 的*电气*菜单和*电气设计器*以及 [ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL) 的电气界面显示这些内容。切换已经设计好（预备、一次性令牌、互锁、两个接触器的确认）但未启用。

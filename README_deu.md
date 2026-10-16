@@ -56,6 +56,15 @@
 * **Bluetooth-Kopplung mit PIN:** die sechsstellige PIN wird aus dem Einrichtungscode abgeleitet, auf der USB-Konsole ausgegeben und einem Administrator im Panel angezeigt; das Telefon muss sie eingeben, bevor es die Einstellungen des Knotens schreiben darf.
 * **Noch nicht:** die Firmware auf einer Platine, die Hardware, jede Messung einer echten Anlage und jedes Schalten.
 
+## 🖼️ Screenshots
+
+Aufgenommen mit 1920×1080 auf einem Prüfstand, mit Beispieldaten und ohne eine echte Anlage dahinter.
+
+<table>
+<tr><td width="50%" valign="top"><img src="images/screenshots/overview.png" alt="Übersicht: der Zustand des Knotens auf einen Blick - Netzwerk, Broker, Firmware und was er meldet." width="100%"><br><sub>Übersicht: der Zustand des Knotens auf einen Blick - Netzwerk, Broker, Firmware und was er meldet.</sub></td><td width="50%" valign="top"><img src="images/screenshots/meters.png" alt="Zähler: die Energiezähler und Analogkanäle, die der Knoten liest, jeweils mit Name und Skala." width="100%"><br><sub>Zähler: die Energiezähler und Analogkanäle, die der Knoten liest, jeweils mit Name und Skala.</sub></td></tr>
+<tr><td width="50%" valign="top"><img src="images/screenshots/readings.png" alt="Messwerte: was der Knoten gerade liest, mit dem Alter jedes Wertes." width="100%"><br><sub>Messwerte: was der Knoten gerade liest, mit dem Alter jedes Wertes.</sub></td><td width="50%" valign="top"><img src="images/screenshots/zigbee.png" alt="Zigbee-Funk: die serielle Brücke zum Koordinatormodul, welcher Client sie nutzen darf, und der Zustand der Brücke." width="100%"><br><sub>Zigbee-Funk: die serielle Brücke zum Koordinatormodul, welcher Client sie nutzen darf, und der Zustand der Brücke.</sub></td></tr>
+</table>
+
 ## 🧩 Rolle in A.R.M.O.R.
 
 ARMOR-ELECTRICAL misst das AC- und DC-Netz des Hauses mit seinen Zählern und hält die Regeln zum Umschalten zwischen Quellen. Es veröffentlicht die Messwerte für [ARMOR-SERVER](https://github.com/JuanenRac/ARMOR-SERVER), der Verlauf und Tagesenergie führt und die Alarme auslöst; das Menü *Elektro* und der *Elektro-Designer* von [ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO) sowie der Elektro-Bildschirm von [ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL) zeigen es. Das Schalten ist entworfen (Scharfstellen, ein Einmal-Token, die Verriegelung, die Bestätigung beider Schütze), aber nicht aktiviert.

@@ -56,6 +56,15 @@
 * **Bluetooth pairing with a PIN:** the six-digit PIN is derived from the set-up code, printed on the USB console and shown to an administrator in the panel; the phone has to enter it before it may write the node's settings.
 * **Not yet:** the firmware running on a board, the hardware, any measurement of a real installation and any switching.
 
+## 🖼️ Screenshots
+
+Captured at 1920×1080 on a test bench, with sample data and no real installation behind them.
+
+<table>
+<tr><td width="50%" valign="top"><img src="images/screenshots/overview.png" alt="Overview: the state of the node at a glance - network, broker, firmware and what it reports." width="100%"><br><sub>Overview: the state of the node at a glance - network, broker, firmware and what it reports.</sub></td><td width="50%" valign="top"><img src="images/screenshots/meters.png" alt="Meters: the energy meters and analog channels the node reads, each with its name and scale." width="100%"><br><sub>Meters: the energy meters and analog channels the node reads, each with its name and scale.</sub></td></tr>
+<tr><td width="50%" valign="top"><img src="images/screenshots/readings.png" alt="Readings: what the node is reading right now, with the age of each value." width="100%"><br><sub>Readings: what the node is reading right now, with the age of each value.</sub></td><td width="50%" valign="top"><img src="images/screenshots/zigbee.png" alt="Zigbee radio: the serial bridge to the coordinator module, which client may use it, and the state of the bridge." width="100%"><br><sub>Zigbee radio: the serial bridge to the coordinator module, which client may use it, and the state of the bridge.</sub></td></tr>
+</table>
+
 ## 🧩 Role in A.R.M.O.R.
 
 ARMOR-ELECTRICAL measures the house's AC and DC network through its meters and holds the rules for switching between sources. It publishes the readings for [ARMOR-SERVER](https://github.com/JuanenRac/ARMOR-SERVER), which keeps their history and the energy of each day and raises the alarms; the *Electrical* menu and the *Electrical Designer* of [ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO) and the electrical screen of [ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL) show it. Switching is designed (arm, a one-time token, the interlock, the confirmation of both contactors) but not activated.

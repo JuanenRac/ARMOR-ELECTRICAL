@@ -56,6 +56,15 @@
 * **Emparelhamento Bluetooth com PIN:** o PIN de seis dígitos deriva do código de configuração, é impresso na consola USB e mostrado a um administrador no painel; o telemóvel tem de o introduzir antes de poder escrever as definições do nó.
 * **Ainda não:** o firmware a correr numa placa, o hardware, qualquer medição de uma instalação real e qualquer comutação.
 
+## 🖼️ Capturas de ecrã
+
+Capturadas a 1920×1080 numa bancada de testes, com dados de exemplo e sem qualquer instalação real por trás.
+
+<table>
+<tr><td width="50%" valign="top"><img src="images/screenshots/overview.png" alt="Resumo: o estado do nó num relance - rede, broker, firmware e o que reporta." width="100%"><br><sub>Resumo: o estado do nó num relance - rede, broker, firmware e o que reporta.</sub></td><td width="50%" valign="top"><img src="images/screenshots/meters.png" alt="Contadores: os contadores de energia e canais analógicos que o nó lê, cada um com o seu nome e escala." width="100%"><br><sub>Contadores: os contadores de energia e canais analógicos que o nó lê, cada um com o seu nome e escala.</sub></td></tr>
+<tr><td width="50%" valign="top"><img src="images/screenshots/readings.png" alt="Leituras: o que o nó está a ler neste momento, com a idade de cada valor." width="100%"><br><sub>Leituras: o que o nó está a ler neste momento, com a idade de cada valor.</sub></td><td width="50%" valign="top"><img src="images/screenshots/zigbee.png" alt="Rádio Zigbee: a ponte série para o módulo coordenador, que cliente a pode usar e o estado da ponte." width="100%"><br><sub>Rádio Zigbee: a ponte série para o módulo coordenador, que cliente a pode usar e o estado da ponte.</sub></td></tr>
+</table>
+
 ## 🧩 Papel no A.R.M.O.R.
 
 O ARMOR-ELECTRICAL mede a rede CA e CC da casa com os seus contadores e guarda as regras para comutar entre fontes. Publica as leituras para o [ARMOR-SERVER](https://github.com/JuanenRac/ARMOR-SERVER), que guarda o histórico e a energia de cada dia e gera os alarmes; o menu *Elétrico* e o *Desenhador elétrico* do [ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO) e o ecrã elétrico do [ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL) mostram-no. A comutação está desenhada (armar, um token de uso único, o intertravamento, a confirmação dos dois contactores) mas não ativada.

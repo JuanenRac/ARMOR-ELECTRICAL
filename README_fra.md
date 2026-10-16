@@ -56,6 +56,15 @@
 * **Appairage Bluetooth avec un PIN :** le PIN à six chiffres est dérivé du code de configuration, imprimé sur la console USB et montré à un administrateur dans le panneau ; le téléphone doit le saisir avant de pouvoir écrire les réglages du nœud.
 * **Pas encore :** le firmware qui tourne sur une carte, le matériel, toute mesure d'une installation réelle et toute commutation.
 
+## 🖼️ Captures d'écran
+
+Capturées en 1920×1080 sur un banc d'essai, avec des données d'exemple et sans installation réelle derrière.
+
+<table>
+<tr><td width="50%" valign="top"><img src="images/screenshots/overview.png" alt="Résumé : l'état du nœud en un coup d'œil - réseau, broker, firmware et ce qu'il remonte." width="100%"><br><sub>Résumé : l'état du nœud en un coup d'œil - réseau, broker, firmware et ce qu'il remonte.</sub></td><td width="50%" valign="top"><img src="images/screenshots/meters.png" alt="Compteurs : les compteurs d'énergie et les voies analogiques lus par le nœud, chacun avec son nom et son échelle." width="100%"><br><sub>Compteurs : les compteurs d'énergie et les voies analogiques lus par le nœud, chacun avec son nom et son échelle.</sub></td></tr>
+<tr><td width="50%" valign="top"><img src="images/screenshots/readings.png" alt="Mesures : ce que le nœud lit en ce moment, avec l'âge de chaque valeur." width="100%"><br><sub>Mesures : ce que le nœud lit en ce moment, avec l'âge de chaque valeur.</sub></td><td width="50%" valign="top"><img src="images/screenshots/zigbee.png" alt="Radio Zigbee : le pont série vers le module coordinateur, quel client peut l'utiliser et l'état du pont." width="100%"><br><sub>Radio Zigbee : le pont série vers le module coordinateur, quel client peut l'utiliser et l'état du pont.</sub></td></tr>
+</table>
+
 ## 🧩 Rôle dans A.R.M.O.R.
 
 ARMOR-ELECTRICAL mesure le réseau AC et DC de la maison avec ses compteurs et garde les règles pour commuter entre sources. Il publie les mesures pour [ARMOR-SERVER](https://github.com/JuanenRac/ARMOR-SERVER), qui garde leur historique et l'énergie de chaque jour et déclenche les alarmes ; le menu *Électrique* et le *Concepteur électrique* d'[ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO) et l'écran électrique d'[ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL) le montrent. La commutation est conçue (armer, un jeton à usage unique, l'interverrouillage, la confirmation des deux contacteurs) mais pas activée.

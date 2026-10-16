@@ -56,6 +56,15 @@
 * **PIN 付きの Bluetooth ペアリング：**6 桁の PIN は設定コードから導出され、USB コンソールに表示され、管理者にはパネルにも表示されます。スマートフォンはこれを入力して初めてノードの設定を書き込めます。
 * **まだ：** 基板上で動作するファームウェア、ハードウェア、実際の設備での計測、そして開閉。
 
+## 🖼️ スクリーンショット
+
+テストベンチで 1920×1080 で撮影。サンプルデータを使用しており、実際の設備は接続されていません。
+
+<table>
+<tr><td width="50%" valign="top"><img src="images/screenshots/overview.png" alt="概要：ネットワーク、ブローカー、ファームウェア、報告内容など、ノードの状態をひと目で確認できます。" width="100%"><br><sub>概要：ネットワーク、ブローカー、ファームウェア、報告内容など、ノードの状態をひと目で確認できます。</sub></td><td width="50%" valign="top"><img src="images/screenshots/meters.png" alt="メーター：ノードが読み取る電力量計とアナログチャネル。名前とスケールを設定できます。" width="100%"><br><sub>メーター：ノードが読み取る電力量計とアナログチャネル。名前とスケールを設定できます。</sub></td></tr>
+<tr><td width="50%" valign="top"><img src="images/screenshots/readings.png" alt="測定値：ノードがいま読み取っている値と、各値の経過時間。" width="100%"><br><sub>測定値：ノードがいま読み取っている値と、各値の経過時間。</sub></td><td width="50%" valign="top"><img src="images/screenshots/zigbee.png" alt="Zigbee 無線：コーディネーターモジュールへのシリアルブリッジ、使用を許可するクライアント、ブリッジの状態。" width="100%"><br><sub>Zigbee 無線：コーディネーターモジュールへのシリアルブリッジ、使用を許可するクライアント、ブリッジの状態。</sub></td></tr>
+</table>
+
 ## 🧩 A.R.M.O.R. での役割
 
 ARMOR-ELECTRICAL はメーターで家の AC・DC ネットワークを測定し、電源間の切り替えのルールを保持します。測定値を [ARMOR-SERVER](https://github.com/JuanenRac/ARMOR-SERVER) に送ると、サーバーが履歴と日ごとのエネルギーを保持して警報を出し、[ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO) の*電気*メニューと*電気デザイナー*、[ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL) の電気画面が表示します。切り替えは設計済み（待機、1 回限りのトークン、インターロック、両方の接触器の確認）ですが、有効化はされていません。
