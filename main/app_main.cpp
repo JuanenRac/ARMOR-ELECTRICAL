@@ -47,8 +47,8 @@ void setup_reminder_task(void*) {
   for (;;) {
     if (!armor::store::users_empty()) vTaskDelete(nullptr);
     const armor::network::Status n = armor::network::status();
-    ESP_LOGW(kTag, "SETUP: this node has no user yet. Join the Wi-Fi \"%s\", open http://192.168.4.1/ and enter the setup code %s",
-             n.ap_ssid.empty() ? "ARMOR-SETUP-..." : n.ap_ssid.c_str(), armor::store::setup_code().c_str());
+    ESP_LOGW(kTag, "SETUP: this node has no user yet. Join the Wi-Fi \"%s\", open http://192.168.4.1/ and enter the setup code %s (to pair over Bluetooth the phone asks for the PIN %06u)",
+             n.ap_ssid.empty() ? "ARMOR-SETUP-..." : n.ap_ssid.c_str(), armor::store::setup_code().c_str(), static_cast<unsigned>(armor::auth::ble_passkey_from(armor::store::setup_code())));
     vTaskDelay(pdMS_TO_TICKS(15000));
   }
 }

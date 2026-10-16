@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here.
 
+## [0.3.2] - A PIN for Bluetooth pairing
+
+- The Zigbee guide lists the radio modules that work with the bridge and names the RF-star RF-BM-2652P4 (TI CC2652P7: twice the memory, Zigbee 3.0, Thread, Matter and Bluetooth 5.3) as the module for the first boards, with its supply, reset, JTAG, antenna and footprint notes; the older CC2652P modules stay supported as before.
+- Bluetooth pairing now asks for a 6-digit PIN that the node prints on its USB console next to the setup code; the link is authenticated and nothing is accepted over Bluetooth without it (until now any phone in range could pair without a PIN).
+- The Bluetooth note of the panel explains the PIN in all eight languages.
+
 ## [0.3.1] - Portuguese in the panel and a warning for the access point and the station at once
 
 - The panel speaks Portuguese, the eighth language, in every page, hint and message of the settings.

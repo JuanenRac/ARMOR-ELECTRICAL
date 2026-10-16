@@ -27,6 +27,16 @@ static bool contains(const std::string& text, const std::string& part) { return 
 
 // ---- the schedule of retries -----------------------------------------------------------------------------------------------------------
 
+static void test_ble_passkey() {
+  const std::uint32_t a = armor::auth::ble_passkey_from("ABCDEFGH23"), b = armor::auth::ble_passkey_from("ABCDEFGH24");
+  CHECK(a < 1000000 && b < 1000000);
+  CHECK(a == armor::auth::ble_passkey_from("ABCDEFGH23"));   // the same code, the same PIN: the node keeps nothing more
+  CHECK(a != b);                                              // another code, another PIN
+  int different = 0;
+  for (char c = 'A'; c < 'Z'; ++c) if (armor::auth::ble_passkey_from(std::string("CODE") + c) != armor::auth::ble_passkey_from("CODEA")) ++different;
+  CHECK(different >= 23);                                     // spread, not a pattern
+}
+
 static void test_backoff() {
   retry::Backoff plain(1000, 30000, 0);   // no scatter: the schedule itself
   const std::uint32_t expected[] = {1000, 2000, 4000, 8000, 16000, 30000, 30000, 30000};
@@ -185,6 +195,7 @@ static void test_remembered_session_is_not_taken_after_half_an_hour() {
 }
 
 int main() {
+  test_ble_passkey();
   test_remembered_session_is_not_taken_after_half_an_hour();
   test_backoff();
   test_improv_packets();

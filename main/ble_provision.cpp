@@ -137,7 +137,7 @@ int on_rx(std::uint16_t, std::uint16_t, struct ble_gatt_access_ctxt* context, vo
 int on_tx(std::uint16_t, std::uint16_t, struct ble_gatt_access_ctxt*, void*) { return BLE_ATT_ERR_READ_NOT_PERMITTED; }   // notifications only
 
 const struct ble_gatt_chr_def kCharacteristics[] = {
-    {.uuid = &kRxUuid.u, .access_cb = on_rx, .arg = nullptr, .descriptors = nullptr, .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC,
+    {.uuid = &kRxUuid.u, .access_cb = on_rx, .arg = nullptr, .descriptors = nullptr, .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP | BLE_GATT_CHR_F_WRITE_ENC | BLE_GATT_CHR_F_WRITE_AUTHEN,
      .min_key_size = 0, .val_handle = nullptr, .cpfd = nullptr},
     {.uuid = &kTxUuid.u, .access_cb = on_tx, .arg = nullptr, .descriptors = nullptr, .flags = BLE_GATT_CHR_F_NOTIFY, .min_key_size = 0, .val_handle = &g_tx_handle, .cpfd = nullptr},
     {},   // the terminator
@@ -168,6 +168,17 @@ int on_gap(struct ble_gap_event* event, void*) {
       advertise();
       break;
     case BLE_GAP_EVENT_ADV_COMPLETE: advertise(); break;
+    case BLE_GAP_EVENT_PASSKEY_ACTION: {
+      // The phone types the PIN that this node shows (on its USB console and with its setup code): without it there is no encrypted link and nothing is accepted. With no setup code
+      // there is no PIN, and the pairing is left to fail.
+      if (event->passkey.params.action == BLE_SM_IOACT_DISP && !store::setup_code().empty()) {
+        struct ble_sm_io io{};
+        io.action = BLE_SM_IOACT_DISP;
+        io.passkey = auth::ble_passkey_from(store::setup_code());
+        ble_sm_inject_io(event->passkey.conn_handle, &io);
+      }
+      break;
+    }
     case BLE_GAP_EVENT_ENC_CHANGE: ESP_LOGI(kTag, "the link is %s", event->enc_change.status == 0 ? "encrypted" : "NOT encrypted"); break;
     case BLE_GAP_EVENT_MTU: ESP_LOGI(kTag, "MTU %u", static_cast<unsigned>(event->mtu.value)); break;
     case BLE_GAP_EVENT_REPEAT_PAIRING: {
@@ -248,9 +259,9 @@ bool start(const config::Settings& settings, bool setup_mode) {
   if (nimble_port_init() != ESP_OK) { ESP_LOGE(kTag, "the Bluetooth stack could not start"); return false; }
   ble_hs_cfg.reset_cb = on_reset;
   ble_hs_cfg.sync_cb = on_sync;
-  ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;   // "just works"
+  ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;   // the node shows a PIN and the phone types it: a passer-by in the middle cannot pair
   ble_hs_cfg.sm_bonding = 0;
-  ble_hs_cfg.sm_mitm = 0;
+  ble_hs_cfg.sm_mitm = 1;
   ble_hs_cfg.sm_sc = 1;
   ble_svc_gap_init();
   ble_svc_gatt_init();
