@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented here.
 
+## [0.3.1] - Portuguese in the panel and a warning for the access point and the station at once
+
+- The panel speaks Portuguese, the eighth language, in every page, hint and message of the settings.
+- The overview warns when the node's own Wi-Fi network and its connection to your router are on at the same time (they share one radio and one channel), and the Wi-Fi help explains what that costs and when to switch the access point off.
+
 ## [0.3.0] - Slot copy, background update check and confirmed image rules
 
 - A firmware slot can be copied to the other one from the panel, and the update of a node waits for the image to be confirmed only after the node has an address or its own access point is reachable, rolling back after five minutes otherwise.

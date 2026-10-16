@@ -122,7 +122,7 @@ inline bool time_zone_is_valid(std::string_view zone) {
 }
 
 inline bool language_is_known(std::string_view code) {
-  for (const char* known : {"en", "es", "de", "fr", "it", "ja", "zh"}) if (code == known) return true;
+  for (const char* known : {"en", "es", "de", "fr", "it", "ja", "zh", "pt"}) if (code == known) return true;
   return false;
 }
 
