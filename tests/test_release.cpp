@@ -67,6 +67,13 @@ static void test_assets() {
   // the checksum of one image is never used for another: an image with no checksum file is picked WITHOUT one (the caller refuses to install it)
   const json::Value no_sum = fake_release(p + "-s3-eth.bin," + p + ".bin.sha256");
   CHECK(release::pick(&no_sum, "s3-eth").image_url == "https://x/" + p + "-s3-eth.bin" && release::pick(&no_sum, "s3-eth").checksum_url.empty());
+  // the signature of an image is the `.sig` next to it, and only that one: another board's signature is never used, and an image without one is picked without it
+  const json::Value signed_release = fake_release(p + "-s3-eth.bin," + p + "-s3-eth.bin.sha256," + p + "-s3-eth.bin.sig," + p + "-s3-wifi.bin," + p + "-s3-wifi.bin.sha256," + p + "-s3-wifi.bin.sig");
+  CHECK(release::pick(&signed_release, "s3-eth").signature_url == "https://x/" + p + "-s3-eth.bin.sig" && release::pick(&signed_release, "s3-wifi").signature_url == "https://x/" + p + "-s3-wifi.bin.sig");
+  const json::Value half_signed = fake_release(p + "-s3-eth.bin," + p + "-s3-eth.bin.sha256," + p + "-s3-wifi.bin.sig");
+  CHECK(release::pick(&half_signed, "s3-eth").signature_url.empty() && release::pick(&half_signed, "s3-eth").image_url == "https://x/" + p + "-s3-eth.bin");
+  const json::Value old_signed = fake_release(p + ".bin," + p + ".bin.sha256," + p + ".bin.sig");
+  CHECK(release::pick(&old_signed, "s3-eth").signature_url == "https://x/" + p + ".bin.sig" && release::pick(&old_signed, "s3-eth").legacy);
   // an image of another board is never taken, nothing at all gives nothing
   const json::Value other = fake_release("armor_other-s3-eth.bin," + p + "-lcd7box.bin");
   CHECK(release::pick(&other, "s3-eth").image_url.empty() && release::pick(&other, "s3-wifi").image_url.empty());

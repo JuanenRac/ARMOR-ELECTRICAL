@@ -196,6 +196,14 @@ async function loadConfig() {
   S.cfg = r.data.config; S.saved = JSON.stringify(S.cfg); S.channelAuto = r.data.channel_auto; S.firmware = r.data.firmware;
 }
 
+// The PIN of Bluetooth pairing is asked of the node only when an administrator wants to read it, and is forgotten when it is hidden.
+async function toggleBlePin() {
+  if (S.blePin !== undefined && S.blePin !== null) { S.blePin = null; render(false); return; }
+  const r = await api("GET", "ble-pin");
+  S.blePin = r.ok && r.data ? (r.data.pin || "") : null;
+  render(false);
+}
+
 async function reboot() {
   await api("POST", "reboot", {});
   S.rebooting = true; render();
@@ -317,7 +325,9 @@ function networkPage() {
       cfg.time.ntp_enabled ? field("ntp", "time.ntp") : el("div", { class: "actions" }, el("button", { class: "b", tip: "setTimeFromBrowser", disabled: !isAdmin(), onclick: setClockFromBrowser }, t("setTimeFromBrowser"))),
       S.status && S.status.time ? el("p", { class: "muted" }, t("localTime") + ": " + (S.status.time.set ? S.status.time.local : t("clockNotSet"))) : null,
       note(t("clockNote"), "info")),
-    card(t("bleTitle"), field("bleMode", "ble.mode", { type: "select", options: [["setup", t("bleSetup")], ["always", t("bleAlways")], ["off", t("bleOff")]] }), note(t("bleNote"), "info")),
+    card(t("bleTitle"), field("bleMode", "ble.mode", { type: "select", options: [["setup", t("bleSetup")], ["always", t("bleAlways")], ["off", t("bleOff")]] }), note(t("bleNote"), "info"),
+      isAdmin() ? el("div", { class: "actions" }, el("button", { class: "b", onclick: toggleBlePin }, S.blePin === undefined || S.blePin === null ? t("blePinShow") : t("blePinHide"))) : null,
+      isAdmin() && S.blePin !== undefined && S.blePin !== null ? (S.blePin === "" ? note(t("blePinNone"), "info") : el("p", { class: "note info" }, t("blePinIs") + ": ", el("b", { class: "mono" }, S.blePin))) : null),
     card(t("systemTitle"), field("autoRestart", "system.auto_restart_hours", { type: "select", number: true,
       options: [[0, t("autoRestartNever")], [1, t("autoRestart1")], [2, t("autoRestart2")], [3, t("autoRestart3")], [4, t("autoRestart4")], [6, t("autoRestart6")], [12, t("autoRestart12")], [24, t("autoRestart24")], [48, t("autoRestart48")]] }),
       note(t("autoRestartNote"), "info")),

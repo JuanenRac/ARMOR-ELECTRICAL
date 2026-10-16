@@ -511,6 +511,16 @@ esp_err_t get_users(httpd_req_t* r) {
   return send_json(r, 200, store::users_json());
 }
 
+esp_err_t get_ble_pin(httpd_req_t* r) {
+  // The PIN a phone is asked for when it pairs over Bluetooth (see ble_provision.cpp): shown to an administrator only, on demand.
+  Who who;
+  if (!require(r, who, true, false)) return ESP_OK;
+  if (store::setup_code().empty()) return send_json(r, 200, "{\"pin\":null}");
+  char pin[12];
+  std::snprintf(pin, sizeof pin, "%06u", static_cast<unsigned>(auth::ble_passkey_from(store::setup_code())));
+  return send_json(r, 200, std::string("{\"pin\":\"") + pin + "\"}");
+}
+
 esp_err_t post_user(httpd_req_t* r) {
   Who who;
   if (!require(r, who, true, true)) return ESP_OK;
@@ -785,6 +795,7 @@ esp_err_t api_handler(httpd_req_t* r) {
     if (route == "readings") return get_readings(r);
     if (route == "io") return get_io(r);
     if (route == "users") return get_users(r);
+    if (route == "ble-pin") return get_ble_pin(r);
     if (route == "log") return get_log(r);
     if (route == "ota/check") return get_ota_check(r);
     if (route == "ota/progress") return get_ota_progress(r);

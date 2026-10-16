@@ -24,6 +24,7 @@ inline std::string legacy_asset_name(const char* board_id) {
 struct Picked {
   std::string image_url;      // empty: the release has no image for this board
   std::string checksum_url;   // empty: it has the image but not the checksum file next to it
+  std::string signature_url;  // empty: it has the image but not the signature of its hash (`<image>.sig`)
   bool legacy = false;        // the image is the one with the plain name
 };
 
@@ -32,16 +33,18 @@ inline Picked pick(const json::Value* assets, const char* board_id) {
   Picked picked;
   if (assets == nullptr || !assets->is_array()) return picked;
   const std::string wanted = asset_name(board_id), legacy = legacy_asset_name(board_id);
-  std::string wanted_url, wanted_sum, legacy_url, legacy_sum;
+  std::string wanted_url, wanted_sum, wanted_sig, legacy_url, legacy_sum, legacy_sig;
   for (const json::Value& asset : assets->items) {
     const std::string name = asset.string_or("name", ""), url = asset.string_or("browser_download_url", "");
     if (name == wanted) wanted_url = url;
     else if (name == wanted + ".sha256") wanted_sum = url;
+    else if (name == wanted + ".sig") wanted_sig = url;
     else if (!legacy.empty() && name == legacy) legacy_url = url;
     else if (!legacy.empty() && name == legacy + ".sha256") legacy_sum = url;
+    else if (!legacy.empty() && name == legacy + ".sig") legacy_sig = url;
   }
-  if (!wanted_url.empty()) { picked.image_url = wanted_url; picked.checksum_url = wanted_sum; }
-  else if (!legacy_url.empty()) { picked.image_url = legacy_url; picked.checksum_url = legacy_sum; picked.legacy = true; }
+  if (!wanted_url.empty()) { picked.image_url = wanted_url; picked.checksum_url = wanted_sum; picked.signature_url = wanted_sig; }
+  else if (!legacy_url.empty()) { picked.image_url = legacy_url; picked.checksum_url = legacy_sum; picked.signature_url = legacy_sig; picked.legacy = true; }
   return picked;
 }
 

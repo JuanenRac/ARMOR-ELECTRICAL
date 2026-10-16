@@ -24,6 +24,7 @@ extern "C" {
 #include "mbedtls/sha256.h"
 }
 #include "core/json.hpp"
+#include "core/fw_trust.hpp"
 #include "core/release_assets.hpp"
 #include "core/semver.hpp"
 
@@ -148,6 +149,7 @@ CheckResult check(const char* board_id) {
   const release::Picked picked = release::pick(assets, board_id);
   result.asset_url = picked.image_url;
   const std::string checksum_url = picked.checksum_url;
+  const std::string signature_url = picked.signature_url;
   // The release's JSON (several assets make it 15 KB or more) and its parsed tree are no longer needed: give the memory back before the next
   // TLS connection (the hash), which is what the node was short of when it said it could not get the checksum.
   document = json::Value();
@@ -160,6 +162,8 @@ CheckResult check(const char* board_id) {
     if (!get_bounded(checksum_url, nullptr, text, problem)) { ESP_LOGW(kTag, "the checksum of the release could not be read: %s", problem.c_str()); result.error = "no_checksum"; return result; }
     result.sha256 = parse_sha256(text);
     if (result.sha256.empty()) { result.error = "no_checksum"; return result; }
+    // ... and with the signature that says who published that hash: a release that is not signed is not offered (install() checks the signature again, with its own download of it).
+    if (signature_url.empty()) { result.error = "no_signature"; return result; }
   }
   result.ok = true;
   result.update_available = newer;
@@ -229,6 +233,22 @@ InstallResult install(const std::string& asset_url, const std::string& expected_
     ESP_LOGE(kTag, "the downloaded image does not match the hash of the release: refused");
     result.error = "checksum_mismatch";
     return result;
+  }
+  // The hash is the one the release publishes; now the signature says it was published by whoever holds the private key of the A.R.M.O.R. releases. The image is thrown away otherwise.
+  {
+    std::string signature_text, problem;
+    if (!get_bounded(asset_url + ".sig", nullptr, signature_text, problem)) {
+      esp_ota_abort(handle);
+      ESP_LOGE(kTag, "the signature of the release could not be read (%s): refused", problem.c_str());
+      result.error = "no_signature";
+      return result;
+    }
+    if (!fw_trust::image_signature_ok(digest, signature_text)) {
+      esp_ota_abort(handle);
+      ESP_LOGE(kTag, "the signature of the release does not match its hash: refused");
+      result.error = "bad_signature";
+      return result;
+    }
   }
   if (esp_ota_end(handle) != ESP_OK) { result.error = "image_invalid"; return result; }
   esp_app_desc_t description{};
