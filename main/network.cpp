@@ -57,6 +57,17 @@ retry::Backoff g_wifi_backoff(1000, 30000);   // the wait between tries of the s
 std::atomic<bool> g_rescue_open{false};
 std::atomic<int> g_ap_clients{0};
 constexpr std::int64_t kStationPauseUs = 10 * 1000 * 1000;
+// The quiet is not for ever: somebody who stays on the rescue network (or a device that only pretends to) must not keep the node off its own Wi-Fi indefinitely. After ten minutes the
+// station tries again, whoever is still on the rescue network.
+constexpr std::int64_t kStationMaxPauseUs = 10LL * 60 * 1000 * 1000;
+std::atomic<std::int64_t> g_pause_since_us{0};
+
+bool station_should_wait() {
+  if (!(g_rescue_open && g_ap_clients > 0)) { g_pause_since_us = 0; return false; }
+  const std::int64_t now = esp_timer_get_time();
+  if (g_pause_since_us == 0) g_pause_since_us = now;
+  return now - g_pause_since_us <= kStationMaxPauseUs;
+}
 constexpr int kStaAttemptsBeforeSwitch = 4;
 
 config::Network station_network(const config::Settings& s, int index) {
@@ -164,7 +175,7 @@ void apply_ip(esp_netif_t* netif, const config::Settings& s, const std::string& 
 }
 
 void reconnect_station(void*) {
-  if (g_rescue_open && g_ap_clients > 0) { esp_timer_start_once(g_reconnect_timer, kStationPauseUs); return; }
+  if (station_should_wait()) { esp_timer_start_once(g_reconnect_timer, kStationPauseUs); return; }
   esp_wifi_connect();
 }
 
@@ -221,7 +232,7 @@ void on_wifi_event(void*, esp_event_base_t, int32_t event_id, void* data) {
         ssid = g_status.sta_ssid;
         total = station_network_count(g_settings);
       }
-      if (g_rescue_open && g_ap_clients > 0 && g_reconnect_timer != nullptr) {   // someone is using the rescue network: no scanning now
+      if (g_reconnect_timer != nullptr && station_should_wait()) {   // someone is using the rescue network: no scanning now (for ten minutes at most)
         esp_timer_start_once(g_reconnect_timer, kStationPauseUs);
         break;
       }

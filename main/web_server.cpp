@@ -65,6 +65,7 @@ constexpr std::size_t kMaxBody = 12 * 1024;
 constexpr std::size_t kMaxFirmware = 0x2E0000;   // a slot of the partition table is 0x300000
 
 std::mutex g_lock;
+std::mutex g_setup_lock;
 auth::SessionTable g_sessions;
 auth::LoginThrottle g_throttle;
 config::Settings g_started_with;
@@ -295,7 +296,13 @@ esp_err_t post_setup(httpd_req_t* r) {
     w.begin_object().field("error", "invalid").key("problems").raw(api::problems_json(problems)).end_object();
     return send_json(r, 422, w.str());
   }
-  const auth::Result result = store::user_add(user, password, auth::Role::kAdmin);
+  auth::Result result;
+  {
+    // The plain port and the HTTPS one can both be answering a set-up at the same moment: "there is still no administrator" and "create the first one" are one step, so two cannot be made.
+    std::lock_guard<std::mutex> once(g_setup_lock);
+    result = store::users_empty() ? store::user_add(user, password, auth::Role::kAdmin) : auth::Result::kExists;
+  }
+  if (result == auth::Result::kExists) return send_error(r, 403, "forbidden");
   if (result == auth::Result::kInvalidName) return send_error(r, 422, "invalid_name");
   if (result == auth::Result::kWeakPassword) return send_error(r, 422, "weak_password");
   if (result != auth::Result::kOk) return send_error(r, 500, "storage");
@@ -341,6 +348,8 @@ esp_err_t post_login(httpd_req_t* r) {
 }
 
 esp_err_t post_logout(httpd_req_t* r) {
+  // Like every request that changes something, it must carry the header a page from another site cannot add: another site could otherwise sign the person out.
+  if (header(r, "X-Requested-With") != "armor") return send_error(r, 403, "forbidden");
   const std::string token = token_of(r);
   if (!token.empty()) {
     std::lock_guard<std::mutex> guard(g_lock);
@@ -706,14 +715,24 @@ void start_install_watch() {
   esp_timer_start_periodic(timer, 1000000ULL);   // it keeps looking: a new installation starts it again, and a restart ends it
 }
 
+// The look for a newer release runs in a task of its own (a TLS request to GitHub takes seconds and the web server has one thread): POST starts it, GET says how it stands.
+esp_err_t post_ota_check(httpd_req_t* r) {
+  Who who;
+  if (!require(r, who, true, true)) return ESP_OK;
+  if (!github_update::start_check(board::kId)) return send_error(r, 409, "ota_busy");
+  json::Writer w;
+  w.begin_object().field("ok", true).field("started", true).end_object();
+  return send_json(r, 200, w.str());
+}
+
 esp_err_t get_ota_check(httpd_req_t* r) {
   Who who;
   if (!require(r, who, true, false)) return ESP_OK;
-  const github_update::CheckResult result = github_update::check(board::kId);
+  const github_update::CheckProgress progress = github_update::check_progress();
   json::Writer w;
-  w.begin_object().field("ok", result.ok);
-  if (result.ok) w.field("current_version", esp_app_get_description()->version).field("latest_version", result.latest_version).field("update_available", result.update_available);
-  else w.field("error", result.error);
+  w.begin_object().field("state", progress.state).field("ok", progress.state == "done");
+  if (progress.state == "done") w.field("current_version", esp_app_get_description()->version).field("latest_version", progress.result.latest_version).field("update_available", progress.result.update_available);
+  else if (progress.state == "failed") w.field("error", progress.result.error);
   w.end_object();
   return send_json(r, 200, w.str());
 }
@@ -722,12 +741,9 @@ esp_err_t get_ota_check(httpd_req_t* r) {
 esp_err_t post_ota_install(httpd_req_t* r) {
   Who who;
   if (!require(r, who, true, true)) return ESP_OK;
-  const github_update::CheckResult checked = github_update::check(board::kId);
-  if (!checked.ok) return send_error(r, 502, checked.error.c_str());
-  if (checked.asset_url.empty()) return send_error(r, 404, "no_asset");
-  if (checked.sha256.empty()) return send_error(r, 422, "no_checksum");
-  if (!github_update::start(checked.asset_url, checked.sha256)) return send_error(r, 409, "ota_busy");
-  ESP_LOGW(kTag, "installing firmware %s from GitHub, started by \"%s\"", checked.latest_version.c_str(), who.user.c_str());
+  // The task looks for the newest release and installs it: the request is answered at once.
+  if (!github_update::start_latest(board::kId)) return send_error(r, 409, "ota_busy");
+  ESP_LOGW(kTag, "installing the newest firmware from GitHub, started by \"%s\"", who.user.c_str());
   g_ota_restart_scheduled = false;
   start_install_watch();
   json::Writer w;
@@ -784,6 +800,7 @@ esp_err_t api_handler(httpd_req_t* r) {
     if (route == "ota/switch") return post_ota_switch(r);
     if (route == "ota/copy") return post_ota_copy(r);
     if (route == "ota/install") return post_ota_install(r);
+    if (route == "ota/check") return post_ota_check(r);
     if (route == "time") return post_time(r);
     if (route == "zigbee/radio") return post_zigbee_radio(r);
     if (route.compare(0, 7, "relays/") == 0) return post_relay(r, route.substr(7));

@@ -656,11 +656,18 @@ function uploadFirmware(file, progressBar, label, done) {
 
 async function githubCheck() {
   S.github.busy = true; S.github.error = ""; render();
-  const r = await api("GET", "ota/check");
-  S.github.busy = false;
-  if (r.ok && r.data.ok) { S.github.checked = true; S.github.available = r.data.update_available; S.github.latest = r.data.latest_version; }
-  else { S.github.checked = true; S.github.available = false; S.github.error = errorText((r.data && r.data.error) || "network"); }
-  render();
+  // The look for a release is done by the node in a task of its own: it is started, and asked about every second or so.
+  const start = await api("POST", "ota/check", {});
+  if (!start.ok) { S.github.busy = false; S.github.checked = true; S.github.available = false; S.github.error = errorText((start.data && start.data.error) || "network"); render(); return; }
+  const poll = async (tries) => {
+    const r = await api("GET", "ota/check");
+    if (r.ok && r.data.state === "checking" && tries < 40) { setTimeout(() => poll(tries + 1), 800); return; }
+    S.github.busy = false;
+    if (r.ok && r.data.ok) { S.github.checked = true; S.github.available = r.data.update_available; S.github.latest = r.data.latest_version; }
+    else { S.github.checked = true; S.github.available = false; S.github.error = errorText((r.data && r.data.error) || "network"); }
+    render();
+  };
+  setTimeout(() => poll(0), 800);
 }
 // The install runs in the node (a task of its own): this starts it and asks, twice a second, how far it is - the bar of the file upload, for the download.
 async function githubInstall() {

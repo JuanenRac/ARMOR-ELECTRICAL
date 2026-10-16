@@ -56,7 +56,9 @@ Progress g_progress;
 CopyProgress g_copy;
 bool g_running = false;
 std::atomic<unsigned> g_generation{0};
-struct Job { std::string url; std::string sha; };
+struct Job { std::string url; std::string sha; const char* board = nullptr; };
+CheckProgress g_check;
+bool g_checking = false;
 
 // A GET with no body, read fully into a bounded buffer. False on any network, HTTP or size problem.
 bool get_bounded_once(const std::string& url, const char* accept, std::string& out, std::string& error) {
@@ -245,7 +247,17 @@ InstallResult install(const std::string& asset_url, const std::string& expected_
 namespace {
 void install_task(void* raw) {
   std::unique_ptr<Job> job(static_cast<Job*>(raw));
-  const InstallResult result = install(job->url, job->sha);
+  InstallResult result;
+  if (job->board != nullptr) {
+    // The look for the newest release is part of the task (the panel's request returned long ago): what was found is what is installed.
+    const CheckResult found = check(job->board);
+    if (!found.ok) result.error = found.error;
+    else if (found.asset_url.empty()) result.error = "no_asset";
+    else if (found.sha256.empty()) result.error = "no_checksum";
+    else result = install(found.asset_url, found.sha256);
+  } else {
+    result = install(job->url, job->sha);
+  }
   {
     std::lock_guard<std::mutex> guard(g_lock);
     g_progress.state = result.ok ? "done" : "failed";
@@ -256,6 +268,61 @@ void install_task(void* raw) {
   vTaskDelete(nullptr);
 }
 }  // namespace
+
+namespace {
+void check_task(void* raw) {
+  const char* board = static_cast<const char*>(raw);
+  const CheckResult found = check(board);
+  {
+    std::lock_guard<std::mutex> guard(g_lock);
+    g_check.result = found;
+    g_check.state = found.ok ? "done" : "failed";
+    g_checking = false;
+  }
+  vTaskDelete(nullptr);
+}
+}  // namespace
+
+bool start_check(const char* board_id) {
+  {
+    std::lock_guard<std::mutex> guard(g_lock);
+    if (g_checking || g_running) return false;
+    g_checking = true;
+    g_check = CheckProgress{};
+    g_check.state = "checking";
+  }
+  if (xTaskCreate(check_task, "github-check", 12288, const_cast<char*>(board_id), 4, nullptr) != pdPASS) {
+    std::lock_guard<std::mutex> guard(g_lock);
+    g_checking = false;
+    g_check.state = "failed";
+    g_check.result.error = "no_task";
+  }
+  return true;
+}
+
+CheckProgress check_progress() {
+  std::lock_guard<std::mutex> guard(g_lock);
+  return g_check;
+}
+
+bool start_latest(const char* board_id) {
+  {
+    std::lock_guard<std::mutex> guard(g_lock);
+    if (g_running || g_checking) return false;
+    g_running = true;
+    g_progress = Progress{};
+    g_progress.state = "downloading";
+  }
+  Job* job = new Job{std::string(), std::string(), board_id};
+  if (xTaskCreate(install_task, "github-ota", 12288, job, 4, nullptr) != pdPASS) {
+    delete job;
+    std::lock_guard<std::mutex> guard(g_lock);
+    g_running = false;
+    g_progress.state = "failed";
+    g_progress.error = "no_task";
+  }
+  return true;
+}
 
 bool start(const std::string& asset_url, const std::string& expected_sha256) {
   {

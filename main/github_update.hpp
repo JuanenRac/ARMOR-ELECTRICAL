@@ -54,6 +54,17 @@ struct CopyProgress {
   std::string error;
   std::string version;
 };
+// The look for a newer release (and the install of it) in a task of their own: the web server has one thread, and a request to GitHub over TLS takes seconds, during which the panel
+// would not answer. `start_check` returns at once; `check_progress` says "idle", "checking", "done" or "failed" and, when it is done, what was found. `start_latest` checks and then
+// installs what it found, all in the task (progress() tells how far the install is).
+struct CheckProgress {
+  std::string state = "idle";
+  CheckResult result;
+};
+bool start_check(const char* board_id);
+CheckProgress check_progress();
+bool start_latest(const char* board_id);
+
 bool start_copy();   // false when an install or a copy is already running
 CopyProgress copy_progress();
 // Changes every time a slot is written: whoever caches what a slot holds starts again when it changes.

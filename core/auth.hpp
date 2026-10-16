@@ -202,6 +202,15 @@ class SessionTable {
     }
     return nullptr;
   }
+  // Whether a token still has a live session, without refreshing it: a long-lived connection (a map that is pushed to a browser) asks this to know when to let go.
+  bool alive(std::string_view token, std::uint64_t now_ms) const {
+    if (token.size() < 32) return false;
+    for (const Session& session : sessions_) {
+      if (!session.used || !same_text(session.token, token)) continue;
+      return now_ms - session.last_seen_ms <= (session.remembered ? kRememberedIdleMs : kSessionIdleMs);
+    }
+    return false;
+  }
   void end(std::string_view token) {
     for (Session& session : sessions_) if (session.used && same_text(session.token, token)) session = Session{};
   }

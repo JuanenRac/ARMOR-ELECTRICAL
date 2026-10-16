@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## [0.3.0] - Slot copy, background update check and confirmed image rules
+
+- A firmware slot can be copied to the other one from the panel, and the update of a node waits for the image to be confirmed only after the node has an address or its own access point is reachable, rolling back after five minutes otherwise.
+- The station connection that was paused to leave the access point free retries after ten minutes at most instead of waiting forever.
+- The firmware check against GitHub runs in the background and the panel asks for its result, so a slow search no longer freezes the panel.
+- Saving the settings is serialised, so two browsers saving at once cannot mix their changes.
+- Logging out needs the page's own token, which stops another page from logging the panel out.
+
 ## [0.2.9] - Copy-log icon and copy of a firmware slot to the other
 
 - **Copy one firmware slot to the other:** next to the switch between ota_0 and ota_1, the Firmware card of the panel has a button that copies the firmware that runs over the other slot (task of its own, with a percentage, the image checked at the end, no restart, no change of the boot slot); `POST /api/v1/ota/copy` starts it and `GET /api/v1/ota/copy` tells how far it is. The slot sizes shown by the status are measured again after a copy or an update.

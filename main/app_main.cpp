@@ -88,6 +88,18 @@ void confirm_firmware_task(void* argument) {
       esp_ota_mark_app_invalid_rollback_and_reboot();
     }
     vTaskDelay(pdMS_TO_TICKS(30000));
+    // A panel that is up is not enough: a node that cannot be reached (no address from the network, no access point of its own) would stay that way and need a cable to be rescued. The image
+    // is confirmed once the node can be reached, and goes back to the previous one when five minutes pass without.
+    bool reachable = false;
+    for (int waited = 0; waited < 300 && !reachable; waited += 5) {
+      const armor::network::Status link = armor::network::status();
+      reachable = link.has_ip || link.ap_active;
+      if (!reachable) vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+    if (!reachable) {
+      ESP_LOGE(kTag, "the new firmware could not be reached on any network: going back to the previous one");
+      esp_ota_mark_app_invalid_rollback_and_reboot();
+    }
     esp_ota_mark_app_valid_cancel_rollback();
     ESP_LOGI(kTag, "the new firmware is confirmed");
   }
