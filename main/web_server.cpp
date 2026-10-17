@@ -2,7 +2,7 @@
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // One dispatcher serves /api/v1/*: it checks the session, reads a bounded body, calls the handler for the method and path and answers
-// JSON. Errors are short codes ({"error":"invalid"}), never sentences: the panel translates them into the seven languages.
+// JSON. Errors are short codes ({"error":"invalid"}), never sentences: the panel translates them into the eight languages.
 // The panel itself (index.html, app.js, style.css) is embedded compressed in the firmware, so an update of the firmware updates it too.
 #include "web_server.hpp"
 
@@ -88,9 +88,11 @@ const char* status_line(int code) {
     case 401: return "401 Unauthorized";
     case 403: return "403 Forbidden";
     case 404: return "404 Not Found";
+    case 408: return "408 Request Timeout";
     case 409: return "409 Conflict";
     case 413: return "413 Payload Too Large";
     case 422: return "422 Unprocessable Entity";
+    case 423: return "423 Locked";
     case 429: return "429 Too Many Requests";
     case 500: return "500 Internal Server Error";
     case 503: return "503 Service Unavailable";
@@ -496,6 +498,7 @@ const char* result_code(auth::Result result) {
     case auth::Result::kTooMany: return "too_many_users";
     case auth::Result::kLastAdmin: return "last_admin";
     case auth::Result::kWrongPassword: return "wrong_password";
+    case auth::Result::kStorage: return "storage";
   }
   return "error";
 }
@@ -806,6 +809,7 @@ esp_err_t api_handler(httpd_req_t* r) {
     if (route == "logout") return post_logout(r);
     if (route == "users") return post_user(r);
     if (route == "reboot") return post_reboot(r);
+    if (route == "remote/relay") return post_remote_relay(r);
     if (route == "factory-reset") return post_factory_reset(r);
     if (route == "ota") return post_ota(r);
     if (route == "ota/switch") return post_ota_switch(r);

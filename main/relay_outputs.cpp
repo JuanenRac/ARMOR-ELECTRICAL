@@ -11,6 +11,7 @@
 #include <mutex>
 extern "C" {
 #include "driver/gpio.h"
+#include "esp_rom_gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -32,6 +33,7 @@ config::IoSettings g_settings;
 std::string g_node_id;
 relays::LinkWatch g_watch;
 bool g_fell_back = false;
+int g_siren_index = -1;   // the relay the alarm owns, or -1
 
 std::uint64_t now_ms() { return static_cast<std::uint64_t>(esp_timer_get_time()) / 1000ULL; }
 
@@ -70,7 +72,7 @@ void watch_task(void*) {
     else if (!g_fell_back && relays::must_open(g_settings.remote.link_timeout_s, g_watch.lost_for_ms(now))) {
       g_fell_back = true;
       ESP_LOGW(kTag, "the broker has been out of reach for %d s: every relay falls back to open", g_settings.remote.link_timeout_s);
-      for (std::size_t i = 0; i < board::kRelayCount; ++i) if (g_bank->is_on(i)) drive(i, false, "the loss of the broker");
+      for (std::size_t i = 0; i < board::kRelayCount; ++i) if (g_bank->is_on(i) && static_cast<int>(i) != g_siren_index) drive(i, false, "the loss of the broker");   // the siren is the alarm's, not the broker's
     }
     if (mqtt_link::connected() && now - last_publish >= kRepublishEveryMs) { last_publish = now; publish_all_locked(); }
   }
@@ -85,7 +87,11 @@ void start(const config::IoSettings& settings, const std::string& node_id) {
   for (std::size_t i = 0; i < board::kRelayCount; ++i) {
     if (!g_bank->enabled(i)) continue;
     const gpio_num_t pin = static_cast<gpio_num_t>(g_bank->pin(i));
-    gpio_reset_pin(pin);
+    // gpio_reset_pin would switch the pull-up on until the direction is set, which is a pulse of the wrong level for a relay that is closed by a high one (and a solid-state one
+    // would follow it): the pad is only given to the GPIO, its pulls are off, the level is written, and then the pin becomes an output.
+    esp_rom_gpio_pad_select_gpio(static_cast<std::uint32_t>(pin));
+    gpio_pullup_dis(pin);
+    gpio_pulldown_dis(pin);
     gpio_set_level(pin, g_bank->open_level(i) ? 1 : 0);   // first the level, then the direction
     gpio_set_direction(pin, GPIO_MODE_OUTPUT);
     ESP_LOGI(kTag, "relay %u (%s) on GPIO %d, open", static_cast<unsigned>(i + 1), settings.relays[i].name.c_str(), static_cast<int>(pin));
@@ -104,9 +110,22 @@ void start(const config::IoSettings& settings, const std::string& node_id) {
 
 bool set(std::size_t index, bool on) {
   std::lock_guard<std::mutex> guard(g_lock);
-  if (!g_bank || !g_bank->enabled(index)) return false;
+  if (!g_bank || !g_bank->enabled(index) || static_cast<int>(index) == g_siren_index) return false;
   drive(index, on, "the panel");
   return true;
+}
+
+void reserve_for_siren(std::size_t index) {
+  std::lock_guard<std::mutex> guard(g_lock);
+  g_siren_index = g_bank && g_bank->enabled(index) ? static_cast<int>(index) : -1;
+}
+
+void siren(bool on) {
+  std::lock_guard<std::mutex> guard(g_lock);
+  if (!g_bank || g_siren_index < 0) return;
+  const std::size_t index = static_cast<std::size_t>(g_siren_index);
+  if (g_bank->is_on(index) != on) { drive(index, on, "the alarm"); return; }
+  put(index);   // the same level again: nothing is said, but the pin is made to hold it
 }
 
 Outcome command(const std::string& relay, const std::string& payload) {
@@ -114,9 +133,10 @@ Outcome command(const std::string& relay, const std::string& payload) {
   if (!g_bank || !g_settings.remote.relays) return Outcome::kRemoteOff;
   const int index = g_bank->find(relay);
   if (index < 0) { ESP_LOGW(kTag, "a command for \"%s\" was ignored: no such relay", relay.c_str()); return Outcome::kUnknownRelay; }
-  const relays::Action action = relays::parse_command(payload);
-  if (action == relays::Action::kNone) { ESP_LOGW(kTag, "a command for \"%s\" was ignored: not ON, OFF or TOGGLE", relay.c_str()); return Outcome::kNotUnderstood; }
+  const relays::Action action = relays::parse_broker_command(payload);
+  if (action == relays::Action::kNone) { ESP_LOGW(kTag, "a command for \"%s\" was ignored: not ON or OFF (a TOGGLE from the broker is refused: a message can be delivered twice)", relay.c_str()); return Outcome::kNotUnderstood; }
   const std::size_t i = static_cast<std::size_t>(index);
+  if (index == g_siren_index) { ESP_LOGW(kTag, "a command for \"%s\" was ignored: it is the siren's relay", relay.c_str()); return Outcome::kReserved; }
   drive(i, action == relays::Action::kToggle ? !g_bank->is_on(i) : action == relays::Action::kOn, "the broker");
   return Outcome::kOk;
 }
@@ -128,6 +148,7 @@ Outcome command_direct(const std::string& relay, relays::Action action, bool& no
   if (index < 0) { ESP_LOGW(kTag, "a command from the central for \"%s\" was ignored: no such relay", relay.c_str()); return Outcome::kUnknownRelay; }
   if (action == relays::Action::kNone) return Outcome::kNotUnderstood;
   const std::size_t i = static_cast<std::size_t>(index);
+  if (index == g_siren_index) return Outcome::kReserved;
   const bool on = action == relays::Action::kToggle ? !g_bank->is_on(i) : action == relays::Action::kOn;
   drive(i, on, "the central");
   now_on = g_bank->is_on(i);

@@ -1,9 +1,10 @@
 // ARMOR-ELECTRICAL - who may sign the firmware that a node installs by itself: the public key of the A.R.M.O.R. releases, and the check of a signature. Pure: tested on a computer.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
-// A release carries, next to each image, its SHA-256 (`<image>.sha256`) and an Ed25519 signature of that hash (`<image>.sig`, the 64 bytes as 128 hexadecimal digits) made with the
-// private key of whoever publishes the releases. The node downloads the image, hashes it, and installs it only when the hash is the one published AND the signature of that hash
-// verifies with the key below: somebody who can only change what a release holds on GitHub, and does not have the private key, cannot make a node install his firmware. The private key
+// A release carries, next to each image, its SHA-256 (`<image>.sha256`) and two Ed25519 signatures made with the private key of whoever publishes the releases (each 64 bytes as 128
+// hexadecimal digits): `<image>.sig` of that hash alone (what the nodes before the manifest check verify) and `<image>.sig2` of the manifest of the image (project, board, version and hash:
+// manifest_text below), which is the only one a node checks now. The node downloads the image, hashes it, and installs it only when the hash is the one published AND the signature of the manifest
+// verifies with the key below, and the version inside the image is newer than the one it runs: somebody who can only change what a release holds on GitHub, and does not have the private key, cannot make a node install his firmware. The private key
 // never leaves its owner's computer. The upload of a firmware by an administrator in the panel is not checked here: it is the administrator's own act.
 //
 // Changing the key means a firmware that holds the new one has to be installed first, by that upload or by cable; a node that was never given the new key will refuse the releases made with it.
@@ -46,6 +47,25 @@ inline bool image_signature_ok(const std::uint8_t sha256[32], const std::string&
   std::uint8_t signature[64];
   if (!parse_signature(signature_text, signature)) return false;
   return ed25519::verify(signature, sha256, 32, kPublicKey);
+}
+
+// The text a release signs besides the hash: the image's project (the name inside the image itself), the board it was built for, its version and its SHA-256. The signature of the hash alone
+// cannot tell a new image from an old one, or one board's from another's, that was signed legitimately in the past; this one can, because every part of it is checked by the node.
+inline std::string manifest_text(const std::string& project, const std::string& board, const std::string& version, const std::string& sha256_hex) {
+  return "armor-fw/1|" + project + "|" + board + "|" + version + "|" + sha256_hex;
+}
+
+// True when `signature_text` is the signature, by the key of the releases, of the manifest of this image (`<image>.sig2`). A part that holds a space or a '|' is refused: it could
+// be read as another part.
+inline bool manifest_signature_ok(const std::string& project, const std::string& board, const std::string& version, const std::string& sha256_hex, const std::string& signature_text) {
+  for (const std::string* part : {&project, &board, &version, &sha256_hex}) {
+    if (part->empty()) return false;
+    for (const char c : *part) if (c == '|' || c == ' ' || c == '\n' || c == '\r' || c == '\t') return false;
+  }
+  std::uint8_t signature[64];
+  if (!parse_signature(signature_text, signature)) return false;
+  const std::string message = manifest_text(project, board, version, sha256_hex);
+  return ed25519::verify(signature, reinterpret_cast<const std::uint8_t*>(message.data()), message.size(), kPublicKey);
 }
 
 }  // namespace armor::fw_trust

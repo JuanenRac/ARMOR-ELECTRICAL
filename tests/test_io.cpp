@@ -407,7 +407,9 @@ static void test_remote() {
   // the words of a command
   CHECK(relays::parse_command("ON") == Action::kOn && relays::parse_command(" on\n") == Action::kOn && relays::parse_command("true") == Action::kOn && relays::parse_command("1") == Action::kOn);
   CHECK(relays::parse_command("OFF") == Action::kOff && relays::parse_command("false") == Action::kOff && relays::parse_command("0") == Action::kOff);
-  CHECK(relays::parse_command("Toggle") == Action::kToggle);
+  CHECK(relays::parse_command("Toggle") == Action::kToggle);   // the node's own HTTP API may toggle...
+  CHECK(relays::parse_broker_command("Toggle") == Action::kNone && relays::parse_broker_command("TOGGLE") == Action::kNone);   // ...the broker, which can deliver a message twice, may not
+  CHECK(relays::parse_broker_command("ON") == Action::kOn && relays::parse_broker_command(" off\n") == Action::kOff && relays::parse_broker_command("1") == Action::kOn);
   for (const char* word : {"", "pulse", "pulse:500", "50", "onn", "on off", "{\"state\":\"ON\"}", "ON;OFF"}) CHECK(relays::parse_command(word) == Action::kNone);
   // the topics
   CHECK(relays::topic("electrical-1", "lights", "state") == "armor/device/electrical-1/lights/state");

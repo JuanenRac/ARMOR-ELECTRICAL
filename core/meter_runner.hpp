@@ -132,7 +132,7 @@ class Runner {
       std::vector<const electrical::MeterState*> fresh = engine_[0]->fresh(after);
       for (const electrical::MeterState* state : engine_[1]->fresh(after)) fresh.push_back(state);
       message_ = electrical::message_json(settings_.node_id, stamp, false, fresh, {}, "", analog_ ? analog_() : std::vector<electrical::AnalogChannel>{});
-      ++bus_[0].messages;
+      for (int k = 0; k < kLines; ++k) if (!slots_[k].empty()) ++bus_[k].messages;
       outcome.message = true;
     }
     return outcome;
@@ -150,7 +150,7 @@ class Runner {
         const electrical::MeterState& state = engine_[k]->meters()[j];
         MeterStatus& s = meters_[slots_[k][j]];
         s.replies_ok = state.replies_ok; s.replies_bad = state.replies_bad; s.timeouts = state.timeouts;
-        const bool fresh = state.have_reading && now - state.reading_at_ms <= electrical::PzemBus::kFreshMs;
+        const bool fresh = state.have_reading && now - state.reading_at_ms <= engine_[k]->freshness_ms();
         s.have_reading = fresh;
         if (fresh) { s.voltage_v = state.reading.voltage_v; s.current_a = state.reading.current_a; s.power_w = state.reading.power_w; s.energy_kwh = state.reading.energy_kwh; s.alarm = state.reading.alarm; }
         s.error = fresh ? "" : result_text(state.last_result);

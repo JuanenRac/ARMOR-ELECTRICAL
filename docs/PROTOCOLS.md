@@ -4,7 +4,7 @@
 
 From the makers' public description of the two meters; **nothing here has been connected to a meter.**
 
-- Serial 9600 baud 8N1. Modbus RTU, function `0x04` (read input registers). Request: address, `0x04`, first register, count, CRC-16/MODBUS (low byte first): the request for the ten registers of the address 1 is `01 04 00 00 00 0A 70 0D`. Reply: address, `0x04`, byte count, the registers (high byte first), CRC. A refusal answers `0x84` and an exception code.
+- Serial 9600 baud 8N1 (the PZEM-017's sheet says 8N2; the node uses one stop bit for both and has not been tried against a real PZEM-017). Modbus RTU, function `0x04` (read input registers). Request: address, `0x04`, first register, count, CRC-16/MODBUS (low byte first): the request for the ten registers of the address 1 is `01 04 00 00 00 0A 70 0D`. Reply: address, `0x04`, byte count, the registers (high byte first), CRC. A refusal answers `0x84` and an exception code.
 - **PZEM-004T v3 (AC, up to 260 V, a current transformer):** ten registers from `0x0000`: voltage (0.1 V), current (0.001 A, two registers, low word first), power (0.1 W, two registers), energy (1 Wh, two registers), frequency (0.1 Hz), power factor (0.01), alarm (`0xFFFF` above the threshold).
 - **PZEM-017 (DC, up to 300 V, a shunt):** eight registers: voltage (0.01 V), current (0.01 A), power (0.1 W, two registers), energy (1 Wh, two registers), the high- and the low-voltage alarm (`0xFFFF` when active).
 - Several meters share a line with **one address each**. A meter's address is set once, with the maker's tool, one meter at a time, before they are installed; the request that changes it is not built here.

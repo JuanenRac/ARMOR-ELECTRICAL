@@ -40,6 +40,13 @@ inline Action parse_command(std::string_view payload) {
   return Action::kNone;
 }
 
+// What the broker may say: the same words without TOGGLE. The broker delivers a message at least once, so one command can arrive twice; ON and OFF say where the relay must be and are the
+// same twice, a TOGGLE twice would leave the load the wrong way round. (A toggle through the node's own HTTP API is a single request and stays.)
+inline Action parse_broker_command(std::string_view payload) {
+  const Action action = parse_command(payload);
+  return action == Action::kToggle ? Action::kNone : action;
+}
+
 // armor/device/<node>/<relay>/<suffix>, or "" when the node id or the relay's name is not valid.
 inline std::string topic(std::string_view node_id, std::string_view relay, std::string_view suffix) {
   if (!node_id_is_valid(node_id) || !config::valid_device_name(relay) || (suffix != "state" && suffix != "set" && suffix != "availability")) return "";

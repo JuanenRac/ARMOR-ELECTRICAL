@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here.
 
+## [0.3.4] - Long polling periods keep their readings, the central's relay route answers and a broker cannot toggle a load
+
+- **A long period between rounds no longer empties the message.** A reading counted as fresh for ten seconds only, so with a period above ten seconds every reading was already too old when the message was made and the meters showed as *waiting*; it now counts for a whole cycle (plus the time of the round and a margin), and a meter that is unplugged is still dropped by the second message after that. The counter of messages counts on both lines.
+- **`POST /api/v1/remote/relay` is served** (it had a handler but no route and answered 404): a central with the node's token can move a relay when there is no broker.
+- **A TOGGLE from the broker is refused** as the changelog of 0.2.7 said it was (the broker may deliver a message twice and the relay would end up the wrong way round); ON and OFF are unchanged and the node's own API can still toggle. Shared with the other nodes.
+- **The converter is the analog task's while it samples:** a login (which asks for random bytes) can no longer disturb a window of readings and put a false peak in the voltage, the current or the energy; the analog task is watched by the watchdog and runs below the tasks of the network and the relays.
+- An exception answered by another meter on the line is no longer taken for the answer of the meter asked.
+- A button of the board can be turned off at build time (*BOOT button erases the settings*), for a node in a place anyone can reach.
+- HTTP answers 408 and 423 with their own status lines, a user change that could not be written is told as a storage error, and the comments say eight languages.
+- **The panel tells every error** the node can answer with in the eight languages (the updater's, the reset's, the relay's and the rest), and a test fails when a new code has no text.
+- `secrets/node.conf.example` no longer carries a usable set-up code or the address of a real network.
+- The documents say what the node does today: two serial lines, how long a reading counts, the Bluetooth pairing with its passkey, the relays moved by the broker and by the token API, that the analog channels are estimates whose energy restarts with the node, the stop bits of the PZEM-017 (to be tried on the bench) and which board is the reference.
+- Tests: 376,195 checks in eleven programs plus the panel texts; new ones cover long periods (11, 30 and 120 seconds), the refusal of a TOGGLE from the broker and the exceptions of other meters.
+- Shared with the other nodes (from ARMOR-COMMON's firmware base): the pairing of Bluetooth closes after repeated failures, the random generator keeps away from the converter, a user write is all-or-nothing, a repeated key in a JSON document is refused and four-number firmware versions are understood.
+
 ## [0.3.3] - The Bluetooth PIN in the panel
 
 - **Signed firmware:** a node installs from GitHub only a firmware whose signature verifies. Each release carries, next to the image and its SHA-256, an Ed25519 signature of that hash (`<image>.sig`); the node downloads the image, hashes it and installs it only when the hash is the published one and the signature verifies with the public key of the releases, which is in the firmware (the private key never leaves the maintainer's computer). A release without a signature, or with a wrong one, is refused and nothing changes.

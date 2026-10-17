@@ -19,6 +19,8 @@ struct CheckResult {
   std::string latest_version;  // the release's own tag, without a leading "v"
   std::string asset_url;       // empty when the latest release has no armor_electrical.bin attached
   std::string sha256;          // the hash the release publishes for it (64 lowercase hex digits); empty when it publishes none
+  std::string signature_url;   // the `<image>.sig2` next to it: the signature of its manifest (empty when the release has none)
+  std::string board;           // the board the offer is for: the manifest names it
   bool update_available = false;
 };
 
@@ -41,7 +43,6 @@ struct Progress {
   std::string error;
   std::string version;
 };
-bool start(const std::string& asset_url, const std::string& expected_sha256);   // false when an install is already running
 Progress progress();
 
 // Copies the firmware that runs into the other slot (ota_0 <-> ota_1), so both hold the same version: a copy to fall back to, or to keep when the other
@@ -70,8 +71,10 @@ CopyProgress copy_progress();
 // Changes every time a slot is written: whoever caches what a slot holds starts again when it changes.
 unsigned slot_generation();
 
-// Downloads `asset_url` (check()'s own, so only ever what GitHub itself published) straight into the next OTA slot - the same checks as
-// an upload (minimum size, the image's own magic byte, the project name) plus the hash: the image must hash to `expected_sha256` or it is thrown away - and sets it to boot. Does not restart; the caller decides when.
-InstallResult install(const std::string& asset_url, const std::string& expected_sha256);
+// Downloads what check() offered (and only that: the address must be one of this repository's own release files) straight into the next OTA slot - the same checks as an upload (minimum
+// size, the image's own magic byte, the project name) plus three more: the image must hash to the hash the release publishes; the version inside it must be the release's own and newer than
+// the one that runs (an old image, legitimately signed, cannot be installed again); and the signature of the manifest (project, board, version, hash) must verify with the key of the
+// releases. Only then is it set to boot. Does not restart; the caller decides when. One install at a time: a second call while one runs is refused ("ota_busy").
+InstallResult install(const CheckResult& offer);
 
 }  // namespace armor::github_update

@@ -14,16 +14,22 @@ namespace armor::relay_outputs {
 // `remote.link_timeout_s`. Call it before mqtt_link::start().
 void start(const config::IoSettings& settings, const std::string& node_id);
 
-// Closes (on) or opens (off) relay `index` (0 to 7), from the panel. False when there is no such enabled relay.
+// Closes (on) or opens (off) relay `index` (0 to 7), from the panel. False when there is no such enabled relay, or when it is the siren's (only the alarm moves that one).
 bool set(std::size_t index, bool on);
 
+// The relay the alarm uses for its siren: from now on nobody else moves it (the panel's page, the broker and the central are refused), it does not fall back to open with the broker,
+// and `siren()` is the only way to move it.
+void reserve_for_siren(std::size_t index);
+// Puts the siren relay at its level. Called every turn: the level of the pin is written again each time, so a pin that was disturbed is put back; the log and the broker hear of changes only.
+void siren(bool on);
+
 // What a command from the broker did.
-enum class Outcome { kOk, kUnknownRelay, kNotUnderstood, kRemoteOff };
+enum class Outcome { kOk, kUnknownRelay, kNotUnderstood, kRemoteOff, kReserved };
 
 // The index (0 to 7) of the enabled relay with this name, or -1.
 int index_of(const std::string& name);
 
-// Tells the relay with this name what the broker said (a word: ON, OFF, TOGGLE).
+// Tells the relay with this name what the broker said (a word: ON or OFF; TOGGLE is refused, see relays::parse_broker_command).
 Outcome command(const std::string& relay, const std::string& payload);
 
 // What a central that holds the node's token (core/central_link.hpp) asked of a relay by name: moves it (on, off or toggle) when it is an enabled relay, whatever the broker's setting

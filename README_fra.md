@@ -21,14 +21,14 @@
   <img src="https://img.shields.io/badge/License-GPL%203.0-blue.svg" alt="GPL 3.0">
   <img src="https://img.shields.io/badge/Language-C%2B%2B17-00599c.svg" alt="Language">
   <img src="https://img.shields.io/badge/Meters-PZEM--004T%20%2F%20017-ffb020.svg" alt="Meters">
-  <img src="https://img.shields.io/badge/Checks-376%2C063-2ea44f.svg" alt="Checks">
-  <img src="https://img.shields.io/badge/Version-0.3.3-0f6cbd.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Checks-376%2C195-2ea44f.svg" alt="Checks">
+  <img src="https://img.shields.io/badge/Version-0.3.4-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-00E5FF.svg" alt="Maturity">
 </p>
 
 ---
 
-**Vérification d'honnêteté - ce qui fonctionne aujourd'hui:** Le cœur (les trames des compteurs PZEM-004T v3 et PZEM-017, le bus qui les interroge, le message du nœud, les entrées analogiques et les règles de commutation : 376 063 vérifications dans 11 programmes de test, dont 375 008 sur les règles de commutation) est testé sur un ordinateur avec des compteurs et contacteurs factices, et les messages qu'il produit sont acceptés par ARMOR-COMMON. Le firmware du nœud (les réglages, la ligne série, les pages Compteurs et Mesures de son panneau, Bluetooth, mises à jour signées) se compile dans le conteneur ESP-IDF 5.4 pour les deux cartes. **Il n'a jamais tourné sur une carte, rien n'a été connecté à un compteur ni à un contacteur, et rien ici ne commute quoi que ce soit.**
+**Vérification d'honnêteté - ce qui fonctionne aujourd'hui:** Le cœur (les trames des compteurs PZEM-004T v3 et PZEM-017, le bus qui les interroge, le message du nœud, les entrées analogiques et les règles de commutation : 376 195 vérifications dans 11 programmes de test, dont 375 008 sur les règles de commutation) est testé sur un ordinateur avec des compteurs et contacteurs factices, et les messages qu'il produit sont acceptés par ARMOR-COMMON. Le firmware du nœud (les réglages, la ligne série, les pages Compteurs et Mesures de son panneau, Bluetooth, mises à jour signées) se compile dans le conteneur ESP-IDF 5.4 pour les deux cartes. **Il n'a jamais tourné sur une carte, rien n'a été connecté à un compteur ni à un contacteur, et rien ici ne commute quoi que ce soit.**
 
 ---
 
@@ -36,9 +36,9 @@
 
 | | |
 |---|---|
-| Version | `0.3.3` |
+| Version | `0.3.4` |
 | Maturité | Fonctionnel |
-| Tests | 376,063 checks in 11 programs (`ctest`) |
+| Tests | 376,195 checks in 11 programs (`ctest`) |
 | Technologie | C++17 (host-tested core); ESP-IDF firmware for the ESP32-S3 (Wi-Fi or Ethernet), with its web panel |
 | Sur matériel réel | Aucun pour l'instant : aucune carte montée ni compteur ou contacteur connecté ; rien ne commute quoi que ce soit |
 
@@ -88,7 +88,7 @@ ARMOR-ELECTRICAL/
 **Prérequis:** a C++17 compiler for the host tests, the ESP-IDF 5.4 container to build the image, an ESP32-S3-WROOM-1 N16R8 or a Waveshare ESP32-S3-ETH
 
 ```bash
-cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 376,063 checks: the meters (62), the loop that asks them (72), the settings (85), the readings and inputs (477), Bluetooth (68), the shared base (252), the central link (19), the release and signature checks (20), the interlock (135,736) and the switch sets (239,272)
+cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 376,195 checks: the meters (62), the loop that asks them (72), the settings (85), the readings and inputs (477), Bluetooth (68), the shared base (252), the central link (19), the release and signature checks (20), the interlock (135,736) and the switch sets (239,272)
 build/host/emit_samples | python tests/check_samples.py                                     # the messages, against ARMOR-COMMON
 node tools/panel_mock.mjs --user admin:adminpass123                                         # the panel without a board
 tools/build_node.sh generic                                                                 # the firmware image for the N16R8 board in the ESP-IDF container: dist/generic-s3-wifi.bin

@@ -8,6 +8,7 @@
 // A request is {"id":7,"op":"config.get"} or {"id":8,"op":"login","args":{...}}; the answer is {"id":7,"ok":true,"data":{...}} or
 // {"id":7,"ok":false,"error":"code"}, and the id is echoed so an app can match them. The operations are in docs/BLE_PROVISIONING.md.
 #pragma once
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -79,7 +80,7 @@ inline bool parse_request(std::string_view text, Request& out) {
   if (!json::parse(text, document) || !document.is_object()) return false;
   const json::Value* id = document.get("id");
   const json::Value* op = document.get("op");
-  if (id == nullptr || !id->is_number() || id->number < 0 || id->number != static_cast<double>(static_cast<long long>(id->number)) || op == nullptr || !op->is_string() || op->text.empty() || op->text.size() > 32) return false;
+  if (id == nullptr || !id->is_number() || !std::isfinite(id->number) || id->number < 0 || id->number >= 9007199254740992.0 || id->number != static_cast<double>(static_cast<long long>(id->number)) || op == nullptr || !op->is_string() || op->text.empty() || op->text.size() > 32) return false;
   out.id = static_cast<long long>(id->number);
   out.op = op->text;
   const json::Value* args = document.get("args");

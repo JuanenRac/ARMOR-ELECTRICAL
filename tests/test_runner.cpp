@@ -314,7 +314,32 @@ static void test_two_lines() {
   CHECK(broken.bus(1).state == "error" && broken.bus(1).error == "pins" && broken.bus(0).state == "running");
 }
 
+// A long polling period must not empty the message: a reading is as old as the cycle when the next message is made.
+static void test_long_periods_keep_the_readings() {
+  for (int poll : {11, 30, 120}) {
+    World world;
+    world.answers[1] = reply(1, kAc);
+    Runner runner(settings_with({{true, "grid", "", "ac", 1}}, poll));
+    runner.set_line_open();
+    int with_meter = 0, messages = 0;
+    const Clock clock = world.clock();
+    const std::uint64_t until = world.now + static_cast<std::uint64_t>(poll) * 6 * 1000ULL;
+    while (world.now < until) {
+      const Runner::Outcome outcome = runner.step(world, clock);
+      if (outcome.message) { ++messages; if (contains(runner.message(), "\"id\":\"grid\"")) ++with_meter; }
+    }
+    CHECK(messages >= 5 && with_meter >= messages - 1);   // only the first message, made before any answer, may lack it
+    CHECK(runner.meters()[0].state == "reading" && runner.meters()[0].have_reading);
+    // the meter is unplugged: by the second message after that it is gone, whatever the period
+    world.answers.erase(1);
+    const std::uint64_t again = world.now + static_cast<std::uint64_t>(poll) * 3 * 1000ULL + 5000;
+    while (world.now < again) runner.step(world, clock);
+    CHECK(!runner.meters()[0].have_reading && !contains(runner.message(), "\"id\":\"grid\""));
+  }
+}
+
 int main() {
+  test_long_periods_keep_the_readings();
   test_no_meter();
   test_one_meter();
   test_two_meters_in_order();

@@ -2,7 +2,7 @@
 
 Nothing here has been built or connected.
 
-- **Node:** an ESP32-S3 (the ESP32-S3-WROOM-1 N16R8 on Wi-Fi, as the solar nodes use), inside the electrical panel, on its own low-voltage supply.
+- **Node:** an ESP32-S3, inside the electrical panel (the Waveshare ESP32-S3-ETH on its cable, the `s3-eth` profile, is the one the base board is made for; the ESP32-S3-WROOM-1 N16R8 on Wi-Fi, as the solar nodes use, works too), on its own low-voltage supply.
 - **AC meters:** PZEM-004T v3 modules (100 A with a split-core transformer, 80 to 260 V), one per measured circuit or line, each with its own serial address. Their serial side is optically isolated; its level is 5 V.
 - **DC meters:** PZEM-017 modules (300 V, an external shunt) on the battery bus and the PV lines.
 - **The serial line:** the meters' serial links can share one UART of the ESP32-S3 (each meter answers only its own address); the 5 V side needs a level adaptation to 3.3 V, and the line is short and inside the panel.
@@ -18,7 +18,7 @@ Nothing here has been built or connected.
 - **Several modules on one line:** their TX outputs share the wire, so how they behave together, and whether a diode or a buffer per module is needed, is checked on the bench with two modules before any more are added. One address each, set before installing (see [PROTOCOLS.md](PROTOCOLS.md)).
 - **RS485 (the PZEM-017 has no TTL side):** an adapter with a direction pin (DE and RE tied together) goes on the line's *driver-enable* pin (`bus.de`): the line is then put in RS485 half-duplex mode, the pin is raised while the node sends and the echo of the request is not read back. An adapter that turns itself needs no pin (leave it on none), and a request that comes back anyway is still dropped.
 - **A second line:** a meter can say it is on line 2 (`meters.N.line`), an independent line on UART0 (the console is on the USB) with its own RX, TX, driver-enable and speed, so that PZEM-004T meters (TTL) and PZEM-017 meters (RS485) work together; an address only has to be its own on its line. The round time is the first line's.
-- **Speed:** 9600 baud, 8N1, as the modules speak; a round of sixteen meters takes a few seconds, and *Seconds between rounds* in the panel must leave room for it.
+- **Speed:** 9600 baud, 8N1 (the PZEM-004T v3; the PZEM-017's sheet says two stop bits, and the node sends one - it has not been tried against a real PZEM-017, so check that one first on the bench); a round of sixteen meters takes a few seconds, and *Seconds between rounds* in the panel must leave room for it.
 
 ## To decide
 

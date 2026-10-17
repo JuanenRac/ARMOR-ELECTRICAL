@@ -7,9 +7,13 @@
 
 #include "../core/auth.hpp"
 #include "../core/backoff.hpp"
+#include "../core/ble_dispatch.hpp"
+#include "../core/ble_frame.hpp"
+#include "../core/broker_uri.hpp"
 #include "../core/ed25519_verify.hpp"
 #include "../core/fw_trust.hpp"
 #include "../core/improv.hpp"
+#include "../core/json.hpp"
 #include "../core/task_health.hpp"
 
 static int failures = 0;
@@ -92,6 +96,23 @@ static void test_ed25519() {
   // a signature of one message is not the signature of another, and not under another key
   CHECK(!armor::ed25519::verify(kEd25519Vectors[0].signature, kEd25519Vectors[1].message, kEd25519Vectors[1].length, kEd25519Vectors[0].public_key));
   CHECK(!armor::ed25519::verify(kEd25519Vectors[0].signature, kEd25519Vectors[0].message, kEd25519Vectors[0].length, kEd25519Vectors[5].public_key));
+  // S must be below the order of the group: S + L is the same point and used to verify as a second signature of the same message
+  {
+    static const std::uint8_t L[32] = {0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9, 0xde, 0x14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10};
+    for (const Ed25519Vector& v : kEd25519Vectors) {
+      std::uint8_t malleable[64];
+      std::memcpy(malleable, v.signature, 64);
+      unsigned carry = 0;
+      for (int i = 0; i < 32; ++i) {
+        const unsigned sum = malleable[32 + i] + L[i] + carry;
+        malleable[32 + i] = static_cast<std::uint8_t>(sum & 255);
+        carry = sum >> 8;
+      }
+      CHECK(carry == 0 && (malleable[63] & 0xe0) == 0);   // it fits below 2^253, so only the order check can refuse it
+      CHECK(armor::ed25519::verify(v.signature, v.message, v.length, v.public_key));
+      CHECK(!armor::ed25519::verify(malleable, v.message, v.length, v.public_key));
+    }
+  }
   // the top bits of S must be clear, and a key that is not a point is refused
   std::uint8_t big[64];
   std::memcpy(big, kEd25519Vectors[0].signature, 64);
@@ -297,7 +318,125 @@ static void test_remembered_session_is_not_taken_after_half_an_hour() {
   CHECK(busy.touch(std::string(40, 'a'), 2001) == nullptr && busy.touch(std::string(40, 'b'), 2001) != nullptr);
 }
 
+static void test_json_strictness() {
+  using namespace armor;
+  json::Value document;
+  // a name repeated in an object is refused: the server's parser keeps the last one and this one the first, so a text could mean two things
+  CHECK(!json::parse("{\"a\":1,\"a\":2}", document));
+  CHECK(!json::parse("{\"x\":{\"b\":true,\"b\":false}}", document));
+  CHECK(!json::parse("[{\"a\":1,\"a\":1}]", document));
+  CHECK(json::parse("{\"a\":1,\"b\":{\"a\":2}}", document) && document.get("a")->number == 1);   // the same name at another level is not a repeat
+  // a whole number is written whole
+  json::Writer w;
+  w.begin_array().number(1234567890.0).number(5.0).number(0.25).number(-7.0).number(1e15).number(1e300).end_array();
+  CHECK(w.str().rfind("[1234567890,5,0.25,-7,1000000000000000,", 0) == 0);
+  json::Value back;
+  CHECK(json::parse(w.str(), back) && back.items[0].number == 1234567890.0);
+  // the id of a request of the Bluetooth channel is a whole number that fits
+  ble::Request request;
+  CHECK(ble::parse_request("{\"id\":7,\"op\":\"config.get\"}", request) && request.id == 7);
+  CHECK(!ble::parse_request("{\"id\":1e300,\"op\":\"config.get\"}", request));
+  CHECK(!ble::parse_request("{\"id\":9007199254740993,\"op\":\"config.get\"}", request));
+  CHECK(!ble::parse_request("{\"id\":-1,\"op\":\"config.get\"}", request) && !ble::parse_request("{\"id\":1.5,\"op\":\"config.get\"}", request));
+}
+
+static void test_login_throttle_keeps_its_blocks() {
+  using namespace armor::auth;
+  LoginThrottle throttle;
+  // eight addresses get blocked ...
+  for (std::uint32_t i = 0; i < 8; ++i) for (int j = 0; j < 5; ++j) throttle.failure(100 + i, 1000 + j);
+  for (std::uint32_t i = 0; i < 8; ++i) CHECK(!throttle.allowed(100 + i, 2000));
+  // ... a ninth address does not push one of them out to make room: it waits too, and the blocks stand
+  CHECK(!throttle.allowed(900, 2000) && throttle.wait_s(900, 2000) > 0);
+  for (int j = 0; j < 5; ++j) throttle.failure(900, 2001 + j);   // (a caller that did not look at allowed() gains nothing)
+  for (std::uint32_t i = 0; i < 8; ++i) CHECK(!throttle.allowed(100 + i, 2000));
+  // when a block ends the place is free again, for the address that is waiting
+  CHECK(throttle.allowed(900, 1004 + 30000) && throttle.wait_s(900, 1004 + 30000) == 0);
+  throttle.failure(900, 1004 + 30000);
+  CHECK(throttle.allowed(900, 1004 + 30001));
+  // an address that was only failing a little is the one that goes when the table is full
+  LoginThrottle small;
+  for (std::uint32_t i = 0; i < 8; ++i) small.failure(200 + i, 10 + i);
+  small.failure(300, 100);
+  CHECK(small.allowed(200, 101) && small.allowed(300, 101));
+}
+
+// A phone that fails is blocked on its own; everybody is blocked only by many failures together.
+namespace {
+class StubBackend : public armor::ble::Backend {
+ public:
+  bool has_users() override { return true; }
+  std::string hello_json() override { return "{}"; }
+  bool setup_code_ok(std::string_view) override { return false; }
+  armor::auth::Result add_administrator(std::string_view, std::string_view) override { return armor::auth::Result::kStorage; }
+  bool verify(std::string_view user, std::string_view password, armor::auth::Role& role) override { role = armor::auth::Role::kAdmin; return user == "admin" && password == "right-password"; }
+  std::string config_json() override { return "{}"; }
+  int config_put(std::string_view, std::string&) override { return 0; }
+  std::string status_json() override { return "{}"; }
+  bool wifi_scan(std::string&, std::string&) override { return false; }
+  void restart_soon() override {}
+  std::uint64_t now_ms() override { return now; }
+  std::uint64_t now = 1000;
+};
+armor::ble::Request login(const std::string& password, long long id = 1) {
+  armor::ble::Request request;
+  request.id = id;
+  request.op = "login";
+  armor::json::Value args;
+  armor::json::parse("{\"user\":\"admin\",\"password\":\"" + password + "\"}", args);
+  request.args = args;
+  return request;
+}
+}  // namespace
+
+static void test_ble_throttle_per_phone() {
+  using namespace armor;
+  StubBackend backend;
+  auth::LoginThrottle throttle;
+  ble::Session attacker, owner;
+  attacker.peer = 111;
+  owner.peer = 222;
+  for (int i = 0; i < 5; ++i) CHECK(contains(ble::handle(backend, attacker, throttle, login("wrong")), "wrong_credentials"));
+  CHECK(contains(ble::handle(backend, attacker, throttle, login("right-password")), "too_many_attempts"));   // the phone that failed five times waits
+  CHECK(contains(ble::handle(backend, owner, throttle, login("right-password")), "\"ok\":true"));          // the owner's phone does not
+  // many phones failing together do block everybody, but only after twenty failures (a right login forgives them, so the count starts from nothing here)
+  StubBackend crowd_backend;
+  auth::LoginThrottle crowd;
+  ble::Session many;
+  for (std::uint32_t phone = 1000; phone < 1019; ++phone) { many.peer = phone; ble::handle(crowd_backend, many, crowd, login("wrong")); }
+  ble::Session fresh;
+  fresh.peer = 5000;
+  CHECK(!contains(ble::handle(crowd_backend, fresh, crowd, login("wrong")), "too_many_attempts"));       // nineteen failures: still open (this is the twentieth try)
+  ble::Session late;
+  late.peer = 6000;
+  CHECK(contains(ble::handle(crowd_backend, late, crowd, login("right-password")), "too_many_attempts"));  // the twentieth blocks everybody
+  // a phone that is not known keeps the old rule: five failures block the channel
+  StubBackend other;
+  auth::LoginThrottle shared;
+  ble::Session anonymous;
+  for (int i = 0; i < 5; ++i) ble::handle(other, anonymous, shared, login("wrong"));
+  CHECK(contains(ble::handle(other, anonymous, shared, login("right-password")), "too_many_attempts"));
+  // the peer survives a clear (a logout must not turn the phone into an unknown one)
+  attacker.clear();
+  CHECK(attacker.peer == 111);
+}
+
+static void test_broker_uri() {
+  using armor::broker_uri::parse;
+  CHECK(parse("mqtt://192.168.0.180:1883").ok && parse("mqtt://192.168.0.180:1883").host == "192.168.0.180" && parse("mqtt://192.168.0.180:1883").port == 1883);
+  CHECK(parse("mqtt://broker.local").port == 1883 && parse("mqtts://broker.local").port == 8883 && parse("ws://h/mqtt").port == 80 && parse("wss://h").port == 443);
+  CHECK(parse("mqtts://broker.local:8884/path?x=1").port == 8884 && parse("mqtts://broker.local:8884/path?x=1").host == "broker.local");
+  CHECK(parse("mqtt://user:secret@host:1884").host == "host" && parse("mqtt://user:secret@host:1884").port == 1884);
+  CHECK(parse("mqtt://[::1]:1884").host == "::1" && parse("mqtt://[::1]:1884").port == 1884 && parse("mqtt://[fe80::1]").port == 1883);
+  CHECK(!parse("").ok && !parse("192.168.0.1:1883").ok && !parse("http://host").ok && !parse("mqtt://").ok && !parse("mqtt://:1883").ok);
+  CHECK(!parse("mqtt://host:0").ok && !parse("mqtt://host:70000").ok && !parse("mqtt://host:12ab").ok && !parse("mqtt://host:").ok && !parse("mqtt://[::1").ok && !parse("mqtt://[::1]x").ok);
+}
+
 int main() {
+  test_ble_throttle_per_phone();
+  test_broker_uri();
+  test_json_strictness();
+  test_login_throttle_keeps_its_blocks();
   test_ed25519();
   test_fw_trust();
   test_ble_passkey();

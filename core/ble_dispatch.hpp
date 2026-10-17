@@ -5,6 +5,7 @@
 // everything else needs a login; changing anything needs an administrator; wrong passwords are throttled) are tested on a computer.
 // The operations are documented in docs/BLE_PROVISIONING.md.
 #pragma once
+#include <algorithm>
 #include <string>
 #include <string_view>
 
@@ -36,29 +37,38 @@ struct Session {
   bool authenticated = false;
   std::string user;
   auth::Role role = auth::Role::kViewer;
-  void clear() { *this = Session{}; }
+  std::uint32_t peer = 0;   // a number made from the address of the phone (0: not known): a phone that fails is blocked on its own, and does not block the owner's
+  void clear() { const std::uint32_t kept = peer; *this = Session{}; peer = kept; }
 };
 
-constexpr std::uint32_t kThrottleKey = 0xB1E00001u;   // every Bluetooth client shares one radio, so one throttle
+// Every Bluetooth client shares one radio, so the failures of all of them together are counted too. When the phone is known, its own failures block it after five, and the shared count
+// blocks everybody only after this many (anyone in range could otherwise lock the owner out with five wrong passwords, again and again). A phone that is not known counts on the shared
+// throttle alone, five at a time.
+constexpr unsigned kSharedFailureLimit = 20;
+constexpr std::uint32_t kThrottleKey = 0xB1E00001u;   // a phone number that is never a phone (see Session::peer)
 
 // Answers one request. The reply is always one JSON message (see error_response).
 inline std::string handle(Backend& backend, Session& session, auth::LoginThrottle& throttle, const Request& request) {
   const std::uint64_t now = backend.now_ms();
-  const auto locked = [&]() { return !throttle.allowed(kThrottleKey, now); };
-  const auto lock_reply = [&]() { return error_response(request.id, "too_many_attempts", "{\"wait_s\":" + std::to_string(throttle.wait_s(kThrottleKey, now)) + "}"); };
+  const bool known_peer = session.peer != 0 && session.peer != kThrottleKey;
+  const auto locked = [&]() { return !throttle.shared_allowed(now) || (known_peer && !throttle.allowed(session.peer, now)); };
+  const auto wait = [&]() { const unsigned shared = throttle.shared_wait_s(now); return known_peer ? std::max(shared, throttle.wait_s(session.peer, now)) : shared; };
+  const auto failed = [&]() { throttle.shared_failure(now, known_peer ? kSharedFailureLimit : 5); if (known_peer) throttle.failure(session.peer, now); };
+  const auto forgiven = [&]() { throttle.shared_success(); if (known_peer) throttle.success(session.peer); };
+  const auto lock_reply = [&]() { return error_response(request.id, "too_many_attempts", "{\"wait_s\":" + std::to_string(wait()) + "}"); };
 
   if (request.op == "hello") return ok_response(request.id, backend.hello_json());
 
   if (request.op == "setup") {
     if (backend.has_users()) return error_response(request.id, "forbidden");
     if (locked()) return lock_reply();
-    if (!backend.setup_code_ok(request.args.string_or("code", ""))) { throttle.failure(kThrottleKey, now); return error_response(request.id, "wrong_code"); }
+    if (!backend.setup_code_ok(request.args.string_or("code", ""))) { failed(); return error_response(request.id, "wrong_code"); }
     const std::string user = request.args.string_or("user", ""), password = request.args.string_or("password", "");
     const auth::Result result = backend.add_administrator(user, password);
     if (result == auth::Result::kInvalidName) return error_response(request.id, "invalid_name");
     if (result == auth::Result::kWeakPassword) return error_response(request.id, "weak_password");
     if (result != auth::Result::kOk) return error_response(request.id, "storage");
-    throttle.success(kThrottleKey);
+    forgiven();
     session.authenticated = true;
     session.user = user;
     session.role = auth::Role::kAdmin;
@@ -72,8 +82,8 @@ inline std::string handle(Backend& backend, Session& session, auth::LoginThrottl
     if (locked()) return lock_reply();
     auth::Role role = auth::Role::kViewer;
     const std::string user = request.args.string_or("user", "");
-    if (!backend.verify(user, request.args.string_or("password", ""), role)) { throttle.failure(kThrottleKey, now); session.clear(); return error_response(request.id, "wrong_credentials"); }
-    throttle.success(kThrottleKey);
+    if (!backend.verify(user, request.args.string_or("password", ""), role)) { failed(); session.clear(); return error_response(request.id, "wrong_credentials"); }
+    forgiven();
     session.authenticated = true;
     session.user = user;
     session.role = role;

@@ -171,10 +171,13 @@ namespace {
 bool persist_users() { return write_blob(kUsersKey, g_users.to_json()); }
 }  // namespace
 
+// A change of the users is made on the list, written to flash, and kept only if the write worked: when it did not, the list is what it was (the change used to stay in memory, and the
+// first administrator of a node that could not write would vanish at the next restart without anybody having been told).
 auth::Result user_add(std::string_view name, std::string_view password, auth::Role role) {
   std::lock_guard<std::mutex> guard(g_lock);
+  const auth::UserStore before = g_users;
   const auth::Result result = g_users.add(name, password, role, new_salt(), hash_password);
-  if (result == auth::Result::kOk && !persist_users()) { g_users.remove(name); return auth::Result::kTooMany; }
+  if (result == auth::Result::kOk && !persist_users()) { g_users = before; return auth::Result::kStorage; }
   return result;
 }
 
@@ -185,22 +188,25 @@ bool user_verify(std::string_view name, std::string_view password, auth::Role& r
 
 auth::Result user_set_password(std::string_view name, std::string_view password) {
   std::lock_guard<std::mutex> guard(g_lock);
+  const auth::UserStore before = g_users;
   const auth::Result result = g_users.set_password(name, password, new_salt(), hash_password);
-  if (result == auth::Result::kOk) persist_users();
+  if (result == auth::Result::kOk && !persist_users()) { g_users = before; return auth::Result::kStorage; }
   return result;
 }
 
 auth::Result user_set_role(std::string_view name, auth::Role role) {
   std::lock_guard<std::mutex> guard(g_lock);
+  const auth::UserStore before = g_users;
   const auth::Result result = g_users.set_role(name, role);
-  if (result == auth::Result::kOk) persist_users();
+  if (result == auth::Result::kOk && !persist_users()) { g_users = before; return auth::Result::kStorage; }
   return result;
 }
 
 auth::Result user_remove(std::string_view name) {
   std::lock_guard<std::mutex> guard(g_lock);
+  const auth::UserStore before = g_users;
   const auth::Result result = g_users.remove(name);
-  if (result == auth::Result::kOk) persist_users();
+  if (result == auth::Result::kOk && !persist_users()) { g_users = before; return auth::Result::kStorage; }
   return result;
 }
 

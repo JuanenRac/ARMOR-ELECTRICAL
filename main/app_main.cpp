@@ -149,6 +149,8 @@ extern "C" void app_main() {
   if (settings.zigbee.enabled && (settings.zigbee.rx == 0 || settings.zigbee.tx == 0 || settings.zigbee.reset == 0 || settings.zigbee.bootloader == 0)) button_is_a_pin = true;
   for (const auto& relay : settings.relays) if (relay.enabled && relay.pin == 0) button_is_a_pin = true;
   for (const auto& input : settings.analogs) if (input.enabled && input.pin == 0) button_is_a_pin = true;
+#if CONFIG_ARMOR_BOOT_FACTORY_RESET
   if (!button_is_a_pin) xTaskCreate(boot_button_task, "boot-button", 3072, nullptr, 2, nullptr);
+#endif
   xTaskCreate(confirm_firmware_task, "confirm", 3072, panel_ok ? reinterpret_cast<void*>(1) : nullptr, 2, nullptr);
 }

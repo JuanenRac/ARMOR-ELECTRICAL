@@ -11,7 +11,7 @@ namespace armor {
 // fills a buffer (the chip's generator is only truly random with the radio on or with this noise source enabled).
 std::mutex& adc_lock();
 
-// Fills `out` with random bytes, enabling the converter's noise source for the moment it takes.
+// Fills `out` with random bytes. While no radio is running the converter's noise source is enabled for the moment it takes; once the Wi-Fi or the Bluetooth is up the generator needs no help.
 void random_bytes(std::uint8_t* out, std::size_t length);
 
 }  // namespace armor

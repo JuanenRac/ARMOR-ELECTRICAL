@@ -44,6 +44,7 @@ esp_eth_handle_t g_eth = nullptr;
 esp_timer_handle_t g_reconnect_timer = nullptr;
 bool g_wifi_running = false;   // the driver was started by start()
 std::mutex g_scan_lock;
+std::atomic<bool> g_scan_switched_mode{false};   // true while scan() has changed the mode of the radio only to be able to search
 
 // Which saved network the station is on now (0: the one above, 1..: settings.sta.backup[index-1]) and how many times in a row
 // it has failed to connect since the last success or switch. After enough failures, and only when another saved network
@@ -194,7 +195,10 @@ void on_wifi_event(void*, esp_event_base_t, int32_t event_id, void* data) {
       ESP_LOGI(kTag, "a client left the access point: %s", mac_text(event->mac).c_str());
       break;
     }
-    case WIFI_EVENT_STA_START: esp_wifi_connect(); break;
+    case WIFI_EVENT_STA_START:
+      // The search of the access point mode (below) starts the station only to look around: it has no network to join, and a station that is "connecting" refuses the search.
+      if (!g_scan_switched_mode) esp_wifi_connect();
+      break;
     case WIFI_EVENT_STA_CONNECTED: {
       g_sta_attempts = 0;   // forget past failures of this network now that it has worked
       g_wifi_backoff.reset();
@@ -265,8 +269,10 @@ wifi_auth_mode_t auth_mode(config::WifiSecurity security) {
 
 bool set_access_point(const netplan::Plan& plan) {
   wifi_config_t ap{};
-  std::strncpy(reinterpret_cast<char*>(ap.ap.ssid), plan.ap.ssid.c_str(), sizeof ap.ap.ssid - 1);
-  ap.ap.ssid_len = static_cast<std::uint8_t>(plan.ap.ssid.size());
+  // A name of 32 bytes is allowed and has no end mark in the field: it is copied whole, with its length (strncpy of 31 left the last byte as a zero).
+  const std::size_t ssid_length = std::min(plan.ap.ssid.size(), sizeof ap.ap.ssid);
+  std::memcpy(ap.ap.ssid, plan.ap.ssid.data(), ssid_length);
+  ap.ap.ssid_len = static_cast<std::uint8_t>(ssid_length);
   if (plan.ap.security != config::WifiSecurity::kOpen) std::strncpy(reinterpret_cast<char*>(ap.ap.password), plan.ap.password.c_str(), sizeof ap.ap.password - 1);
   ap.ap.channel = static_cast<std::uint8_t>(plan.ap.channel);
   ap.ap.authmode = auth_mode(plan.ap.security);
@@ -281,7 +287,7 @@ bool set_access_point(const netplan::Plan& plan) {
 
 wifi_config_t station_wifi_config(const config::Network& network) {
   wifi_config_t sta{};
-  std::strncpy(reinterpret_cast<char*>(sta.sta.ssid), network.ssid.c_str(), sizeof sta.sta.ssid - 1);
+  std::memcpy(sta.sta.ssid, network.ssid.data(), std::min(network.ssid.size(), sizeof sta.sta.ssid));
   std::strncpy(reinterpret_cast<char*>(sta.sta.password), network.password.c_str(), sizeof sta.sta.password - 1);
   sta.sta.threshold.authmode = network.password.empty() ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA_PSK;
   sta.sta.pmf_cfg.capable = true;
@@ -463,7 +469,7 @@ bool scan(std::vector<ScanEntry>& out, std::string& error) {
   if (!g_wifi_running) { error = "wifi_unavailable"; return false; }
   wifi_mode_t previous = WIFI_MODE_NULL;
   esp_wifi_get_mode(&previous);
-  if (previous == WIFI_MODE_AP) esp_wifi_set_mode(WIFI_MODE_APSTA);   // an access point alone cannot search
+  if (previous == WIFI_MODE_AP) { g_scan_switched_mode = true; esp_wifi_set_mode(WIFI_MODE_APSTA); }   // an access point alone cannot search
   wifi_scan_config_t config{};
   config.show_hidden = false;
   config.scan_type = WIFI_SCAN_TYPE_ACTIVE;
@@ -489,7 +495,7 @@ bool scan(std::vector<ScanEntry>& out, std::string& error) {
     esp_wifi_clear_ap_list();
     error = result == ESP_ERR_WIFI_STATE ? "wifi_busy" : "scan_failed";
   }
-  if (previous == WIFI_MODE_AP) esp_wifi_set_mode(WIFI_MODE_AP);
+  if (previous == WIFI_MODE_AP) { esp_wifi_set_mode(WIFI_MODE_AP); g_scan_switched_mode = false; }
   return ok;
 }
 

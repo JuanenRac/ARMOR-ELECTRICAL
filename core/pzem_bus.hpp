@@ -35,7 +35,8 @@ struct MeterState {
 class PzemBus {
  public:
   static constexpr std::uint64_t kReplyTimeoutMs = 400;
-  /// A reading older than this is not published: a meter that stopped answering must not go on showing its last figures.
+  /// A reading older than this is not published: a meter that stopped answering must not go on showing its last figures. It is at least ten seconds, and longer when the cycle is: a
+  /// reading is as old as a whole cycle by the time the next message is made (see `freshness_ms`).
   static constexpr std::uint64_t kFreshMs = 10'000;
 
   PzemBus(std::vector<MeterConfig> meters, std::uint64_t cycle_ms) : cycle_ms_(cycle_ms) {
@@ -75,10 +76,16 @@ class PzemBus {
   }
 
   const std::vector<MeterState>& meters() const { return meters_; }
+  /// How old a reading may be and still count: a whole cycle, the time the round itself takes (every meter may need its whole timeout) and a margin. A meter that stops answering is
+  /// dropped by the second message after it stopped, whatever the cycle.
+  std::uint64_t freshness_ms() const {
+    const std::uint64_t cycle = cycle_ms_ + static_cast<std::uint64_t>(meters_.size()) * kReplyTimeoutMs + 2'000;
+    return cycle > kFreshMs ? cycle : kFreshMs;
+  }
   /// The meters that have a fresh reading, in order.
   std::vector<const MeterState*> fresh(std::uint64_t now_ms) const {
     std::vector<const MeterState*> out;
-    for (const MeterState& meter : meters_) if (meter.have_reading && now_ms - meter.reading_at_ms <= kFreshMs) out.push_back(&meter);
+    for (const MeterState& meter : meters_) if (meter.have_reading && now_ms - meter.reading_at_ms <= freshness_ms()) out.push_back(&meter);
     return out;
   }
 

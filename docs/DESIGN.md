@@ -22,4 +22,4 @@ A channel of the message has an identifier (`grid`, `heater`, `dc-bus`...). In t
 ## What is deliberately left out
 
 - Anything that makes a node write to a meter (change its address, its thresholds, reset its energy): meters are set up once, with the maker's tool, before they are installed.
-- Any command that reaches a node from the server. The message carries states; the first command will be designed with the hardware in front of it, tried in isolation, and gated by [SWITCHING.md](SWITCHING.md).
+- Any command that moves a load from the server. The message carries states. What does exist is the relays of the base board: moved by the broker when `remote.relays` is on (ON and OFF only), and through the node's own token API; the switching rules and the one-time-token commands of [SWITCHING.md](SWITCHING.md) are tested on a computer and not linked into the firmware (`switching_enabled` is always false).

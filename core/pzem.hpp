@@ -64,6 +64,7 @@ inline Result decode(Model model, std::uint8_t address, const std::uint8_t* data
     if (length != 5) return Result::kLength;
     const std::uint16_t crc = crc16(data, 3);
     if (data[3] != (crc & 0xFF) || data[4] != (crc >> 8)) return Result::kCrc;
+    if (address != 0xF8 && data[0] != address) return Result::kAddress;   // the exception of another meter on the line is not this meter's
     return Result::kException;
   }
   if (length < reply_length(model)) return Result::kTooShort;

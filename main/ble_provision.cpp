@@ -2,13 +2,15 @@
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // One GATT service with two characteristics: RX (the app writes framed JSON requests) and TX (the node notifies framed JSON answers); see
-// core/ble_frame.hpp for the framing and core/ble_dispatch.hpp for who may ask what. Writing needs an encrypted link (LE Secure Connections,
-// "just works": it stops a passive listener, not an attacker who is present while the phone pairs), and every operation but hello needs the set-up
-// code or a login. Requests are answered by a task of their own because checking a password takes a third of a second and must not stall the radio.
+// core/ble_frame.hpp for the framing and core/ble_dispatch.hpp for who may ask what. Writing needs an encrypted link: LE Secure Connections with a passkey (the phone types the PIN that
+// derives from the node's setup code; a node with no setup code accepts no pairing), and every operation but hello needs the set-up code or a login. Five failed pairings in a row close
+// the channel to new connections for five minutes. Requests are answered by a task of their own because checking a password takes a third of a second and must not stall the radio.
 #include "ble_provision.hpp"
 
+#include <atomic>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <string>
 extern "C" {
 #include "esp_log.h"
@@ -47,8 +49,24 @@ bool g_running = false;
 bool g_advertising_stopped = false;   // set once the node has an address and the phone had its chance to read the outcome: no more advertising
 ble::Assembler g_assembler;
 ble::Session g_session;
+std::mutex g_session_lock;                 // g_session is read and written by the worker and cleared by the host task of the radio: always under this lock
+std::atomic<unsigned> g_generation{0};     // changes with every connection and disconnection; a request carries the one it arrived in
 auth::LoginThrottle g_throttle;
-QueueHandle_t g_queue = nullptr;   // pointers to std::string: whole requests for the worker
+QueueHandle_t g_queue = nullptr;           // pointers to Pending: whole requests for the worker
+struct Pending { unsigned generation = 0; std::string text; };
+
+// Pairing: five failures in a row (a wrong PIN, or an attacker trying the million possible ones) shut the door to new connections for five minutes.
+constexpr int kPairingFailuresBeforeLock = 5;
+constexpr std::int64_t kPairingLockUs = 5LL * 60LL * 1000000LL;
+std::atomic<int> g_pairing_failures{0};
+std::atomic<std::int64_t> g_pairing_locked_until_us{0};
+
+// A number made from the address of the phone (FNV-1a over its six bytes; never 0).
+std::uint32_t peer_number(const std::uint8_t* address) {
+  std::uint32_t hash = 2166136261u;
+  for (int i = 0; i < 6; ++i) { hash ^= address[i]; hash *= 16777619u; }
+  return hash == 0 || hash == ble::kThrottleKey ? 1u : hash;
+}
 
 class NodeBackend : public ble::Backend {
  public:
@@ -109,12 +127,22 @@ void send_message(const std::string& json_text) {
 
 void worker_task(void*) {
   for (;;) {
-    std::string* raw = nullptr;
+    Pending* raw = nullptr;
     if (xQueueReceive(g_queue, &raw, portMAX_DELAY) != pdTRUE || raw == nullptr) continue;
-    const std::unique_ptr<std::string> text(raw);
+    const std::unique_ptr<Pending> pending(raw);
+    if (pending->generation != g_generation.load()) continue;   // it came from a phone that is gone: nobody is waiting for the answer, and it must not act as the phone that is here now
     ble::Request request;
-    if (!ble::parse_request(*text, request)) { send_message(ble::error_response(0, "bad_request")); continue; }
-    send_message(ble::handle(g_backend, g_session, g_throttle, request));
+    if (!ble::parse_request(pending->text, request)) { send_message(ble::error_response(0, "bad_request")); continue; }
+    // The session is copied out, used for the (slow) request, and put back only if the same connection is still there: the host task clears it on every connect and disconnect.
+    ble::Session session;
+    { std::lock_guard<std::mutex> guard(g_session_lock); session = g_session; }
+    const std::string reply = ble::handle(g_backend, session, g_throttle, request);
+    {
+      std::lock_guard<std::mutex> guard(g_session_lock);
+      if (pending->generation != g_generation.load()) continue;
+      g_session = session;
+    }
+    send_message(reply);
   }
 }
 
@@ -127,7 +155,7 @@ int on_rx(std::uint16_t, std::uint16_t, struct ble_gatt_access_ctxt* context, vo
   std::string message;
   bool have = g_assembler.feed(buffer, length, message);
   while (have) {
-    std::string* copy = new std::string(message);
+    Pending* copy = new Pending{g_generation.load(), message};
     if (xQueueSend(g_queue, &copy, 0) != pdTRUE) { delete copy; ESP_LOGW(kTag, "a request was dropped: the node is busy"); }
     have = g_assembler.take(message);
   }
@@ -151,9 +179,19 @@ int on_gap(struct ble_gap_event* event, void*) {
   switch (event->type) {
     case BLE_GAP_EVENT_CONNECT:
       if (event->connect.status == 0) {
+        if (esp_timer_get_time() < g_pairing_locked_until_us.load()) {   // too many failed pairings: not now
+          ble_gap_terminate(event->connect.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+          break;
+        }
         g_connection = event->connect.conn_handle;
         g_assembler.reset();
-        g_session.clear();
+        {
+          std::lock_guard<std::mutex> guard(g_session_lock);
+          ++g_generation;
+          g_session.clear();
+          struct ble_gap_conn_desc description;
+          g_session.peer = ble_gap_conn_find(event->connect.conn_handle, &description) == 0 ? peer_number(description.peer_id_addr.val) : 0;
+        }
         ESP_LOGI(kTag, "a phone connected");
         ble_gap_security_initiate(g_connection);   // the phone pairs now, so the link is encrypted before the first request
       } else {
@@ -163,7 +201,12 @@ int on_gap(struct ble_gap_event* event, void*) {
     case BLE_GAP_EVENT_DISCONNECT:
       g_connection = BLE_HS_CONN_HANDLE_NONE;
       g_assembler.reset();
-      g_session.clear();
+      {
+        std::lock_guard<std::mutex> guard(g_session_lock);
+        ++g_generation;
+        g_session.clear();
+        g_session.peer = 0;
+      }
       ESP_LOGI(kTag, "the phone disconnected");
       advertise();
       break;
@@ -179,7 +222,17 @@ int on_gap(struct ble_gap_event* event, void*) {
       }
       break;
     }
-    case BLE_GAP_EVENT_ENC_CHANGE: ESP_LOGI(kTag, "the link is %s", event->enc_change.status == 0 ? "encrypted" : "NOT encrypted"); break;
+    case BLE_GAP_EVENT_ENC_CHANGE:
+      ESP_LOGI(kTag, "the link is %s", event->enc_change.status == 0 ? "encrypted" : "NOT encrypted");
+      if (event->enc_change.status == 0) {
+        g_pairing_failures = 0;
+      } else if (++g_pairing_failures >= kPairingFailuresBeforeLock) {
+        g_pairing_failures = 0;
+        g_pairing_locked_until_us = esp_timer_get_time() + kPairingLockUs;
+        ESP_LOGW(kTag, "%d pairings failed in a row: new connections are refused for five minutes", kPairingFailuresBeforeLock);
+        ble_gap_terminate(event->enc_change.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+      }
+      break;
     case BLE_GAP_EVENT_MTU: ESP_LOGI(kTag, "MTU %u", static_cast<unsigned>(event->mtu.value)); break;
     case BLE_GAP_EVENT_REPEAT_PAIRING: {
       // The phone remembers a pairing this node does not (bonds are not kept): forget the old one and pair again.

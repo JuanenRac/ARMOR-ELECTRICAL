@@ -11,7 +11,10 @@
 #include <ctime>
 #include <vector>
 extern "C" {
+#include <fcntl.h>
 #include <sys/time.h>
+#include "lwip/netdb.h"
+#include "lwip/sockets.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -21,6 +24,7 @@ extern "C" {
 #include "mqtt_client.h"
 }
 #include "core/backoff.hpp"
+#include "core/broker_uri.hpp"
 #include "core/mqtt_topic.hpp"
 #include "network.hpp"
 
@@ -93,11 +97,41 @@ config::Broker current_broker(const config::Settings& s, int index) {
 int broker_count(const config::Settings& s) { return 1 + static_cast<int>(s.mqtt.backup.size()); }
 
 // The client does not reconnect by itself (see start_client): after a failure it is asked to, after a wait that grows with every failure in a row. One timer, one try at a time.
+// The client is used under the lock: the watchdog takes the client out under the same lock before it stops and destroys it, so the one asked to reconnect here cannot be freed meanwhile.
 void retry_now(void*) {
   g_retry_pending = false;
-  esp_mqtt_client_handle_t client = nullptr;
-  { std::lock_guard<std::mutex> guard(g_client_lock); client = g_client; }
-  if (client != nullptr && !g_connected) esp_mqtt_client_reconnect(client);
+  std::lock_guard<std::mutex> guard(g_client_lock);
+  if (g_client != nullptr && !g_connected) esp_mqtt_client_reconnect(g_client);
+}
+
+// Whether something answers at the address of a broker: a TCP connection, tried for at most three seconds. (The watchdog asks before it leaves a broker that works for one that did not.)
+bool broker_answers(const std::string& uri) {
+  const broker_uri::HostPort where = broker_uri::parse(uri);
+  if (!where.ok) return false;
+  addrinfo hints{};
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  addrinfo* found = nullptr;
+  if (getaddrinfo(where.host.c_str(), std::to_string(where.port).c_str(), &hints, &found) != 0 || found == nullptr) return false;
+  bool answered = false;
+  const int sock = socket(found->ai_family, found->ai_socktype, found->ai_protocol);
+  if (sock >= 0) {
+    fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, 0) | O_NONBLOCK);
+    const int result = connect(sock, found->ai_addr, found->ai_addrlen);
+    if (result == 0) answered = true;
+    else if (errno == EINPROGRESS) {
+      fd_set writable;
+      FD_ZERO(&writable);
+      FD_SET(sock, &writable);
+      timeval wait{3, 0};
+      int error = 0;
+      socklen_t size = sizeof error;
+      if (select(sock + 1, nullptr, &writable, nullptr, &wait) > 0 && getsockopt(sock, SOL_SOCKET, SO_ERROR, &error, &size) == 0 && error == 0) answered = true;
+    }
+    close(sock);
+  }
+  freeaddrinfo(found);
+  return answered;
 }
 
 void schedule_retry() {
@@ -145,9 +179,16 @@ void start_client(const config::Broker& broker) {
   config.broker.verification.certificate = ca_pem_start;
 #endif
   esp_mqtt_client_handle_t client = esp_mqtt_client_init(&config);
-  ESP_ERROR_CHECK(esp_mqtt_client_register_event(client, MQTT_EVENT_ANY, on_mqtt, nullptr));
+  // A client that cannot be made (an address that is not valid, no memory for a moment) is not a reason to restart the node over and over: it is said, the node goes on without a broker,
+  // and the watchdog tries again.
+  if (client == nullptr) { ESP_LOGE(kTag, "the MQTT client could not be created for %s", broker.uri.c_str()); return; }
+  if (esp_mqtt_client_register_event(client, MQTT_EVENT_ANY, on_mqtt, nullptr) != ESP_OK) { ESP_LOGE(kTag, "the MQTT client could not be set up"); esp_mqtt_client_destroy(client); return; }
   { std::lock_guard<std::mutex> guard(g_client_lock); g_client = client; }   // before it starts: its first events may publish
-  ESP_ERROR_CHECK(esp_mqtt_client_start(client));
+  if (esp_mqtt_client_start(client) != ESP_OK) {
+    ESP_LOGE(kTag, "the MQTT client could not be started");
+    { std::lock_guard<std::mutex> guard(g_client_lock); if (g_client == client) g_client = nullptr; }
+    esp_mqtt_client_destroy(client);
+  }
 }
 
 constexpr int kBrokerCheckEverySeconds = 10;
@@ -166,9 +207,11 @@ void broker_watchdog_task(void*) {
       // moves on to the next saved one after the usual wait.
       if (g_broker_index != 0 && ++rounds_on_backup * kBrokerCheckEverySeconds >= 1800) {
         rounds_on_backup = 0;
-        g_broker_index = 0;
         const config::Broker first = current_broker(g_settings, 0);
-        ESP_LOGI(kTag, "back to the first saved broker (%s) to see whether it answers again", first.uri.c_str());
+        // Only when the first one answers: leaving a broker that works for one that is still down cost a minute of silence every half hour.
+        if (!broker_answers(first.uri)) { ESP_LOGI(kTag, "the first saved broker (%s) does not answer yet: staying on the one that works", first.uri.c_str()); continue; }
+        g_broker_index = 0;
+        ESP_LOGI(kTag, "back to the first saved broker (%s): it answers again", first.uri.c_str());
         esp_mqtt_client_handle_t old = nullptr;
         { std::lock_guard<std::mutex> guard(g_client_lock); old = g_client; g_client = nullptr; }
         g_connected = false;
@@ -178,6 +221,12 @@ void broker_watchdog_task(void*) {
       continue;
     }
     rounds_on_backup = 0;
+    bool no_client = false;
+    { std::lock_guard<std::mutex> guard(g_client_lock); no_client = g_client == nullptr; }
+    if (no_client) {   // the client could not be created or started: it is tried again, after about half a minute
+      if (++bad_rounds >= kBrokerBadRoundsBeforeSwitch) { bad_rounds = 0; start_client(current_broker(g_settings, g_broker_index)); }
+      continue;
+    }
     const int total = broker_count(g_settings);
     if (total <= 1) continue;
     bad_rounds += 1;

@@ -15,8 +15,10 @@ extern "C" {
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_task_wdt.h"
 }
 #include "core/analog.hpp"
+#include "entropy.hpp"
 
 namespace armor::analoginputs {
 namespace {
@@ -72,7 +74,9 @@ void analog_task(void*) {
   }
   std::vector<double> millivolts;
   millivolts.reserve(8000);
+  esp_task_wdt_add(nullptr);   // a task that hangs here would leave the readings to go stale unseen: the watchdog restarts the board
   for (;;) {
+    esp_task_wdt_reset();
     bool any = false;
     for (std::size_t i = 0; i < board::kAnalogCount; ++i) {
       const config::AnalogSetting& input = g_settings.analogs[i];
@@ -81,10 +85,13 @@ void analog_task(void*) {
       const adc_channel_t channel = static_cast<adc_channel_t>(board::adc1_channel(input.pin));
       const std::uint64_t window_us = input.mode == "ac" ? 200000ULL : 100000ULL;
       millivolts.clear();
-      const std::uint64_t started = static_cast<std::uint64_t>(esp_timer_get_time());
-      while (static_cast<std::uint64_t>(esp_timer_get_time()) - started < window_us && millivolts.size() < 8000) {
-        int raw = 0, mv = 0;
-        if (adc_oneshot_read(unit, channel, &raw) == ESP_OK && adc_cali_raw_to_voltage(calibration[i], raw, &mv) == ESP_OK) millivolts.push_back(static_cast<double>(mv));
+      {
+        std::lock_guard<std::mutex> adc(armor::adc_lock());   // nobody else touches the converter during a window (see entropy.cpp): a login must not spoil it
+        const std::uint64_t started = static_cast<std::uint64_t>(esp_timer_get_time());
+        while (static_cast<std::uint64_t>(esp_timer_get_time()) - started < window_us && millivolts.size() < 8000) {
+          int raw = 0, mv = 0;
+          if (adc_oneshot_read(unit, channel, &raw) == ESP_OK && adc_cali_raw_to_voltage(calibration[i], raw, &mv) == ESP_OK) millivolts.push_back(static_cast<double>(mv));
+        }
       }
       const std::uint64_t at = now_ms();
       const std::uint64_t elapsed = last_ms[i] == 0 ? 0 : at - last_ms[i];
@@ -106,6 +113,7 @@ void analog_task(void*) {
         g_status[i].error = "adc";
         g_have[i] = false;
       }
+      esp_task_wdt_reset();
       vTaskDelay(1);   // let the other tasks run between two inputs
     }
     if (!any) vTaskDelay(pdMS_TO_TICKS(1000));
@@ -121,7 +129,7 @@ void start(const config::Settings& settings) {
     g_status[i].state = settings.analogs[i].enabled ? "waiting" : "disabled";
     any = any || settings.analogs[i].enabled;
   }
-  if (any) xTaskCreate(analog_task, "analog", 6144, nullptr, 4, nullptr);
+  if (any) xTaskCreate(analog_task, "analog", 6144, nullptr, 2, nullptr);   // below the tasks that talk to the network and the relays
 }
 
 std::vector<electrical::AnalogChannel> channels() {

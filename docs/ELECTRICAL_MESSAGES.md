@@ -8,6 +8,7 @@
 ```
 
 - Up to sixteen channels; an identifier appears once. `domain` is `ac` or `dc`. `power_w` is positive when the channel draws power from the network and negative when it feeds it. `energy_kwh` is what has passed since the meter was last reset.
+- **Analog channels are estimates.** For a current input the node publishes `power_w` as the current times the nominal voltage set for the input (an apparent power, not the active power of an inductive load), and its `energy_kwh` is counted by the node since it started: it begins again at zero at every restart, which a consumer must read as a reset. A PZEM-004T gives no direction of the power; the sign is positive.
 - `state` (`closed`, `open`, `unknown`) is for a channel with a switch and is what the node **sees** (the auxiliary contact), never what it was asked.
 - `switching_enabled` says whether the node's firmware may switch anything at all; it is false unless it was built and set up for it.
 - The state message carries states, never a command; a field that is not in the schema is refused.

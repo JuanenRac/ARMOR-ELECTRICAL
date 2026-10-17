@@ -31,3 +31,9 @@ add_test(NAME runner COMMAND test_runner)
 add_test(NAME ble COMMAND test_ble)
 add_test(NAME io COMMAND test_io)
 add_test(NAME switch_set COMMAND test_switch_set ${CMAKE_CURRENT_SOURCE_DIR}/../../ARMOR-COMMON/conformance)
+
+# the panel's texts: eight languages in every row and a text for every error the firmware can answer with
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_FOUND)
+  add_test(NAME panel_text COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/check_panel_text.py)
+endif()

@@ -32,7 +32,7 @@ struct Value {
   bool is_number() const { return type == Type::kNumber; }
   bool is_bool() const { return type == Type::kBool; }
 
-  // The member of an object, or nullptr (also when this is not an object). The first of a repeated name wins.
+  // The member of an object, or nullptr (also when this is not an object). A document that repeats a name is not parsed at all, so there is only ever one.
   const Value* get(std::string_view name) const {
     if (type != Type::kObject) return nullptr;
     for (std::size_t i = 0; i < names.size(); ++i) if (names[i] == name) return &items[i];
@@ -227,6 +227,7 @@ class Parser {
       skip_space();
       Value member;
       if (!value(member, depth + 1)) return false;
+      for (const std::string& known : out.names) if (known == name) return false;   // JSON.parse keeps the last of a repeated name, this parser the first: refused, so nobody can take different values from one text
       out.names.push_back(std::move(name));
       out.items.push_back(std::move(member));
       skip_space();
@@ -282,7 +283,9 @@ class Writer {
     separate();
     if (!std::isfinite(value)) { out_ += "null"; return *this; }
     char text[40];
-    if (decimals < 0) std::snprintf(text, sizeof text, "%.9g", value);
+    // A whole number is written whole (1234567890 used to come out as 1.23456789e+09, which is another number to whoever reads it back).
+    if (decimals < 0 && value == std::floor(value) && std::fabs(value) < 9007199254740992.0) std::snprintf(text, sizeof text, "%.0f", value);
+    else if (decimals < 0) std::snprintf(text, sizeof text, "%.9g", value);
     else std::snprintf(text, sizeof text, "%.*f", decimals, value);
     out_ += text;
     return *this;

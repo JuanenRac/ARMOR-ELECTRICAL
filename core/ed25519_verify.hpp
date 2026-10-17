@@ -234,6 +234,16 @@ inline bool unpackneg(gf r[4], const std::uint8_t p[32]) {
 inline bool verify(const std::uint8_t signature[64], const std::uint8_t* message, std::size_t length, const std::uint8_t public_key[32]) {
   using namespace detail;
   if (signature[63] & 0xe0) return false;   // S must be below 2^253 (and, below, the signature is compared as a whole)
+  {
+    // ... and below the order of the group, L (RFC 8032, section 5.1.7): otherwise S and S + L would be two valid signatures of the same message, and a signature could be used as the name of
+    // what it signs only if it were unique. The bytes are compared from the most significant one.
+    bool below = false;
+    for (int i = 31; i >= 0; --i) {
+      const int s = signature[32 + i], l = static_cast<int>(detail::kL[i]);
+      if (s != l) { below = s < l; break; }
+    }
+    if (!below) return false;
+  }
   gf p[4], q[4];
   if (!unpackneg(q, public_key)) return false;
   std::uint8_t h[64];

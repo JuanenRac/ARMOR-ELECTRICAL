@@ -57,7 +57,8 @@ Progress g_progress;
 CopyProgress g_copy;
 bool g_running = false;
 std::atomic<unsigned> g_generation{0};
-struct Job { std::string url; std::string sha; const char* board = nullptr; };
+struct Job { const char* board = nullptr; };
+std::atomic<bool> g_installing{false};   // install() runs once at a time, whoever calls it (it has one download buffer and one slot)
 CheckProgress g_check;
 bool g_checking = false;
 
@@ -150,6 +151,16 @@ CheckResult check(const char* board_id) {
   result.asset_url = picked.image_url;
   const std::string checksum_url = picked.checksum_url;
   const std::string signature_url = picked.signature_url;
+  result.board = board_id != nullptr ? board_id : "";
+  result.signature_url = signature_url;
+  // Everything this node will download comes out of the release's JSON; it is used only if it is a file of this repository's own releases.
+  if ((!result.asset_url.empty() && !release::is_official_url(result.asset_url, kRepo)) || (!checksum_url.empty() && !release::is_official_url(checksum_url, kRepo)) ||
+      (!signature_url.empty() && !release::is_official_url(signature_url, kRepo))) {
+    result.asset_url.clear();
+    result.signature_url.clear();
+    result.error = "bad_url";
+    return result;
+  }
   // The release's JSON (several assets make it 15 KB or more) and its parsed tree are no longer needed: give the memory back before the next
   // TLS connection (the hash), which is what the node was short of when it said it could not get the checksum.
   document = json::Value();
@@ -170,10 +181,17 @@ CheckResult check(const char* board_id) {
   return result;
 }
 
-InstallResult install(const std::string& asset_url, const std::string& expected_sha256) {
+InstallResult install(const CheckResult& offer) {
   InstallResult result;
+  const std::string& asset_url = offer.asset_url;
+  const std::string& expected_sha256 = offer.sha256;
   if (asset_url.empty()) { result.error = "no_asset"; return result; }
+  if (!release::is_official_url(asset_url, kRepo)) { result.error = "bad_url"; return result; }
   if (expected_sha256.size() != 64) { result.error = "no_checksum"; return result; }
+  if (offer.signature_url.empty()) { result.error = "no_signature"; return result; }
+  if (!release::is_official_url(offer.signature_url, kRepo)) { result.error = "bad_url"; return result; }
+  if (g_installing.exchange(true)) { result.error = "ota_busy"; return result; }
+  struct Done { ~Done() { g_installing = false; } } done;
   esp_http_client_config_t config{};
   config.url = asset_url.c_str();
   config.crt_bundle_attach = esp_crt_bundle_attach;
@@ -198,17 +216,22 @@ InstallResult install(const std::string& asset_url, const std::string& expected_
   { std::lock_guard<std::mutex> guard(g_lock); g_progress.total = total; g_progress.got = 0; g_progress.state = "downloading"; }
   const esp_partition_t* target = esp_ota_get_next_update_partition(nullptr);
   if (target == nullptr) { result.error = "no_partition"; esp_http_client_close(client); esp_http_client_cleanup(client); return result; }
+  // The slot is smaller than the largest image the check above allows (3 MB against 4): an image that does not fit is said so, instead of failing inside the write with a message that says nothing.
+  if (total > target->size) { result.error = "bad_size"; esp_http_client_close(client); esp_http_client_cleanup(client); return result; }
   esp_ota_handle_t handle = 0;
   ++g_generation;   // beginning an update erases the slot: what was known of it is gone
   if (esp_ota_begin(target, total, &handle) != ESP_OK) { result.error = "ota_begin"; esp_http_client_close(client); esp_http_client_cleanup(client); return result; }
   mbedtls_sha256_context sha;
   mbedtls_sha256_init(&sha);
   mbedtls_sha256_starts(&sha, 0);
-  static std::uint8_t chunk[2048];
+  std::unique_ptr<std::uint8_t[]> buffer(new (std::nothrow) std::uint8_t[2048]);
+  if (!buffer) { result.error = "no_memory"; esp_ota_abort(handle); esp_http_client_close(client); esp_http_client_cleanup(client); return result; }
+  std::uint8_t* const chunk = buffer.get();
+  constexpr std::size_t kChunk = 2048;
   std::size_t got = 0;
   bool first = true, failed = false;
   while (got < total) {
-    const int n = esp_http_client_read(client, reinterpret_cast<char*>(chunk), sizeof chunk);
+    const int n = esp_http_client_read(client, reinterpret_cast<char*>(chunk), kChunk);
     if (n < 0) { result.error = "read_error"; failed = true; break; }
     if (n == 0) { result.error = "short_read"; failed = true; break; }
     if (first) {
@@ -234,26 +257,35 @@ InstallResult install(const std::string& asset_url, const std::string& expected_
     result.error = "checksum_mismatch";
     return result;
   }
-  // The hash is the one the release publishes; now the signature says it was published by whoever holds the private key of the A.R.M.O.R. releases. The image is thrown away otherwise.
-  {
-    std::string signature_text, problem;
-    if (!get_bounded(asset_url + ".sig", nullptr, signature_text, problem)) {
-      esp_ota_abort(handle);
-      ESP_LOGE(kTag, "the signature of the release could not be read (%s): refused", problem.c_str());
-      result.error = "no_signature";
-      return result;
-    }
-    if (!fw_trust::image_signature_ok(digest, signature_text)) {
-      esp_ota_abort(handle);
-      ESP_LOGE(kTag, "the signature of the release does not match its hash: refused");
-      result.error = "bad_signature";
-      return result;
-    }
+  // The hash is the one the release publishes. What the image says about itself (its project and its version) is read once it is complete, and then the signature of the manifest -
+  // project, board, version and hash - says it was published by whoever holds the private key of the A.R.M.O.R. releases. Nothing is set to boot before all of it holds.
+  std::string signature_text, problem;
+  if (!get_bounded(offer.signature_url, nullptr, signature_text, problem)) {
+    esp_ota_abort(handle);
+    ESP_LOGE(kTag, "the signature of the release could not be read (%s): refused", problem.c_str());
+    result.error = "no_signature";
+    return result;
   }
   if (esp_ota_end(handle) != ESP_OK) { result.error = "image_invalid"; return result; }
   esp_app_desc_t description{};
   if (esp_ota_get_partition_description(target, &description) != ESP_OK || std::strcmp(description.project_name, esp_app_get_description()->project_name) != 0) {
     result.error = "wrong_firmware";
+    return result;
+  }
+  const std::string image_version = description.version;
+  if (!offer.latest_version.empty() && image_version != offer.latest_version) {
+    ESP_LOGE(kTag, "the image says it is %s and the release says %s: refused", image_version.c_str(), offer.latest_version.c_str());
+    result.error = "version_mismatch";
+    return result;
+  }
+  if (!semver::is_newer(image_version, esp_app_get_description()->version)) {
+    ESP_LOGE(kTag, "the image is %s and the node runs %s: an image that is not newer is refused", image_version.c_str(), esp_app_get_description()->version);
+    result.error = "not_newer";
+    return result;
+  }
+  if (!fw_trust::manifest_signature_ok(description.project_name, offer.board, image_version, expected_sha256, signature_text)) {
+    ESP_LOGE(kTag, "the signature of the release does not match this image (project, board, version and hash): refused");
+    result.error = "bad_signature";
     return result;
   }
   if (esp_ota_set_boot_partition(target) != ESP_OK) { result.error = "ota_boot"; return result; }
@@ -273,10 +305,11 @@ void install_task(void* raw) {
     const CheckResult found = check(job->board);
     if (!found.ok) result.error = found.error;
     else if (found.asset_url.empty()) result.error = "no_asset";
+    else if (!found.update_available) result.error = "up_to_date";
     else if (found.sha256.empty()) result.error = "no_checksum";
-    else result = install(found.asset_url, found.sha256);
+    else result = install(found);
   } else {
-    result = install(job->url, job->sha);
+    result.error = "no_asset";
   }
   {
     std::lock_guard<std::mutex> guard(g_lock);
@@ -333,26 +366,7 @@ bool start_latest(const char* board_id) {
     g_progress = Progress{};
     g_progress.state = "downloading";
   }
-  Job* job = new Job{std::string(), std::string(), board_id};
-  if (xTaskCreate(install_task, "github-ota", 12288, job, 4, nullptr) != pdPASS) {
-    delete job;
-    std::lock_guard<std::mutex> guard(g_lock);
-    g_running = false;
-    g_progress.state = "failed";
-    g_progress.error = "no_task";
-  }
-  return true;
-}
-
-bool start(const std::string& asset_url, const std::string& expected_sha256) {
-  {
-    std::lock_guard<std::mutex> guard(g_lock);
-    if (g_running) return false;
-    g_running = true;
-    g_progress = Progress{};
-    g_progress.state = "downloading";
-  }
-  Job* job = new Job{asset_url, expected_sha256};
+  Job* job = new Job{board_id};
   if (xTaskCreate(install_task, "github-ota", 12288, job, 4, nullptr) != pdPASS) {
     delete job;
     std::lock_guard<std::mutex> guard(g_lock);

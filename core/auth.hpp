@@ -78,7 +78,7 @@ inline std::uint32_t ble_passkey_from(const std::string& setup_code) {
   return static_cast<std::uint32_t>(h % 1000000ULL);
 }
 
-enum class Result { kOk, kInvalidName, kWeakPassword, kExists, kNotFound, kTooMany, kLastAdmin, kWrongPassword };
+enum class Result { kOk, kInvalidName, kWeakPassword, kExists, kNotFound, kTooMany, kLastAdmin, kWrongPassword, kStorage };   // kStorage: the change could not be written to flash, so it was not made
 
 class UserStore {
  public:
@@ -237,30 +237,39 @@ class SessionTable {
 // ---- the throttle --------------------------------------------------------------------------------------------------------------
 
 // After five wrong passwords from one address the address is refused for 30 seconds, then for twice as long each time (at most five
-// minutes); a right password forgives. The table holds the eight most recent addresses.
+// minutes); a right password forgives. The table holds eight addresses. A blocked address is never pushed out to make room for another (with nine addresses on the network, the block
+// of the first would have been shaken off): when every place holds an address that is blocked right now, an address the table does not know waits too.
 class LoginThrottle {
  public:
   bool allowed(std::uint32_t source, std::uint64_t now_ms) const {
     const Entry* entry = find(source);
-    return entry == nullptr || now_ms >= entry->blocked_until_ms;
+    if (entry != nullptr) return now_ms >= entry->blocked_until_ms;
+    return has_place(now_ms);
   }
   // Seconds to wait, for the message (0 when allowed).
   unsigned wait_s(std::uint32_t source, std::uint64_t now_ms) const {
     const Entry* entry = find(source);
-    if (entry == nullptr || now_ms >= entry->blocked_until_ms) return 0;
-    return static_cast<unsigned>((entry->blocked_until_ms - now_ms + 999) / 1000);
+    if (entry != nullptr) return now_ms >= entry->blocked_until_ms ? 0 : static_cast<unsigned>((entry->blocked_until_ms - now_ms + 999) / 1000);
+    if (has_place(now_ms)) return 0;
+    std::uint64_t soonest = ~0ULL;
+    for (const Entry& held : entries_) if (held.used && held.blocked_until_ms < soonest) soonest = held.blocked_until_ms;
+    return static_cast<unsigned>((soonest - now_ms + 999) / 1000);
   }
   void failure(std::uint32_t source, std::uint64_t now_ms) {
-    Entry& entry = obtain(source, now_ms);
-    entry.last_ms = now_ms;
-    if (++entry.failures >= 5) {
-      const unsigned doublings = std::min(entry.failures - 5, 4u);
-      entry.blocked_until_ms = now_ms + std::min<std::uint64_t>(30000ULL << doublings, 300000ULL);
-    }
+    Entry* entry = obtain(source, now_ms);
+    if (entry == nullptr) return;   // every place holds a blocked address: this one is not let in to try (allowed() said so), so there is nothing to count
+    count_failure(*entry, now_ms, 5);
   }
   void success(std::uint32_t source) {
     for (Entry& entry : entries_) if (entry.used && entry.source == source) entry = Entry{};
   }
+
+  // The failures of ALL the sources together, in a place of their own that no source can push out of the table: where one source stands for many (every phone in range of a node's
+  // Bluetooth), it blocks everybody after `limit` wrong passwords in a row, from anyone, with the same growing wait.
+  bool shared_allowed(std::uint64_t now_ms) const { return now_ms >= shared_.blocked_until_ms; }
+  unsigned shared_wait_s(std::uint64_t now_ms) const { return now_ms >= shared_.blocked_until_ms ? 0 : static_cast<unsigned>((shared_.blocked_until_ms - now_ms + 999) / 1000); }
+  void shared_failure(std::uint64_t now_ms, unsigned limit) { count_failure(shared_, now_ms, limit); }
+  void shared_success() { shared_ = Entry{}; }
 
  private:
   struct Entry {
@@ -269,22 +278,38 @@ class LoginThrottle {
     unsigned failures = 0;
     std::uint64_t blocked_until_ms = 0, last_ms = 0;
   };
+  static void count_failure(Entry& entry, std::uint64_t now_ms, unsigned limit) {
+    entry.last_ms = now_ms;
+    if (++entry.failures >= limit) {
+      const unsigned doublings = std::min(entry.failures - limit, 4u);
+      entry.blocked_until_ms = now_ms + std::min<std::uint64_t>(30000ULL << doublings, 300000ULL);
+    }
+  }
   const Entry* find(std::uint32_t source) const {
     for (const Entry& entry : entries_) if (entry.used && entry.source == source) return &entry;
     return nullptr;
   }
-  Entry& obtain(std::uint32_t source, std::uint64_t now_ms) {
-    for (Entry& entry : entries_) if (entry.used && entry.source == source) return entry;
+  // Whether a place is free, or held by an address whose block has ended (that one can go).
+  bool has_place(std::uint64_t now_ms) const {
+    for (const Entry& entry : entries_) if (!entry.used || now_ms >= entry.blocked_until_ms) return true;
+    return false;
+  }
+  Entry* obtain(std::uint32_t source, std::uint64_t now_ms) {
+    for (Entry& entry : entries_) if (entry.used && entry.source == source) return &entry;
     Entry* slot = nullptr;
     for (Entry& entry : entries_) if (!entry.used) { slot = &entry; break; }
-    if (slot == nullptr) slot = &*std::min_element(entries_.begin(), entries_.end(), [](const Entry& a, const Entry& b) { return a.last_ms < b.last_ms; });
+    if (slot == nullptr) {
+      for (Entry& entry : entries_) if (now_ms >= entry.blocked_until_ms && (slot == nullptr || entry.last_ms < slot->last_ms)) slot = &entry;   // the one idle the longest of those not blocked
+    }
+    if (slot == nullptr) return nullptr;
     *slot = Entry{};
     slot->used = true;
     slot->source = source;
     slot->last_ms = now_ms;
-    return *slot;
+    return slot;
   }
   std::array<Entry, 8> entries_{};
+  Entry shared_{};
 };
 
 }  // namespace armor::auth

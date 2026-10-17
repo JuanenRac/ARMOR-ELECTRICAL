@@ -1,5 +1,5 @@
 /* ARMOR-ELECTRICAL node panel - the pages. Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
-   text.js (the seven languages) is joined in front of this file when the panel is packed, so LANGS and L exist here.
+   text.js (the eight languages) is joined in front of this file when the panel is packed, so LANGS and L exist here.
    No framework and no inline style: the panel is served with a strict content-security policy. */
 "use strict";
 
@@ -54,7 +54,7 @@ async function api(method, path, body) {
   return { ok: response.ok, status: response.status, data };
 }
 
-const errorText = code => (L["e_" + code] ? t("e_" + code) : String(code || "?"));
+const errorText = code => (L["e_" + code] ? t("e_" + code) : /^http_\d{3}$/.test(String(code)) ? t("e_http") + " " + String(code).slice(5) : String(code || "?"));
 const problemText = code => (L["p_" + code] ? t("p_" + code) : String(code));
 
 function pickLanguage(preferred) {

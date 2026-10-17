@@ -85,6 +85,8 @@ static void test_decoding() {
   CHECK(pzem::decode(Model::kAc, 1, wrong_function.data(), wrong_function.size(), r) == Result::kFunction);
   const std::vector<std::uint8_t> refused = exception_reply(1, 0x02);
   CHECK(pzem::decode(Model::kAc, 1, refused.data(), refused.size(), r) == Result::kException);
+  CHECK(pzem::decode(Model::kAc, 2, refused.data(), refused.size(), r) == Result::kAddress);   // the refusal of another meter on the line is not this meter's
+  CHECK(pzem::decode(Model::kAc, 0xF8, refused.data(), refused.size(), r) == Result::kException);   // 0xF8 answers whichever meter is asked
   std::vector<std::uint8_t> refused_bad = refused; refused_bad[3] ^= 1;
   CHECK(pzem::decode(Model::kAc, 1, refused_bad.data(), refused_bad.size(), r) == Result::kCrc);
   // an AC reply read as DC (or the other way round) does not fit

@@ -24,8 +24,8 @@ bool connected();
 bool clock_is_set();
 std::uint64_t wall_clock_ms();
 
-// Publishes one message of the node (its topic is the node's own, armor/<family>/<node>/...). Nothing is sent while the broker is not connected or the clock is not set: the server
-// ignores a message older than the last one it accepted, so a timestamp from an unset clock must never leave the node.
+// Publishes one message of the node (its topic is the node's own, armor/<family>/<node>/...). Nothing is sent while the broker is not connected. A node whose clock is not set still
+// publishes: its readings carry the time since it started (the callers do that), and the server stamps them with the time it receives them.
 void publish(const std::string& topic, const std::string& payload);
 
 struct Status {
@@ -33,7 +33,7 @@ struct Status {
   bool connected = false;
   bool clock_set = false;
   std::uint32_t published = 0;
-  std::uint32_t dropped = 0;   // readings that could not be sent (no broker, no clock)
+  std::uint32_t dropped = 0;   // readings that could not be sent (no broker, or a queue that was full)
 };
 Status status();
 

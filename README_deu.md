@@ -21,14 +21,14 @@
   <img src="https://img.shields.io/badge/License-GPL%203.0-blue.svg" alt="GPL 3.0">
   <img src="https://img.shields.io/badge/Language-C%2B%2B17-00599c.svg" alt="Language">
   <img src="https://img.shields.io/badge/Meters-PZEM--004T%20%2F%20017-ffb020.svg" alt="Meters">
-  <img src="https://img.shields.io/badge/Checks-376%2C063-2ea44f.svg" alt="Checks">
-  <img src="https://img.shields.io/badge/Version-0.3.3-0f6cbd.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Checks-376%2C195-2ea44f.svg" alt="Checks">
+  <img src="https://img.shields.io/badge/Version-0.3.4-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-00E5FF.svg" alt="Maturity">
 </p>
 
 ---
 
-**Ehrlichkeitsprüfung - was heute läuft:** Der Kern (die Rahmen der Zähler PZEM-004T v3 und PZEM-017, der Bus, der sie abfragt, die Nachricht des Knotens, die analogen Eingänge und die Schaltregeln: 376.063 Prüfungen in 11 Testprogrammen, davon 375.008 zu den Schaltregeln) wird auf einem Computer mit Ersatzzählern und -schützen getestet, und die von ihm erzeugten Nachrichten akzeptiert ARMOR-COMMON. Die Firmware des Knotens (die Einstellungen, die serielle Leitung, die Seiten Zähler und Messwerte seines Panels, Bluetooth, signierte Updates) baut im ESP-IDF-5.4-Container für beide Platinen. **Sie lief nie auf einer Platine, an keinen Zähler und kein Schütz wurde etwas angeschlossen, und nichts hier schaltet irgendetwas.**
+**Ehrlichkeitsprüfung - was heute läuft:** Der Kern (die Rahmen der Zähler PZEM-004T v3 und PZEM-017, der Bus, der sie abfragt, die Nachricht des Knotens, die analogen Eingänge und die Schaltregeln: 376.195 Prüfungen in 11 Testprogrammen, davon 375.008 zu den Schaltregeln) wird auf einem Computer mit Ersatzzählern und -schützen getestet, und die von ihm erzeugten Nachrichten akzeptiert ARMOR-COMMON. Die Firmware des Knotens (die Einstellungen, die serielle Leitung, die Seiten Zähler und Messwerte seines Panels, Bluetooth, signierte Updates) baut im ESP-IDF-5.4-Container für beide Platinen. **Sie lief nie auf einer Platine, an keinen Zähler und kein Schütz wurde etwas angeschlossen, und nichts hier schaltet irgendetwas.**
 
 ---
 
@@ -36,9 +36,9 @@
 
 | | |
 |---|---|
-| Version | `0.3.3` |
+| Version | `0.3.4` |
 | Reifegrad | Funktionsfähig |
-| Tests | 376,063 checks in 11 programs (`ctest`) |
+| Tests | 376,195 checks in 11 programs (`ctest`) |
 | Technik | C++17 (host-tested core); ESP-IDF firmware for the ESP32-S3 (Wi-Fi or Ethernet), with its web panel |
 | Auf echter Hardware | Noch keiner: keine Platine aufgebaut und kein Zähler oder Schütz angeschlossen; nichts schaltet irgendetwas |
 
@@ -88,7 +88,7 @@ ARMOR-ELECTRICAL/
 **Voraussetzungen:** a C++17 compiler for the host tests, the ESP-IDF 5.4 container to build the image, an ESP32-S3-WROOM-1 N16R8 or a Waveshare ESP32-S3-ETH
 
 ```bash
-cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 376,063 checks: the meters (62), the loop that asks them (72), the settings (85), the readings and inputs (477), Bluetooth (68), the shared base (252), the central link (19), the release and signature checks (20), the interlock (135,736) and the switch sets (239,272)
+cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 376,195 checks: the meters (62), the loop that asks them (72), the settings (85), the readings and inputs (477), Bluetooth (68), the shared base (252), the central link (19), the release and signature checks (20), the interlock (135,736) and the switch sets (239,272)
 build/host/emit_samples | python tests/check_samples.py                                     # the messages, against ARMOR-COMMON
 node tools/panel_mock.mjs --user admin:adminpass123                                         # the panel without a board
 tools/build_node.sh generic                                                                 # the firmware image for the N16R8 board in the ESP-IDF container: dist/generic-s3-wifi.bin
