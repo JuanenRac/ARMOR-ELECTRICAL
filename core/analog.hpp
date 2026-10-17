@@ -75,6 +75,7 @@ inline bool make_channel(const config::AnalogSetting& input, const std::vector<d
       const double power = out.current_a * input.nominal_voltage_v;
       energy.add(power, elapsed_ms);
       out.has_power = true;
+      out.power_estimated = true;      // current times a nominal voltage: apparent power taken as watts
       out.power_w = clamp(power, -1000000.0, 1000000.0);
       out.has_energy = true;
       out.energy_kwh = clamp(energy.kwh(), 0.0, 10000000.0);

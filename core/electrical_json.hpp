@@ -41,6 +41,7 @@ struct AnalogChannel {
   std::string id, label;
   bool ac = false;
   bool has_voltage = false, has_current = false, has_power = false, has_energy = false;
+  bool power_estimated = false;     // the power and the energy were made from a current and a nominal voltage (apparent power), not measured
   double voltage_v = 0, current_a = 0, power_w = 0, energy_kwh = 0;
 };
 
@@ -82,6 +83,7 @@ inline std::string message_json(const std::string& node_id, std::uint64_t timest
     if (input.has_current) w.key("current_a").number(input.current_a, 3);
     if (input.has_power) w.key("power_w").number(input.power_w, 1);
     if (input.has_energy) w.key("energy_kwh").number(input.energy_kwh, 3);
+    if (input.power_estimated) w.field("power_estimated", true);
     w.field("alarm", false);
     w.end_object();
     ++written;
