@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "../core/admin_sources.hpp"
 #include "../core/auth.hpp"
 #include "../core/backoff.hpp"
 #include "../core/ble_dispatch.hpp"
@@ -432,7 +433,50 @@ static void test_broker_uri() {
   CHECK(!parse("mqtt://host:0").ok && !parse("mqtt://host:70000").ok && !parse("mqtt://host:12ab").ok && !parse("mqtt://host:").ok && !parse("mqtt://[::1").ok && !parse("mqtt://[::1]x").ok);
 }
 
+
+// ---- the networks that may use the panel -------------------------------------------------------------------------------------------------
+
+static std::uint32_t ip(const char* text) { std::uint32_t value = 0; const bool ok = adminsrc::parse_address(text, value); CHECK(ok); return value; }
+
+static void test_user_key() {
+  CHECK(auth::user_key("admin") == auth::user_key("ADMIN") && auth::user_key("admin") == auth::user_key("Admin"));
+  CHECK(auth::user_key("admin") != auth::user_key("admin2") && auth::user_key("") != 0 && auth::user_key("admin") != 0);
+  // wrong passwords for one person block that person from every address, and another person is not touched
+  auth::LoginThrottle by_person;
+  for (int i = 0; i < 5; ++i) by_person.failure(auth::user_key("admin"), 1000);
+  CHECK(!by_person.allowed(auth::user_key("Admin"), 1001));
+  CHECK(by_person.allowed(auth::user_key("visitor"), 1001));
+  by_person.success(auth::user_key("admin"));
+  CHECK(by_person.allowed(auth::user_key("admin"), 1002));
+}
+
+static void test_admin_sources() {
+  using adminsrc::allowed;
+  // the default is the house: the private ranges, the link-local ones, the loopback and the range of Tailscale; the Internet is not
+  for (const char* inside : {"10.1.2.3", "172.16.0.1", "172.31.255.254", "192.168.0.50", "169.254.3.4", "127.0.0.1", "100.64.0.9", "100.127.255.1"}) CHECK(allowed(ip(inside), ""));
+  for (const char* outside : {"8.8.8.8", "203.0.113.9", "172.15.0.1", "172.32.0.1", "192.169.0.1", "100.63.0.1", "100.128.0.1", "11.0.0.1"}) CHECK(!allowed(ip(outside), ""));
+  CHECK(!allowed(0, ""));   // an address the node could not read is never allowed
+  CHECK(allowed(ip("192.168.0.50"), "  "));
+  // a list replaces the default: only what it names
+  CHECK(allowed(ip("203.0.113.9"), "203.0.113.9"));
+  CHECK(!allowed(ip("203.0.113.10"), "203.0.113.9"));
+  CHECK(allowed(ip("192.168.1.77"), "192.168.1.0/24, 10.66.0.0/24"));
+  CHECK(!allowed(ip("192.168.2.77"), "192.168.1.0/24, 10.66.0.0/24"));
+  CHECK(allowed(ip("10.66.0.2"), "192.168.1.0/24,10.66.0.0/24"));
+  CHECK(allowed(ip("192.168.1.77"), "192.168.1.5/24"));   // the base is cut to the prefix
+  CHECK(allowed(ip("1.2.3.4"), "0.0.0.0/0"));            // everybody, if the owner wants it
+  CHECK(!allowed(ip("192.168.0.50"), "203.0.113.9"));    // naming an outside address does not keep the house
+  // what is not a list is refused, and nothing is let in by a list that cannot be read
+  for (const char* bad : {"192.168.0", "192.168.0.256", "192.168.0.1/33", "192.168.0.1/", "192.168.0.1/-1", "a.b.c.d", "192.168.0.1,,10.0.0.0/8", ",10.0.0.0/8", "10.0.0.0/8,", "10.0.0.1.1", "10.0.0.1 /8", "192.168.0.1/ab"}) CHECK(!adminsrc::valid_list(bad));
+  CHECK(adminsrc::valid_list("") && adminsrc::valid_list("10.0.0.0/8") && adminsrc::valid_list(" 10.0.0.0/8 , 192.168.0.1 "));
+  CHECK(!adminsrc::valid_list("1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4,5.5.5.5,6.6.6.6,7.7.7.7,8.8.8.8,9.9.9.9"));   // nine entries: too many
+  CHECK(!adminsrc::valid_list(std::string(130, '1')));
+  CHECK(allowed(ip("192.168.0.50"), "garbage") && !allowed(ip("8.8.8.8"), "garbage"));   // a list that cannot be read falls back to the house, never to "everybody"
+}
+
 int main() {
+  test_admin_sources();
+  test_user_key();
   test_ble_throttle_per_phone();
   test_broker_uri();
   test_json_strictness();

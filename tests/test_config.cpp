@@ -152,6 +152,12 @@ static void test_document() {
   problems.clear();
   CHECK(config::load("{\"mqtt\":{\"enabled\":true,\"uri\":\"mqtt://192.168.0.180:18883\",\"username\":\"electrical-1\",\"password\":\"x\"},\"web\":{\"mode\":\"https\"}}", s, edited, problems) && edited.mqtt.enabled && edited.web == config::WebMode::kHttps);
   problems.clear();
+  CHECK(config::load("{\"web\":{\"admin_sources\":\"192.168.1.0/24, 10.66.0.0/24\"}}", s, edited, problems) && edited.admin_sources == "192.168.1.0/24, 10.66.0.0/24");
+  problems.clear();
+  CHECK(!config::load("{\"web\":{\"admin_sources\":\"not a network\"}}", s, edited, problems) && has(problems, "web.admin_sources", "invalid"));
+  problems.clear();
+  CHECK(config::load("{}", s, edited, problems) && edited.admin_sources.empty());
+  problems.clear();
   CHECK(config::load("{\"system\":{\"auto_restart_hours\":12}}", s, edited, problems) && edited.auto_restart_hours == 12);
   problems.clear();
   CHECK(!config::load("{\"system\":{\"auto_restart_hours\":5}}", s, edited, problems) && has(problems, "system.auto_restart_hours", "invalid"));

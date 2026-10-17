@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## [0.3.5] - Only the house may use the panel, wrong passwords counted per person, and a panel that works behind the server's proxy
+
+- **The panel answers only the house.** A new setting, *Networks that may use this panel* (`web.admin_sources`), says which addresses may sign in or change anything: empty means the private ranges of a house (10/8, 172.16/12, 192.168/16, link-local, loopback and 100.64/10, where Tailscale lives), otherwise the list of addresses and networks you write (`192.168.1.0/24, 10.66.0.0/24`). Any other address is told `outside_network`, except the public look at the node's identity, so a port opened by mistake on the router does not let the Internet try passwords here. A list that would shut out the person who is saving it is refused (`would_lock_out`).
+- **Wrong passwords are counted for the person too**, not only for the address: five wrong passwords for a name slow that name down from any address (and, behind the server's proxy, where every request has the server's address, one mistyped name no longer stops everybody).
+- **The panel works behind the server's proxy:** its page, its style, its script, its calls and the firmware upload use relative paths, so the same panel opens at `http://node/` and at `https://house/api/v1/nodes/<id>/panel/` (the Bluetooth and map sockets keep their own paths).
+- **The fingerprint of the node's certificate is public:** `GET /api/v1/session` carries `cert_sha256`, which is what the server pins before it opens the panel of an HTTPS node; the panel already shows it in the web card so that it can be compared by hand.
+- The new setting, its hint and the two new refusals are in the panel in the eight languages. Tests: 376,272 checks in the host test programs (new ones cover the list of networks, the key of a person and the setting).
+
 ## [0.3.4] - Long polling periods keep their readings, the central's relay route answers and a broker cannot toggle a load
 
 - **A long period between rounds no longer empties the message.** A reading counted as fresh for ten seconds only, so with a period above ten seconds every reading was already too old when the message was made and the meters showed as *waiting*; it now counts for a whole cycle (plus the time of the round and a margin), and a meter that is unplugged is still dropped by the second message after that. The counter of messages counts on both lines.

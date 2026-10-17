@@ -42,7 +42,7 @@ const isAdmin = () => S.session && S.session.role === "admin";
 async function api(method, path, body) {
   let response;
   try {
-    response = await fetch("/api/v1/" + path, {
+    response = await fetch("api/v1/" + path, {
       method, credentials: "same-origin",
       headers: Object.assign({ "X-Requested-With": "armor" }, body !== undefined ? { "Content-Type": "application/json" } : {}),
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -317,6 +317,7 @@ function networkPage() {
       note(t("wiredNote"), "info")) : null,
     card(t("nodeTitle"), field("hostname", "node.hostname", { hint: t("hostnameHint") }), field("nodeName", "node.name"), field("nodeId", "node.id"), note(t("netRestartNote"), "info")),
     card(t("webTitle"), field("webMode", "web.mode", { type: "select", options: [["both", t("webBoth")], ["https", t("webHttps")], ["http", t("webHttp")]] }),
+      field("adminSources", "web.admin_sources", { hint: t("adminSourcesHint") }),
       S.status && S.status.web ? el("p", { class: "muted" }, t(S.status.web.https ? "webRunning" : "webNotRunning")) : null,
       S.status && S.status.web && S.status.web.cert_sha256 ? el("p", { class: "muted mono" }, t("webFingerprint") + ": " + S.status.web.cert_sha256) : null, note(t("webNote"), "info")),
     card(t("clockTitle"),
@@ -653,7 +654,7 @@ function usersPage() {
 
 function uploadFirmware(file, progressBar, label, done) {
   const request = new XMLHttpRequest();
-  request.open("POST", "/api/v1/ota");
+  request.open("POST", "api/v1/ota");
   request.setRequestHeader("X-Requested-With", "armor");
   request.upload.onprogress = e => { if (e.lengthComputable) { const pct = Math.round(e.loaded * 100 / e.total); progressBar.style.width = pct + "%"; label.textContent = t("uploading", pct); } };
   request.onload = () => {

@@ -26,6 +26,7 @@ extern "C" {
 #include "mbedtls/sha256.h"
 #include "sdkconfig.h"
 }
+#include "core/admin_sources.hpp"
 #include "core/auth.hpp"
 #include "core/board_s3.hpp"
 #include "core/central_link.hpp"
@@ -68,6 +69,7 @@ std::mutex g_lock;
 std::mutex g_setup_lock;
 auth::SessionTable g_sessions;
 auth::LoginThrottle g_throttle;
+auth::LoginThrottle g_user_throttle;   // the wrong passwords of one person, from any address
 config::Settings g_started_with;
 httpd_handle_t g_server = nullptr;       // plain HTTP, port 80
 httpd_handle_t g_tls_server = nullptr;   // HTTPS, port 443, when the settings ask for it
@@ -258,7 +260,7 @@ esp_err_t get_session(httpd_req_t* r) {
   json::Writer w;
   w.begin_object().field("setup", store::users_empty()).field("authenticated", who.ok).field("user", who.ok ? who.user : "").field("role", who.ok ? auth::to_text(who.role) : "")
       .field("node_id", s.node_id).field("language", s.language).field("version", version_text()).field("setup_ssid", n.ap_setup ? n.ap_ssid : "").field("mac", n.mac)
-      .field("kind", "electrical").field("board", board::kId).field("ethernet", board::kHasEthernet).end_object();
+      .field("kind", "electrical").field("board", board::kId).field("cert_sha256", tls_status().fingerprint).field("ethernet", board::kHasEthernet).end_object();
   return send_json(r, 200, w.str());
 }
 
@@ -325,24 +327,31 @@ esp_err_t post_login(httpd_req_t* r) {
   json::Value in;
   if (!read_json(r, in)) return ESP_OK;
   const std::uint32_t source = source_of(r);
+  const std::string user = in.string_or("user", ""), password = in.string_or("password", "");
+  // Wrong passwords are counted for the person as well as for the address: a guess against one account is slowed down wherever it comes from, and behind the server's proxy (where every
+  // request has the same address) one mistyped name does not stop everybody.
+  const std::uint32_t person = auth::user_key(user);
   {
     std::lock_guard<std::mutex> guard(g_lock);
-    if (!g_throttle.allowed(source, now_ms())) {
+    const bool address_ok = g_throttle.allowed(source, now_ms()), person_ok = g_user_throttle.allowed(person, now_ms());
+    if (!address_ok || !person_ok) {
+      const unsigned by_address = address_ok ? 0u : g_throttle.wait_s(source, now_ms()), by_person = person_ok ? 0u : g_user_throttle.wait_s(person, now_ms());
       json::Writer w;
-      w.begin_object().field("error", "too_many_attempts").field("wait_s", static_cast<int>(g_throttle.wait_s(source, now_ms()))).end_object();
+      w.begin_object().field("error", "too_many_attempts").field("wait_s", static_cast<int>(by_address > by_person ? by_address : by_person)).end_object();
       return send_json(r, 429, w.str());
     }
   }
-  const std::string user = in.string_or("user", ""), password = in.string_or("password", "");
   auth::Role role = auth::Role::kViewer;
   if (!store::user_verify(user, password, role)) {
     std::lock_guard<std::mutex> guard(g_lock);
     g_throttle.failure(source, now_ms());
+    g_user_throttle.failure(person, now_ms());
     return send_error(r, 401, "wrong_credentials");
   }
   {
     std::lock_guard<std::mutex> guard(g_lock);
     g_throttle.success(source);
+    g_user_throttle.success(person);
   }
   std::string cookie;
   start_session(r, user, role, cookie, in.bool_or("remember", false));
@@ -381,6 +390,17 @@ esp_err_t put_config(httpd_req_t* r) {
   if (!require(r, who, true, true)) return ESP_OK;
   std::string body;
   if (!read_body(r, body)) return send_error(r, 413, "too_large");
+  // A list of networks that would shut out the person who is saving it is refused: they would need a factory reset to come back.
+  {
+    json::Value document;
+    if (json::parse(body, document) && document.is_object()) {
+      const json::Value* web = document.get("web");
+      if (web != nullptr && web->is_object() && web->get("admin_sources") != nullptr) {
+        const std::string wanted = web->string_or("admin_sources", "");
+        if (adminsrc::valid_list(wanted) && !adminsrc::allowed(source_of(r), wanted)) return send_error(r, 422, "would_lock_out");
+      }
+    }
+  }
   config::Problems problems;
   bool restart_required = false;
   switch (api::put_config(body, problems, restart_required)) {
@@ -787,6 +807,9 @@ esp_err_t api_handler(httpd_req_t* r) {
   if (path.compare(0, prefix.size(), prefix) != 0) return send_error(r, 404, "not_found");
   const std::string route = path.substr(prefix.size());
   const int method = r->method;
+  // The panel is for the house (or a VPN into it): a request from another network is refused, except the public look at the node's identity. A port opened by mistake on the router
+  // therefore does not let the Internet try passwords here.
+  if (!(method == HTTP_GET && route == "session") && !adminsrc::allowed(source_of(r), store::settings().web.admin_sources)) return send_error(r, 403, "outside_network");
   if (method == HTTP_GET) {
     if (route == "session") return get_session(r);
     if (route == "remote/state") return get_remote_state(r);

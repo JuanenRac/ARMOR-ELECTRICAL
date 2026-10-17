@@ -45,6 +45,13 @@ inline bool valid_password(std::string_view password) {
   return true;
 }
 
+// The key under which the wrong passwords of one person are counted (FNV-1a of the lower-case name, never 0): a guess against an account is slowed down wherever it comes from.
+inline std::uint32_t user_key(std::string_view name) {
+  std::uint32_t h = 2166136261u;
+  for (const char c : name) { h ^= static_cast<std::uint8_t>(c >= 'A' && c <= 'Z' ? c + 32 : c); h *= 16777619u; }
+  return h == 0 ? 1u : h;
+}
+
 // Compares two texts in a time that does not depend on where they first differ.
 inline bool same_text(std::string_view a, std::string_view b) {
   unsigned char difference = static_cast<unsigned char>(a.size() != b.size());
