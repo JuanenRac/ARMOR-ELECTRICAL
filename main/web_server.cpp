@@ -829,7 +829,7 @@ esp_err_t api_handler(httpd_req_t* r) {
   const int method = r->method;
   // The panel is for the house (or a VPN into it): a request from another network is refused, except the public look at the node's identity. A port opened by mistake on the router
   // therefore does not let the Internet try passwords here.
-  if (!(method == HTTP_GET && route == "session") && !adminsrc::allowed(source_of(r), store::settings().web.admin_sources)) return send_error(r, 403, "outside_network");
+  if (!(method == HTTP_GET && route == "session") && !adminsrc::allowed(source_of(r), store::settings().admin_sources)) return send_error(r, 403, "outside_network");
   if (method == HTTP_GET) {
     if (route == "session") return get_session(r);
     if (route == "remote/state") return get_remote_state(r);
