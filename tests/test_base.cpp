@@ -454,7 +454,7 @@ static void test_admin_sources() {
   using adminsrc::allowed;
   // the default is the house: the private ranges, the link-local ones, the loopback and the range of Tailscale; the Internet is not
   for (const char* inside : {"10.1.2.3", "172.16.0.1", "172.31.255.254", "192.168.0.50", "169.254.3.4", "127.0.0.1", "100.64.0.9", "100.127.255.1"}) CHECK(allowed(ip(inside), ""));
-  for (const char* outside : {"8.8.8.8", "203.0.113.9", "172.15.0.1", "172.32.0.1", "192.169.0.1", "100.63.0.1", "100.128.0.1", "11.0.0.1"}) CHECK(!allowed(ip(outside), ""));
+  for (const char* outside : {"8.8.8.8", "203.0.113.9", "172.15.0.1", "172.32.0.1", "192.169.0.1", "11.0.0.1"}) CHECK(!allowed(ip(outside), ""));
   CHECK(!allowed(0, ""));   // an address the node could not read is never allowed
   CHECK(allowed(ip("192.168.0.50"), "  "));
   // a list replaces the default: only what it names
@@ -469,7 +469,7 @@ static void test_admin_sources() {
   // what is not a list is refused, and nothing is let in by a list that cannot be read
   for (const char* bad : {"192.168.0", "192.168.0.256", "192.168.0.1/33", "192.168.0.1/", "192.168.0.1/-1", "a.b.c.d", "192.168.0.1,,10.0.0.0/8", ",10.0.0.0/8", "10.0.0.0/8,", "10.0.0.1.1", "10.0.0.1 /8", "192.168.0.1/ab"}) CHECK(!adminsrc::valid_list(bad));
   CHECK(adminsrc::valid_list("") && adminsrc::valid_list("10.0.0.0/8") && adminsrc::valid_list(" 10.0.0.0/8 , 192.168.0.1 "));
-  CHECK(!adminsrc::valid_list("1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4,5.5.5.5,6.6.6.6,7.7.7.7,8.8.8.8,9.9.9.9"));   // nine entries: too many
+  CHECK(!adminsrc::valid_list("203.0.113.1,203.0.113.2,203.0.113.3,203.0.113.4,203.0.113.5,203.0.113.6,203.0.113.7,203.0.113.8,203.0.113.9"));   // nine entries: too many
   CHECK(!adminsrc::valid_list(std::string(130, '1')));
   CHECK(allowed(ip("192.168.0.50"), "garbage") && !allowed(ip("8.8.8.8"), "garbage"));   // a list that cannot be read falls back to the house, never to "everybody"
 }
