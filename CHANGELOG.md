@@ -15,6 +15,7 @@ All notable changes to this project are documented here.
 - `secrets/node.conf.example` no longer carries a usable set-up code or the address of a real network.
 - The documents say what the node does today: two serial lines, how long a reading counts, the Bluetooth pairing with its passkey, the relays moved by the broker and by the token API, that the analog channels are estimates whose energy restarts with the node, the stop bits of the PZEM-017 (to be tried on the bench) and which board is the reference.
 - Shared with the other nodes: Improv over USB on a board with a cable now also tells the node to use the Wi-Fi it was given, the upload by hand is refused while an installation or a copy of the slot runs, and the headers of the signature code name the real generator script.
+- The Bluetooth note of the panel no longer calls the pairing *just works*: it says what the pairing asks for and what protects it.
 - Tests: 376,195 checks in eleven programs plus the panel texts; new ones cover long periods (11, 30 and 120 seconds), the refusal of a TOGGLE from the broker and the exceptions of other meters.
 - Shared with the other nodes (from ARMOR-COMMON's firmware base): the pairing of Bluetooth closes after repeated failures, the random generator keeps away from the converter, a user write is all-or-nothing, a repeated key in a JSON document is refused and four-number firmware versions are understood.
 
