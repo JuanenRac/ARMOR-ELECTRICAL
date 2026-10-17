@@ -9,6 +9,9 @@ All notable changes to this project are documented here.
 - **The panel works behind the server's proxy:** its page, its style, its script, its calls and the firmware upload use relative paths, so the same panel opens at `http://node/` and at `https://house/api/v1/nodes/<id>/panel/` (the Bluetooth and map sockets keep their own paths).
 - **The fingerprint of the node's certificate is public:** `GET /api/v1/session` carries `cert_sha256`, which is what the server pins before it opens the panel of an HTTPS node; the panel already shows it in the web card so that it can be compared by hand.
 - The new setting, its hint and the two new refusals are in the panel in the eight languages. Tests: 376,272 checks in the host test programs (new ones cover the list of networks, the key of a person and the setting).
+- **A login or a set-up must carry the marker of the panel** (`X-Requested-With`), like every request that changes something, so a page of another site cannot sign a person in to an account it chose; the server's own sign-in to a node (update, adoption) sends it.
+- **The current password of the account is counted too:** wrong ones in "change my password" are slowed down like those of a login, because a stolen session could repeat them.
+- **A user change is checked before it is applied:** a role is no longer changed and then the new password refused.
 
 ## [0.3.4] - Long polling periods keep their readings, the central's relay route answers and a broker cannot toggle a load
 

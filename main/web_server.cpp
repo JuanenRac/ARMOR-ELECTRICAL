@@ -265,6 +265,8 @@ esp_err_t get_session(httpd_req_t* r) {
 }
 
 esp_err_t post_setup(httpd_req_t* r) {
+  // A login or a set-up, like every request that changes something, must carry the header a page from another site cannot add: another site could otherwise sign a person in to an account it chose.
+  if (header(r, "X-Requested-With") != "armor") return send_error(r, 403, "forbidden");
   if (!store::users_empty()) return send_error(r, 403, "forbidden");
   json::Value in;
   if (!read_json(r, in)) return ESP_OK;
@@ -323,6 +325,8 @@ esp_err_t post_setup(httpd_req_t* r) {
 }
 
 esp_err_t post_login(httpd_req_t* r) {
+  // A login or a set-up, like every request that changes something, must carry the header a page from another site cannot add: another site could otherwise sign a person in to an account it chose.
+  if (header(r, "X-Requested-With") != "armor") return send_error(r, 403, "forbidden");
   if (store::users_empty()) return send_error(r, 403, "setup_required");
   json::Value in;
   if (!read_json(r, in)) return ESP_OK;
@@ -560,8 +564,10 @@ esp_err_t put_user(httpd_req_t* r, const std::string& name) {
   json::Value in;
   if (!read_json(r, in)) return ESP_OK;
   const std::string role = in.string_or("role", ""), password = in.string_or("password", "");
+  // Everything is checked before anything is applied: a role is not changed and then the password refused.
+  if (!role.empty() && role != "admin" && role != "viewer") return send_error(r, 422, "invalid_role");
+  if (!password.empty() && !auth::valid_password(password)) return send_error(r, 422, "weak_password");
   if (!role.empty()) {
-    if (role != "admin" && role != "viewer") return send_error(r, 422, "invalid_role");
     const auth::Result result = store::user_set_role(name, role == "admin" ? auth::Role::kAdmin : auth::Role::kViewer);
     if (result != auth::Result::kOk) return answer_user_result(r, result);
   }
@@ -588,8 +594,22 @@ esp_err_t put_account(httpd_req_t* r) {
   if (!require(r, who, false, true)) return ESP_OK;
   json::Value in;
   if (!read_json(r, in)) return ESP_OK;
+  // The current password is a guess that a stolen session could repeat: wrong ones are counted for the person like those of a login.
+  const std::uint32_t person = auth::user_key(who.user);
+  {
+    std::lock_guard<std::mutex> guard(g_lock);
+    if (!g_user_throttle.allowed(person, now_ms())) return send_error(r, 429, "too_many_attempts");
+  }
   auth::Role role;
-  if (!store::user_verify(who.user, in.string_or("current", ""), role)) return send_error(r, 403, "wrong_password");
+  if (!store::user_verify(who.user, in.string_or("current", ""), role)) {
+    std::lock_guard<std::mutex> guard(g_lock);
+    g_user_throttle.failure(person, now_ms());
+    return send_error(r, 403, "wrong_password");
+  }
+  {
+    std::lock_guard<std::mutex> guard(g_lock);
+    g_user_throttle.success(person);
+  }
   const auth::Result result = store::user_set_password(who.user, in.string_or("password", ""));
   if (result != auth::Result::kOk) return answer_user_result(r, result);
   std::lock_guard<std::mutex> guard(g_lock);
