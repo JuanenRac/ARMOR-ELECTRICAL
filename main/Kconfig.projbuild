@@ -26,7 +26,7 @@ config ARMOR_NODE_ID
         Each node needs its own identity on the broker (ARMOR-DEVOPS: scripts/mqtt_identity.sh add electrical-node ID).
 
 config ARMOR_SETUP_CODE
-    string "Setup code (empty: a new random one at every start, shown on the USB console)"
+    string "Setup code (empty: a random one made the first time and kept, shown on the USB console)"
     default ""
     help
         The first administrator of a node is created with this code, from the panel. 8 to 32 characters.
