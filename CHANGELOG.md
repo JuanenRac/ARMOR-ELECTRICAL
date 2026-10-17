@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 
 ## [0.3.6] - A channel made from a current input says that its power is an estimate
 
-The channels made from the node's own current inputs carry power_estimated: true, so a consumer can show their power as an estimate (apparent power from a current and a nominal voltage) and not add it to measured totals without saying so.
+- The channels made from the node's own current inputs carry power_estimated: true, so a consumer can show their power as an estimate (apparent power from a current and a nominal voltage) and not add it to measured totals without saying so.
 
 ## [0.3.5] - Only the house may use the panel, wrong passwords counted per person, and a panel that works behind the server's proxy
 
