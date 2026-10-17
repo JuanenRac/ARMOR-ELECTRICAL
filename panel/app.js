@@ -103,6 +103,8 @@ function field(labelKey, path, options = {}) {
   } else if (options.type === "number") {
     input = el("input", { type: "number", min: options.min, max: options.max, step: options.step || 1, value: current === undefined ? "" : current, disabled,
       oninput: e => setValue(path, e.target.value === "" ? NaN : Number(e.target.value)) });
+  } else if (options.type === "textarea") {
+    input = el("textarea", { rows: options.rows || 6, maxLength: options.max, spellcheck: false, disabled, placeholder: options.placeholder || "", oninput: e => setValue(path, e.target.value) }, current === undefined ? "" : String(current));
   } else if (options.type === "password") {
     const stored = getValue(path.replace(/password$/, "password_set"));
     input = el("input", { type: "password", value: "", autocomplete: "new-password", disabled, placeholder: stored ? "••••••••" : "", oninput: e => setValue(path, e.target.value) });
@@ -413,9 +415,11 @@ function brokerPage() {
   const cfg = S.cfg, mq = cfg.mqtt;
   return el("div", { class: "grid wide" },
     card(t("brokerTitle"), field("brokerEnable", "mqtt.enabled", { type: "checkbox", rerender: true }),
-      mq.enabled ? [field("brokerUri", "mqtt.uri", { placeholder: "mqtt://192.168.0.180:18883" }),
+      mq.enabled ? [field("brokerUri", "mqtt.uri", { placeholder: mq.tls ? "mqtts://192.168.0.180:8883" : "mqtt://192.168.0.180:18883" }),
         el("div", { class: "row" }, field("brokerUser", "mqtt.username"), field("brokerPassword", "mqtt.password", { type: "password" })),
         el("div", { class: "row" }, field("heartbeat", "mqtt.heartbeat_s", { type: "number", min: 2, max: 300 })),
+        field("brokerTls", "mqtt.tls", { type: "checkbox", rerender: true }),
+        mq.tls ? [field("brokerCa", "mqtt.ca_pem", { type: "textarea", rows: 8, max: 2048, placeholder: "-----BEGIN CERTIFICATE-----" }), note(t("brokerTlsNote"), "info")] : null,
         backupBrokers()] : null,
       note(t("brokerNote"), "info")));
 }

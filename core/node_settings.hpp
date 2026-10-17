@@ -15,6 +15,7 @@
 #include "config_common.hpp"
 #include "admin_sources.hpp"
 #include "json.hpp"
+#include "mqtt_tls.hpp"
 #include "net_text.hpp"
 #include "node_id.hpp"
 
@@ -65,6 +66,9 @@ constexpr std::size_t kMaxBackupBrokers = 2;
 struct Mqtt {
   bool enabled = false;  // a node that was never configured has no broker yet
   std::string uri, username, password;
+  // Off by default: plain MQTT, as always. On: mqtts:// with the broker's certificate checked against ca_pem ONLY (the installation's own authority, PEM, see mqtt_tls.hpp).
+  bool tls = false;
+  std::string ca_pem;
   int heartbeat_s = 10;  // the keep-alive of the connection is twice this
   // Tried in order, after the broker above, whenever it cannot be reached for a while (main/mqtt_link.cpp); never while it still works.
   std::vector<Broker> backup;
@@ -221,6 +225,11 @@ inline void node_read(const json::Value& document, NodeSettings& s, Problems& pr
     read_text(*mqtt, "username", s.mqtt.username, 64, "mqtt.username", problems);
     read_secret(*mqtt, "password", s.mqtt.password, "mqtt.password", problems);
     read_int(*mqtt, "heartbeat_s", s.mqtt.heartbeat_s, 2, 300, "mqtt.heartbeat_s", problems);
+    read_bool(*mqtt, "tls", s.mqtt.tls, "mqtt.tls", problems);
+    if (mqtt->get("ca_pem") != nullptr) {
+      read_text(*mqtt, "ca_pem", s.mqtt.ca_pem, mqtt_tls::kMaxCaPem, "mqtt.ca_pem", problems);
+      s.mqtt.ca_pem = mqtt_tls::normalize(s.mqtt.ca_pem);
+    }
     read_text(*mqtt, "ntp", s.time.ntp, 64, "mqtt.ntp", problems);   // where older documents kept it
     if (const json::Value* backup = mqtt->get("backup"); backup != nullptr) {
       if (!backup->is_array()) bad(problems, "mqtt.backup", "invalid");
@@ -318,6 +327,7 @@ inline void node_validate(const NodeSettings& s, Problems& problems) {
   if (!time_zone_is_valid(s.time.zone)) bad(problems, "time.zone", "invalid");
 
   // broker
+  mqtt_tls::validate(s.mqtt, problems);
   if (s.mqtt.enabled) {
     if (s.mqtt.uri.empty()) bad(problems, "mqtt.uri", "required");
     else if (!broker_uri_is_valid(s.mqtt.uri)) bad(problems, "mqtt.uri", "invalid");
@@ -355,7 +365,7 @@ inline void node_write_head(json::Writer& w, const NodeSettings& s, bool secrets
   w.end_object();
   w.key("mqtt").begin_object().field("enabled", s.mqtt.enabled).field("uri", s.mqtt.uri).field("username", s.mqtt.username);
   if (secrets) w.field("password", s.mqtt.password); else w.field("password_set", !s.mqtt.password.empty());
-  w.field("heartbeat_s", s.mqtt.heartbeat_s);
+  w.field("heartbeat_s", s.mqtt.heartbeat_s).field("tls", s.mqtt.tls).field("ca_pem", s.mqtt.ca_pem);
   w.key("backup").begin_array();
   for (const Broker& broker : s.mqtt.backup) {
     w.begin_object().field("uri", broker.uri).field("username", broker.username);
