@@ -384,6 +384,13 @@ Progress progress() {
 
 unsigned slot_generation() { return g_generation.load(); }
 
+bool begin_manual_write() {
+  if (g_installing.exchange(true)) return false;
+  ++g_generation;
+  return true;
+}
+void end_manual_write() { ++g_generation; g_installing = false; }
+
 namespace {
 void finish_copy(const char* error, const std::string& version) {
   std::lock_guard<std::mutex> guard(g_lock);

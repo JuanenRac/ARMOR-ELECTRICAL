@@ -71,6 +71,11 @@ CopyProgress copy_progress();
 // Changes every time a slot is written: whoever caches what a slot holds starts again when it changes.
 unsigned slot_generation();
 
+// The manual upload of the panel writes the same slot as an installation from GitHub and a copy of the slot: only one of them at a time. `begin_manual_write` is false while another is running;
+// the caller calls `end_manual_write` when it is done (and the sizes known of the slot are forgotten, as it has been written).
+bool begin_manual_write();
+void end_manual_write();
+
 // Downloads what check() offered (and only that: the address must be one of this repository's own release files) straight into the next OTA slot - the same checks as an upload (minimum
 // size, the image's own magic byte, the project name) plus three more: the image must hash to the hash the release publishes; the version inside it must be the release's own and newer than
 // the one that runs (an old image, legitimately signed, cannot be installed again); and the signature of the manifest (project, board, version, hash) must verify with the key of the

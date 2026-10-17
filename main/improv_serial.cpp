@@ -45,7 +45,8 @@ std::string json_string(const std::string& text) {
 
 void take_wifi(const improv::Rpc& rpc) {
   send(improv::state_packet(improv::State::kProvisioning));
-  const std::string document = "{\"sta\":{\"enabled\":true,\"ssid\":" + json_string(rpc.ssid) + ",\"password\":" + json_string(rpc.password) + "}}";
+  // "uplink":"wifi": on a board with a cable the node would otherwise go on using it and never join the network it was just given
+  const std::string document = "{\"uplink\":\"wifi\",\"sta\":{\"enabled\":true,\"ssid\":" + json_string(rpc.ssid) + ",\"password\":" + json_string(rpc.password) + "}}";
   config::Problems problems;
   bool restart_required = false;
   if (api::put_config(document, problems, restart_required) != api::PutResult::kSaved) {
