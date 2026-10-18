@@ -542,6 +542,7 @@ static void test_user_key() {
 
 static void test_admin_sources() {
   using adminsrc::allowed;
+  { std::uint32_t unused = 0; CHECK(!adminsrc::parse_address("010.1.1.1", unused) && !adminsrc::parse_address("1.2.3.04", unused) && !adminsrc::parse_address("00.1.1.1", unused) && adminsrc::parse_address("0.1.1.0", unused)); }   // same rule as net::parse_ipv4
   // the default is the house: the private ranges, the link-local ones, the loopback and the range of Tailscale; the Internet is not
   for (const char* inside : {"10.1.2.3", "172.16.0.1", "172.31.255.254", "192.168.0.50", "169.254.3.4", "127.0.0.1", "100.64.0.9", "100.127.255.1"}) CHECK(allowed(ip(inside), ""));
   for (const char* outside : {"8.8.8.8", "203.0.113.9", "172.15.0.1", "172.32.0.1", "192.169.0.1", "11.0.0.1"}) CHECK(!allowed(ip(outside), ""));

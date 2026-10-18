@@ -404,7 +404,7 @@ function backupBrokers() {
       const base = "mqtt.backup." + i + ".";
       return el("div", {}, el("div", { class: "row" }, field("brokerUri", base + "uri", { placeholder: "mqtt://192.168.0.180:18883" }),
         el("button", { class: "b danger", tip: "removeNetwork", disabled: !isAdmin(), onclick: () => { list.splice(i, 1); refreshBar(); render(); } }, t("removeNetwork"))),
-        el("div", { class: "row" }, field("brokerUser", base + "username"), field("brokerPassword", base + "password", { type: "password" })));
+        el("div", { class: "row" }, field("brokerUser", base + "username"), field("brokerPassword", base + "password", { type: "password", hint: t("passwordHostBound") })));
     }),
     isAdmin() && list.length < MAX_BACKUP_BROKERS
       ? el("div", { class: "actions" }, el("button", { class: "b", tip: "addBackupBroker", onclick: () => { list.push({ uri: "", username: "", password: "" }); refreshBar(); render(); } }, t("addBackupBroker")))
@@ -416,7 +416,7 @@ function brokerPage() {
   return el("div", { class: "grid wide" },
     card(t("brokerTitle"), field("brokerEnable", "mqtt.enabled", { type: "checkbox", rerender: true }),
       mq.enabled ? [field("brokerUri", "mqtt.uri", { placeholder: mq.tls ? "mqtts://192.168.0.180:8883" : "mqtt://192.168.0.180:18883" }),
-        el("div", { class: "row" }, field("brokerUser", "mqtt.username"), field("brokerPassword", "mqtt.password", { type: "password" })),
+        el("div", { class: "row" }, field("brokerUser", "mqtt.username"), field("brokerPassword", "mqtt.password", { type: "password", hint: t("passwordHostBound") })),
         el("div", { class: "row" }, field("heartbeat", "mqtt.heartbeat_s", { type: "number", min: 2, max: 300 })),
         field("brokerTls", "mqtt.tls", { type: "checkbox", rerender: true }),
         mq.tls ? [field("brokerCa", "mqtt.ca_pem", { type: "textarea", rows: 8, max: 2048, placeholder: "-----BEGIN CERTIFICATE-----" }), note(t("brokerTlsNote"), "info")] : null,

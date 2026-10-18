@@ -15,6 +15,7 @@
 //   So an old command that turns up again (a broker that held it, a captured message) finds no token to match and moves nothing. `open` needs no token and is
 //   always accepted; `acknowledge` clears a latched fault only with both contactors confirmed open.
 #pragma once
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -98,7 +99,8 @@ inline bool parse_command(std::string_view text, SwitchCommand& out, std::string
   const json::Value* node = doc.get("node_id");
   if (node == nullptr || !node->is_string() || !valid_name(node->text, 64)) return fail("node_id");
   const json::Value* stamp = doc.get("timestamp_ms");
-  if (stamp == nullptr || !stamp->is_number() || stamp->number < 0 || stamp->number != static_cast<double>(static_cast<long long>(stamp->number))) return fail("timestamp_ms");
+  if (stamp == nullptr || !stamp->is_number() || !std::isfinite(stamp->number) || stamp->number < 0 || stamp->number >= 9007199254740992.0 ||
+      stamp->number != static_cast<double>(static_cast<long long>(stamp->number))) return fail("timestamp_ms");
   const json::Value* id = doc.get("command_id");
   if (id == nullptr || !id->is_string() || !valid_code(id->text)) return fail("command_id");
   const json::Value* target = doc.get("switch");

@@ -137,6 +137,16 @@ inline bool auto_restart_hours_is_valid(int hours) {
   return false;
 }
 
+// The host of a broker address ("mqtt://host:1883/path" -> "host"), lower case: what a stored broker password is tied to.
+inline std::string broker_host(const std::string& uri) {
+  const std::size_t scheme = uri.find("://");
+  std::string rest = scheme == std::string::npos ? uri : uri.substr(scheme + 3);
+  const std::size_t end = rest.find_first_of(":/");
+  if (end != std::string::npos) rest.resize(end);
+  for (char& c : rest) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+  return rest;
+}
+
 inline bool broker_uri_is_valid(std::string_view uri) {
   std::string_view rest;
   if (uri.substr(0, 7) == "mqtt://") rest = uri.substr(7);
@@ -188,7 +198,12 @@ inline void node_read(const json::Value& document, NodeSettings& s, Problems& pr
     read_bool(*ap, "hidden", s.ap.hidden, "ap.hidden", problems);
     read_int(*ap, "max_clients", s.ap.max_clients, 1, 10, "ap.max_clients", problems);
     read_int(*ap, "tx_power_dbm", s.ap.tx_power_dbm, 2, 20, "ap.tx_power_dbm", problems);
-    read_int(*ap, "bandwidth_mhz", s.ap.bandwidth_mhz, 20, 40, "ap.bandwidth_mhz", problems);
+    {   // 20 or 40 MHz only: anything between would be run as 20 by the radio, so it is refused rather than accepted and ignored
+      int bandwidth = s.ap.bandwidth_mhz;
+      read_int(*ap, "bandwidth_mhz", bandwidth, 20, 40, "ap.bandwidth_mhz", problems);
+      if (bandwidth == 20 || bandwidth == 40) s.ap.bandwidth_mhz = bandwidth;
+      else if (bandwidth != s.ap.bandwidth_mhz) bad(problems, "ap.bandwidth_mhz", "range");
+    }
     read_text(*ap, "country", s.ap.country, 2, "ap.country", problems);
   }
   if (const json::Value* sta = document.get("sta"); sta != nullptr && sta->is_object()) {
@@ -221,8 +236,11 @@ inline void node_read(const json::Value& document, NodeSettings& s, Problems& pr
   }
   if (const json::Value* mqtt = document.get("mqtt"); mqtt != nullptr && mqtt->is_object()) {
     read_bool(*mqtt, "enabled", s.mqtt.enabled, "mqtt.enabled", problems);
+    const std::string stored_broker_host = broker_host(s.mqtt.uri);
     read_text(*mqtt, "uri", s.mqtt.uri, 160, "mqtt.uri", problems);
     read_text(*mqtt, "username", s.mqtt.username, 64, "mqtt.username", problems);
+    // The stored password follows the broker it was made for: pointing the node at another host without typing a password does not send the old one there.
+    if (broker_host(s.mqtt.uri) != stored_broker_host) s.mqtt.password.clear();
     read_secret(*mqtt, "password", s.mqtt.password, "mqtt.password", problems);
     read_int(*mqtt, "heartbeat_s", s.mqtt.heartbeat_s, 2, 300, "mqtt.heartbeat_s", problems);
     read_bool(*mqtt, "tls", s.mqtt.tls, "mqtt.tls", problems);
@@ -236,8 +254,8 @@ inline void node_read(const json::Value& document, NodeSettings& s, Problems& pr
       // A "backup" the document sends replaces the stored list, never adds to it (see sta.backup above - the same bug, found on the
       // broker page: removing backup brokers and saving brought them straight back).
       else {
-        // Same as the backup networks: an entry that arrives without a password is the same account as before (same user on the same
-        // slot or the same address) and keeps it.
+        // Same as the backup networks: an entry that arrives without a password is the same account as before (same user, same host,
+        // on the same slot or at the same address) and keeps it; one pointed at another host starts without.
         const std::vector<Broker> before = std::move(s.mqtt.backup);
         s.mqtt.backup.clear();
         // Same as sta.backup above: more entries than fit just lose the extras, not the rest of the node's settings.
@@ -249,7 +267,7 @@ inline void node_read(const json::Value& document, NodeSettings& s, Problems& pr
           read_text(item, "uri", broker.uri, 160, base + "uri", problems);
           read_text(item, "username", broker.username, 64, base + "username", problems);
           for (std::size_t k = 0; k < before.size(); ++k) {
-            if (before[k].username == broker.username && (k == i || before[k].uri == broker.uri)) { broker.password = before[k].password; break; }
+            if (before[k].username == broker.username && broker_host(before[k].uri) == broker_host(broker.uri) && (k == i || before[k].uri == broker.uri)) { broker.password = before[k].password; break; }
           }
           read_secret(item, "password", broker.password, base + "password", problems);
           s.mqtt.backup.push_back(broker);

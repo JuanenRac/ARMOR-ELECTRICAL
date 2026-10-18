@@ -21,16 +21,6 @@
 
 static int failures = 0;
 static int checks = 0;
-static int known_gaps = 0;
-// A behaviour that is wanted and not there yet: it is reported, and it does not fail the run; when the behaviour arrives the check passes and the report goes away.
-#define KNOWN_GAP(condition)                                                          \
-  do {                                                                                \
-    ++checks;                                                                         \
-    if (!(condition)) {                                                               \
-      ++known_gaps;                                                                   \
-      std::printf("KNOWN GAP %s:%d  %s\n", __FILE__, __LINE__, #condition);\
-    }                                                                                 \
-  } while (0)
 #define CHECK(condition)                                                              \
   do {                                                                                \
     ++checks;                                                                         \
@@ -399,6 +389,7 @@ static void test_node_read_rules() {
   p = read(s, "{\"ap\":{\"enabled\":1,\"ssid\":9,\"security\":\"wep\",\"channel\":14,\"max_clients\":0,\"tx_power_dbm\":1,\"bandwidth_mhz\":41,\"country\":\"ESP\",\"hidden\":\"no\"}}");
   CHECK(has(p, "ap.enabled", "invalid") && has(p, "ap.ssid", "invalid") && has(p, "ap.security", "invalid") && has(p, "ap.channel", "range") && has(p, "ap.max_clients", "range") && has(p, "ap.tx_power_dbm", "range") &&
         has(p, "ap.bandwidth_mhz", "range") && has(p, "ap.country", "too_long") && has(p, "ap.hidden", "invalid"));
+  p = read(s, "{\"ap\":{\"bandwidth_mhz\":25}}"); CHECK(has(p, "ap.bandwidth_mhz", "range") && s.ap.bandwidth_mhz == 20);   // between the two is neither
   p = read(s, "{\"ap\":{\"channel\":13,\"max_clients\":10,\"tx_power_dbm\":20,\"bandwidth_mhz\":40,\"security\":\"wpa3\"}}");
   CHECK(p.empty() && s.ap.channel == 13 && s.ap.max_clients == 10 && s.ap.tx_power_dbm == 20 && s.ap.bandwidth_mhz == 40 && s.ap.security == WifiSecurity::kWpa3);
   p = read(s, "{\"ap\":{\"channel\":0,\"max_clients\":1,\"tx_power_dbm\":2,\"bandwidth_mhz\":20}}"); CHECK(p.empty() && s.ap.channel == 0 && s.ap.max_clients == 1 && s.ap.tx_power_dbm == 2);
@@ -451,8 +442,11 @@ static void test_node_backup_lists() {
   p = read(s, "{\"sta\":{\"backup\":[{\"ssid\":\"" + std::string(33, 's') + "\"}]}}"); CHECK(has(p, "sta.backup.0.ssid", "too_long"));
   // the brokers: an entry keeps its password when it is the same user at the same place or at the same address
   s.mqtt.backup = {{"mqtt://b1", "u1", "p1"}, {"mqtt://b2", "u2", "p2"}};
+  p = read(s, "{\"mqtt\":{\"backup\":[{\"uri\":\"mqtt://B1:1884\",\"username\":\"u1\"},{\"uri\":\"mqtt://b2\",\"username\":\"u2\"}]}}");
+  CHECK(p.empty() && s.mqtt.backup[0].password == "p1" && s.mqtt.backup[1].password == "p2");   // u1 stayed in slot 0 (same host) and u2 kept its address
+  s.mqtt.backup = {{"mqtt://b1", "u1", "p1"}, {"mqtt://b2", "u2", "p2"}};
   p = read(s, "{\"mqtt\":{\"backup\":[{\"uri\":\"mqtt://moved\",\"username\":\"u1\"},{\"uri\":\"mqtt://b2\",\"username\":\"u2\"}]}}");
-  CHECK(p.empty() && s.mqtt.backup[0].password == "p1" && s.mqtt.backup[1].password == "p2");   // u1 stayed in slot 0 and u2 kept its address
+  CHECK(p.empty() && s.mqtt.backup[0].password.empty() && s.mqtt.backup[1].password == "p2");   // u1 now points at another host: its password stays behind
   p = read(s, "{\"mqtt\":{\"backup\":[{\"uri\":\"mqtt://b2\",\"username\":\"u2\"}]}}");
   CHECK(p.empty() && s.mqtt.backup.size() == 1 && s.mqtt.backup[0].password == "p2");            // moved up: the address is the same
   p = read(s, "{\"mqtt\":{\"backup\":[{\"uri\":\"mqtt://b2\",\"username\":\"someone-else\"}]}}");
@@ -469,7 +463,7 @@ static void test_node_backup_lists() {
 }
 
 // The password stored for a broker is that broker's: pointing the node at another host without typing a password must not send the stored one there, or a stolen panel session could
-// read it out by naming a broker of its own. The settings of the radar node do this; these settings do not yet.
+// read it out by naming a broker of its own. 
 static void test_password_follows_its_broker() {
   using namespace config;
   auto read = [](NodeSettings& s, const std::string& text) { Problems p; node_read(parsed(text), s, p); return p; };
@@ -481,11 +475,11 @@ static void test_password_follows_its_broker() {
   CHECK(read(typed, "{\"mqtt\":{\"uri\":\"mqtt://elsewhere.example\",\"password\":\"typed-pass\"}}").empty() && typed.mqtt.password == "typed-pass");
   NodeSettings moved = s;
   CHECK(read(moved, "{\"mqtt\":{\"uri\":\"mqtt://elsewhere.example:1883\"}}").empty());
-  KNOWN_GAP(moved.mqtt.password.empty());
+  CHECK(moved.mqtt.password.empty());
   s.mqtt.backup = {{"mqtt://b1.local", "u1", "p1"}};
   NodeSettings slot = s;
   CHECK(read(slot, "{\"mqtt\":{\"backup\":[{\"uri\":\"mqtt://elsewhere.example\",\"username\":\"u1\"}]}}").empty());
-  KNOWN_GAP(slot.mqtt.backup.size() == 1 && slot.mqtt.backup[0].password.empty());
+  CHECK(slot.mqtt.backup.size() == 1 && slot.mqtt.backup[0].password.empty());
 }
 
 // ---- the base board's own settings ---------------------------------------------------------------------------------------------------------------
@@ -752,6 +746,6 @@ int main() {
   test_relay_remote();
   test_zigbee_bridge();
   test_central_requests();
-  std::printf("%d checks, %d failures, %d known gaps\n", checks, failures, known_gaps);
+  std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

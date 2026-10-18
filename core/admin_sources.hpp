@@ -18,7 +18,7 @@ struct Network { std::uint32_t base = 0, mask = 0; };
 constexpr std::size_t kMaxEntries = 8;
 constexpr std::size_t kMaxText = 120;
 
-// "a.b.c.d" -> the address as a number (host order); false for anything else.
+// "a.b.c.d" -> the address as a number (host order); false for anything else (also a part with a leading zero).
 inline bool parse_address(std::string_view text, std::uint32_t& out) {
   std::uint32_t value = 0;
   int parts = 0;
@@ -28,6 +28,7 @@ inline bool parse_address(std::string_view text, std::uint32_t& out) {
     unsigned number = 0;
     while (i < text.size() && text[i] >= '0' && text[i] <= '9') { number = number * 10 + static_cast<unsigned>(text[i] - '0'); if (number > 255) return false; ++i; }
     if (i == start || i - start > 3) return false;
+    if (i - start > 1 && text[start] == '0') return false;   // no leading zeros ("010" is read as octal by some tools), as net::parse_ipv4
     value = (value << 8) | number;
     if (++parts > 4) return false;
     if (i == text.size()) break;
