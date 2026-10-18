@@ -20,6 +20,16 @@ add_executable(test_io test_io.cpp)
 add_executable(test_switch_set test_switch_set.cpp)
 add_executable(emit_samples emit_samples.cpp)
 
+add_executable(test_limits test_limits.cpp)
+
+# rules shared with the other nodes (ARMOR-COMMON/firmware_base/tests); the _eth builds are the s3-eth board profile
+add_executable(test_shared test_shared.cpp)
+add_executable(test_shared_eth test_shared.cpp)
+target_compile_definitions(test_shared_eth PRIVATE ARMOR_BOARD_S3_ETH=1)
+add_executable(test_shared_node test_shared_node.cpp)
+add_executable(test_shared_node_eth test_shared_node.cpp)
+target_compile_definitions(test_shared_node_eth PRIVATE ARMOR_BOARD_S3_ETH=1)
+
 enable_testing()
 add_test(NAME release COMMAND test_release)
 add_test(NAME mqtt_tls COMMAND test_mqtt_tls)
@@ -33,6 +43,11 @@ add_test(NAME runner COMMAND test_runner)
 add_test(NAME ble COMMAND test_ble)
 add_test(NAME io COMMAND test_io)
 add_test(NAME switch_set COMMAND test_switch_set ${CMAKE_CURRENT_SOURCE_DIR}/../../ARMOR-COMMON/conformance)
+add_test(NAME shared COMMAND test_shared)
+add_test(NAME shared_eth COMMAND test_shared_eth)
+add_test(NAME shared_node COMMAND test_shared_node)
+add_test(NAME shared_node_eth COMMAND test_shared_node_eth)
+add_test(NAME limits COMMAND test_limits)
 
 # the panel's texts: eight languages in every row and a text for every error the firmware can answer with
 find_package(Python3 COMPONENTS Interpreter)

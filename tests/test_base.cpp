@@ -5,18 +5,37 @@
 #include <string>
 #include <vector>
 
+// a node keeps its core next to its sources (the radar node: main/core), the others in core/
+#if __has_include("../core/auth.hpp")
 #include "../core/admin_sources.hpp"
 #include "../core/auth.hpp"
 #include "../core/backoff.hpp"
 #include "../core/ble_dispatch.hpp"
 #include "../core/ble_frame.hpp"
-#include "../core/broker_uri.hpp"
 #include "../core/ed25519_verify.hpp"
 #include "../core/fw_trust.hpp"
 #include "../core/improv.hpp"
 #include "../core/json.hpp"
 #include "../core/node_health.hpp"
 #include "../core/task_health.hpp"
+#else
+#include "../main/core/admin_sources.hpp"
+#include "../main/core/auth.hpp"
+#include "../main/core/backoff.hpp"
+#include "../main/core/ble_dispatch.hpp"
+#include "../main/core/ble_frame.hpp"
+#include "../main/core/ed25519_verify.hpp"
+#include "../main/core/fw_trust.hpp"
+#include "../main/core/improv.hpp"
+#include "../main/core/json.hpp"
+#include "../main/core/node_health.hpp"
+#include "../main/core/task_health.hpp"
+#endif
+// the broker's address is a setting of the nodes that have a broker of their own to name
+#if __has_include("../core/broker_uri.hpp")
+#define ARMOR_HAS_BROKER_URI 1
+#include "../core/broker_uri.hpp"
+#endif
 
 static int failures = 0;
 static int checks = 0;
@@ -491,6 +510,7 @@ static void test_ble_throttle_per_phone() {
   CHECK(attacker.peer == 111);
 }
 
+#ifdef ARMOR_HAS_BROKER_URI
 static void test_broker_uri() {
   using armor::broker_uri::parse;
   CHECK(parse("mqtt://192.168.0.180:1883").ok && parse("mqtt://192.168.0.180:1883").host == "192.168.0.180" && parse("mqtt://192.168.0.180:1883").port == 1883);
@@ -501,6 +521,7 @@ static void test_broker_uri() {
   CHECK(!parse("").ok && !parse("192.168.0.1:1883").ok && !parse("http://host").ok && !parse("mqtt://").ok && !parse("mqtt://:1883").ok);
   CHECK(!parse("mqtt://host:0").ok && !parse("mqtt://host:70000").ok && !parse("mqtt://host:12ab").ok && !parse("mqtt://host:").ok && !parse("mqtt://[::1").ok && !parse("mqtt://[::1]x").ok);
 }
+#endif  // ARMOR_HAS_BROKER_URI
 
 
 // ---- the networks that may use the panel -------------------------------------------------------------------------------------------------
@@ -547,7 +568,9 @@ int main() {
   test_admin_sources();
   test_user_key();
   test_ble_throttle_per_phone();
+#ifdef ARMOR_HAS_BROKER_URI
   test_broker_uri();
+#endif
   test_json_strictness();
   test_login_throttle_keeps_its_blocks();
   test_ed25519();
