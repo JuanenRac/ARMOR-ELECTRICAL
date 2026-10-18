@@ -15,6 +15,7 @@
 #include "../core/fw_trust.hpp"
 #include "../core/improv.hpp"
 #include "../core/json.hpp"
+#include "../core/node_health.hpp"
 #include "../core/task_health.hpp"
 
 static int failures = 0;
@@ -286,6 +287,74 @@ static void test_improv_rpc() {
 
 // ---- the stack report -----------------------------------------------------------------------------------------------------------------------
 
+// ---- the health report every node says about itself -----------------------------------------------------------------------------------
+
+static nodehealth::Report sample_report() {
+  nodehealth::Report r;
+  r.node_id = "alarm-1"; r.family = "alarm"; r.firmware = "0.3.6"; r.board = "s3-eth"; r.timestamp_ms = 9000; r.uptime_s = 86400; r.reset_reason = "power_on";
+  r.heap_free = 142000; r.heap_min = 98000; r.link = {nodehealth::Link::kEthernet, true, 0}; r.broker_reconnects = 1; r.low_stack_tasks = 0;
+  return r;
+}
+
+static void test_node_health() {
+  using nodehealth::Link;
+  // the reset reasons of ESP-IDF, in the words of the contract
+  CHECK(std::string(nodehealth::reset_reason_text(1)) == "power_on" && std::string(nodehealth::reset_reason_text(3)) == "software" && std::string(nodehealth::reset_reason_text(4)) == "panic");
+  CHECK(std::string(nodehealth::reset_reason_text(5)) == "int_wdt" && std::string(nodehealth::reset_reason_text(6)) == "task_wdt" && std::string(nodehealth::reset_reason_text(9)) == "brownout");
+  CHECK(std::string(nodehealth::reset_reason_text(0)) == "unknown" && std::string(nodehealth::reset_reason_text(99)) == "unknown" && std::string(nodehealth::reset_reason_text(-1)) == "unknown");
+  CHECK(nodehealth::is_abnormal_reset("panic") && nodehealth::is_abnormal_reset("task_wdt") && nodehealth::is_abnormal_reset("brownout") && !nodehealth::is_abnormal_reset("power_on") && !nodehealth::is_abnormal_reset("software") && !nodehealth::is_abnormal_reset("external"));
+  // which link the node is on
+  const nodehealth::LinkInfo cable = nodehealth::choose_link(true, true, true, false, 0);
+  CHECK(cable.link == Link::kEthernet && cable.up);
+  const nodehealth::LinkInfo cable_no_ip = nodehealth::choose_link(true, true, false, false, 0);
+  CHECK(cable_no_ip.link == Link::kEthernet && !cable_no_ip.up);
+  const nodehealth::LinkInfo wifi = nodehealth::choose_link(false, true, true, true, -61);
+  CHECK(wifi.link == Link::kWifi && wifi.up && wifi.rssi_dbm == -61);
+  const nodehealth::LinkInfo wifi_board_down = nodehealth::choose_link(false, false, false, false, 0);
+  CHECK(wifi_board_down.link == Link::kWifi && !wifi_board_down.up);
+  const nodehealth::LinkInfo cable_board_down = nodehealth::choose_link(true, false, false, false, 0);
+  CHECK(cable_board_down.link == Link::kEthernet && !cable_board_down.up);
+  CHECK(nodehealth::choose_link(true, false, true, true, -70).link == Link::kWifi);   // a board with a cable and no carrier, joined by Wi-Fi
+  CHECK(nodehealth::choose_link(false, true, true, true, 12).rssi_dbm == 0 && nodehealth::choose_link(false, true, true, true, -300).rssi_dbm == -120);
+  // the last error of a log
+  std::string text;
+  CHECK(nodehealth::error_text_of_line("E (12345) armor-mqtt: the MQTT client could not be created", text) && text == "armor-mqtt: the MQTT client could not be created");
+  CHECK(nodehealth::error_text_of_line("\x1b[0;31mE (7) tag: coloured\x1b[0m\r\n", text) && text == "tag: coloured");
+  CHECK(!nodehealth::error_text_of_line("W (12345) tag: only a warning", text) && !nodehealth::error_text_of_line("I (1) tag: info", text) && !nodehealth::error_text_of_line("", text) && !nodehealth::error_text_of_line("E (1) ", text));
+  CHECK(!nodehealth::error_text_of_line("Error: not the format", text) && !nodehealth::error_text_of_line("E (123456789012345678) tag: too long a stamp", text));
+  CHECK(nodehealth::error_text_of_line("E (1) tag: " + std::string(300, 'x'), text) && text.size() == nodehealth::kMaxErrorChars);
+  CHECK(nodehealth::error_text_of_line(std::string("E (1) tag: caf") + static_cast<char>(0xC3) + static_cast<char>(0xA9), text) && text == "tag: caf??");   // only printable ASCII goes out
+  const std::string log = "I (1) a: hello\nE (2) a: first\nW (3) a: warn\nE (4) b: second\nI (5) a: bye\n";
+  CHECK(nodehealth::last_error_of_log(log) == "b: second" && nodehealth::last_error_of_log("I (1) a: fine\n") == "" && nodehealth::last_error_of_log("") == "");
+  CHECK(nodehealth::last_error_of_log("E (2) a: no newline at the end") == "a: no newline at the end");
+  // the message
+  CHECK(nodehealth::topic("alarm-1") == "armor/health/alarm-1" && nodehealth::topic("Bad Id").empty() && nodehealth::topic("").empty());
+  CHECK(nodehealth::valid_family("radar") && nodehealth::valid_family("hmi") && !nodehealth::valid_family("panel") && !nodehealth::valid_family(""));
+  const std::string wired = nodehealth::to_json(sample_report());
+  CHECK(wired == "{\"kind\":\"node_health\",\"node_id\":\"alarm-1\",\"timestamp_ms\":9000,\"family\":\"alarm\",\"firmware\":\"0.3.6\",\"board\":\"s3-eth\",\"uptime_s\":86400,\"reset_reason\":\"power_on\","
+                  "\"heap_free\":142000,\"heap_min\":98000,\"link\":\"ethernet\",\"link_up\":true,\"broker_reconnects\":1,\"low_stack_tasks\":0}");
+  nodehealth::Report on_wifi = sample_report();
+  on_wifi.link = {Link::kWifi, true, -61};
+  on_wifi.last_error = "mqtt: refused";
+  const std::string wifi_json = nodehealth::to_json(on_wifi);
+  CHECK(contains(wifi_json, "\"link\":\"wifi\",\"link_up\":true,\"rssi_dbm\":-61,") && contains(wifi_json, "\"last_error\":\"mqtt: refused\""));
+  nodehealth::Report down = sample_report();
+  down.link = {Link::kWifi, false, -61};
+  CHECK(!contains(nodehealth::to_json(down), "rssi_dbm") && contains(nodehealth::to_json(down), "\"link_up\":false"));   // no signal strength while the link is down
+  nodehealth::Report none = sample_report();
+  none.link = {Link::kNone, true, 0};
+  CHECK(contains(nodehealth::to_json(none), "\"link\":\"none\",\"link_up\":false"));                                    // no link is a link that is down
+  nodehealth::Report cable_rssi = sample_report();
+  cable_rssi.link = {Link::kEthernet, true, -50};
+  CHECK(!contains(nodehealth::to_json(cable_rssi), "rssi_dbm"));
+  nodehealth::Report odd = sample_report();
+  odd.heap_min = 999999; odd.low_stack_tasks = 500; odd.board = "";
+  const std::string odd_json = nodehealth::to_json(odd);
+  CHECK(contains(odd_json, "\"heap_min\":142000") && contains(odd_json, "\"low_stack_tasks\":64") && !contains(odd_json, "\"board\""));   // never more than the contract allows
+  json::Value parsed;
+  CHECK(json::parse(wired, parsed) && parsed.is_object() && parsed.string_or("kind", "") == "node_health");
+}
+
 static void test_task_health() {
   const std::vector<health::TaskInfo> tasks{{"main", 2048, 1, 'B'}, {"meters", 300, 5, 'B'}, {"mqtt", 300, 5, 'r'}, {"idle", 900, 0, 'R'}};
   CHECK(health::low_count(tasks) == 2 && health::is_low(tasks[1]) && !health::is_low(tasks[0]) && !health::is_low({"edge", 512, 0, 'B'}) && health::is_low({"edge", 511, 0, 'B'}));
@@ -490,6 +559,7 @@ int main() {
   test_improv_parser();
   test_improv_rpc();
   test_task_health();
+  test_node_health();
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

@@ -28,6 +28,7 @@ extern "C" {
 #include "core/mqtt_topic.hpp"
 #include "core/mqtt_tls.hpp"
 #include "network.hpp"
+#include "node_health.hpp"
 
 namespace armor::mqtt_link {
 namespace {
@@ -148,6 +149,7 @@ void on_mqtt(void*, esp_event_base_t, int32_t event_id, void* data) {
     case MQTT_EVENT_CONNECTED:
       g_connected = true;
       g_mqtt_backoff.reset();
+      node_health::note_broker_connected();   // the health report counts how often the broker was reached
       ESP_LOGI(kTag, "MQTT connected to %s", current_broker(g_settings, g_broker_index).uri.c_str());
       for (const Subscription& subscription : g_subscriptions) esp_mqtt_client_subscribe(event->client, subscription.filter.c_str(), 1);
       for (const Subscription& subscription : g_subscriptions) if (subscription.on_connected) subscription.on_connected();

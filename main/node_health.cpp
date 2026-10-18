@@ -1,0 +1,75 @@
+// ARMOR-ELECTRICAL - tells the server how the node is doing. Nothing here has run on a board; what it decides is in core/node_health.hpp and is tested on a computer.
+// Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
+#include "node_health.hpp"
+
+#include <atomic>
+#include <ctime>
+extern "C" {
+#include "esp_app_desc.h"
+#include "esp_log.h"
+#include "esp_system.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+}
+#include "core/node_health.hpp"
+#include "log_buffer.hpp"
+#include "network.hpp"
+#include "task_health.hpp"
+
+namespace armor::node_health {
+namespace {
+constexpr char kTag[] = "armor-health";
+std::atomic<std::uint32_t> g_connects{0};
+Options g_options;
+
+// The wall clock in milliseconds when the node has one; otherwise the time since it started (the server stamps such a message with the time it receives it).
+std::uint64_t stamp_ms() {
+  const std::time_t now = std::time(nullptr);
+  if (now > 1700000000) return static_cast<std::uint64_t>(now) * 1000ULL;
+  return static_cast<std::uint64_t>(esp_timer_get_time()) / 1000ULL;
+}
+
+nodehealth::Report build(const std::string& node_id, const std::string& family) {
+  nodehealth::Report report;
+  report.node_id = node_id;
+  report.family = family;
+  report.firmware = esp_app_get_description()->version;
+  const network::Status net = network::status();
+  report.board = net.board;
+  report.timestamp_ms = stamp_ms();
+  report.uptime_s = static_cast<std::uint64_t>(esp_timer_get_time()) / 1000000ULL;
+  report.reset_reason = nodehealth::reset_reason_text(static_cast<int>(esp_reset_reason()));
+  report.heap_free = esp_get_free_heap_size();
+  report.heap_min = esp_get_minimum_free_heap_size();
+  report.link = nodehealth::choose_link(net.ethernet_available, net.link_up, net.has_ip, net.sta_connected, net.sta_rssi);
+  report.broker_reconnects = g_connects;
+  report.low_stack_tasks = health::low_count(taskhealth::tasks());
+  std::uint32_t next = 0;
+  report.last_error = nodehealth::last_error_of_log(logbuf::read_from(0, next, 8192));
+  return report;
+}
+
+void health_task(void*) {
+  vTaskDelay(pdMS_TO_TICKS(20000));
+  for (;;) {
+    if (g_options.publish && (!g_options.connected || g_options.connected())) {
+      const std::string topic = nodehealth::topic(g_options.node_id);
+      if (!topic.empty()) g_options.publish(topic, nodehealth::to_json(build(g_options.node_id, g_options.family)));
+    }
+    vTaskDelay(pdMS_TO_TICKS(static_cast<std::uint32_t>(g_options.every_s < 10 ? 10 : g_options.every_s) * 1000));
+  }
+}
+}  // namespace
+
+void start(const Options& options) {
+  if (!nodehealth::valid_family(options.family) || !armor::node_id_is_valid(options.node_id)) { ESP_LOGW(kTag, "no health report: the node id or the family is not valid"); return; }
+  g_options = options;
+  xTaskCreate(health_task, "node-health", 4096, nullptr, 2, nullptr);
+}
+
+void note_broker_connected() { ++g_connects; }
+
+std::string report_json(const std::string& node_id, const std::string& family) { return nodehealth::to_json(build(node_id, family)); }
+
+}  // namespace armor::node_health
