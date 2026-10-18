@@ -952,20 +952,28 @@ function langPicker() {
     LANGS.map((l, i) => el("option", { value: String(i), selected: i === lang }, l[1])));
 }
 
+// The panel remembers, if asked, only the user name of the person (never the password: that belongs to the browser's own password manager).
+const REMEMBER_USER_KEY = "armor_remember_user";
+function rememberedUser() { try { return localStorage.getItem(REMEMBER_USER_KEY) || ""; } catch (error) { return ""; } }
+function rememberUserName(on, user) { try { if (on && user) localStorage.setItem(REMEMBER_USER_KEY, user); else localStorage.removeItem(REMEMBER_USER_KEY); } catch (error) { /* storage may be blocked: the panel works without it */ } }
+
 function loginScreen() {
-  const form = { user: "", password: "", remember: false };
+  const form = { user: rememberedUser(), password: "", remember: false };
+  let keepUser = form.user !== "";
   const message = el("p", { class: "err" });
   const submit = async e => {
     e.preventDefault();
     const r = await api("POST", "login", form);
-    if (r.ok) { await start(); return; }
+    if (r.ok) { rememberUserName(keepUser, form.user.trim()); await start(); return; }
     message.textContent = r.data.error === "too_many_attempts" && r.data.wait_s ? errorText("too_many_attempts") + " (" + r.data.wait_s + " s)" : errorText(r.data.error);
   };
-  return el("div", { class: "center" }, el("form", { class: "login", onsubmit: submit },
+  return el("div", { class: "center" }, el("form", { class: "login", id: "login-form", name: "login", method: "post", action: "#", onsubmit: submit },
     el("div", { class: "brand" }, el("div", { class: "brand-mark" }, "A"), el("div", {}, el("strong", {}, "A.R.M.O.R."), el("small", {}, S.session.node_id))), el("h1", {}, t("signIn")),
-    el("label", { class: "field" }, el("span", {}, t("user")), el("input", { autocomplete: "username", autofocus: true, oninput: e => { form.user = e.target.value; } })),
-    passwordField("password", { autocomplete: "current-password", oninput: e => { form.password = e.target.value; } }),
-    el("label", { class: "check" }, el("input", { type: "checkbox", onchange: e => { form.remember = e.target.checked; } }), t("rememberMe")),
+    el("label", { class: "field" }, el("span", {}, t("user")), el("input", { id: "login-user", name: "username", value: form.user, autocomplete: "username", autocapitalize: "none", spellcheck: false, autofocus: true, required: true, oninput: e => { form.user = e.target.value; } })),
+    passwordField("password", { id: "login-password", name: "password", autocomplete: "current-password", required: true, oninput: e => { form.password = e.target.value; } }),
+    el("label", { class: "check" }, el("input", { type: "checkbox", id: "login-remember-user", name: "remember_user", checked: keepUser, onchange: e => { keepUser = e.target.checked; if (!keepUser) rememberUserName(false, ""); } }), t("rememberUser")),
+    el("label", { class: "check" }, el("input", { type: "checkbox", id: "login-remember", name: "remember", onchange: e => { form.remember = e.target.checked; } }), t("rememberMe")),
+    el("small", { class: "muted" }, t("loginNote")),
     message, el("button", { class: "b primary", type: "submit" }, t("signIn")), langPicker()));
 }
 
@@ -984,8 +992,8 @@ function setupScreen() {
     el("p", { class: "muted" }, t("setupIntro")), S.session.setup_ssid ? el("p", { class: "hint" }, t("setupWifi") + ": " + S.session.setup_ssid) : null,
     S.session.mac ? el("p", { class: "hint mono" }, t("mac") + ": " + S.session.mac) : null,
     el("label", { class: "field" }, el("span", {}, t("setupCode")), el("input", { autocomplete: "off", autocapitalize: "characters", oninput: e => { form.code = e.target.value.trim().toUpperCase(); } })),
-    el("label", { class: "field" }, el("span", {}, t("adminName")), el("input", { value: "admin", autocomplete: "username", oninput: e => { form.user = e.target.value; } })),
-    passwordField("newPassword", { autocomplete: "new-password", oninput: e => { form.password = e.target.value; } }),
+    el("label", { class: "field" }, el("span", {}, t("adminName")), el("input", { id: "setup-user", name: "username", value: "admin", autocomplete: "username", oninput: e => { form.user = e.target.value; } })),
+    passwordField("newPassword", { id: "setup-password", name: "password", autocomplete: "new-password", oninput: e => { form.password = e.target.value; } }),
     ...([
       el("h3", {}, t(hasEthernet() ? "setupWifiOptionalTitle" : "setupWifiTitle")), el("p", { class: "hint" }, t(hasEthernet() ? "setupWifiOptionalHelp" : "setupWifiHelp")),
       el("label", { class: "field" }, el("span", {}, t("ssid")), el("input", { autocomplete: "off", maxLength: 32, oninput: e => { form.wifi_ssid = e.target.value; } })),
