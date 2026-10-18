@@ -4,7 +4,7 @@
 // The convention is the one the radar node uses for the pins its panel maps: a relay is a device of A.R.M.O.R.'s device layer (ARMOR-SERVER), named after the node,
 //   armor/device/<node>/<relay>/state          {"on":true}                       what the relay is (published when it changes and every half minute)
 //   armor/device/<node>/<relay>/availability   online                            sent with it
-//   armor/device/<node>/<relay>/set            ON | OFF | TOGGLE                 what the server (or anyone the broker allows) tells it
+//   armor/device/<node>/<relay>/set            ON | OFF                          what the server (or anyone the broker allows) tells it; TOGGLE is refused here (a message may arrive twice) and exists only on the node's own HTTP API
 // In Studio the device is added with the "ARMOR node" connection and the name <node>/<relay>; the server then switches it with its own rules (a risk that asks first, only an
 // administrator for the critical ones). Three independent things must all agree before a relay moves by a command: the node's setting `remote.relays` (off by default), the broker's
 // ACL (DEVOPS `mqtt_identity.sh electrical-relays <node> on`, off by default) and the device the operator created in the server. Nothing here touches a pin.

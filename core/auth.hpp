@@ -244,10 +244,11 @@ class SessionTable {
 // ---- the throttle --------------------------------------------------------------------------------------------------------------
 
 // After five wrong passwords from one address the address is refused for 30 seconds, then for twice as long each time (at most five
-// minutes); a right password forgives. The table holds eight addresses. A blocked address is never pushed out to make room for another (with nine addresses on the network, the block
+// minutes); a right password forgives. The table holds thirty-two sources (addresses, and the people the failures are counted for). A blocked source is never pushed out to make room for another (with more sources than places, the block
 // of the first would have been shaken off): when every place holds an address that is blocked right now, an address the table does not know waits too.
 class LoginThrottle {
  public:
+  static constexpr std::size_t kThrottlePlaces = 32;
   bool allowed(std::uint32_t source, std::uint64_t now_ms) const {
     const Entry* entry = find(source);
     if (entry != nullptr) return now_ms >= entry->blocked_until_ms;
@@ -315,7 +316,7 @@ class LoginThrottle {
     slot->last_ms = now_ms;
     return slot;
   }
-  std::array<Entry, 8> entries_{};
+  std::array<Entry, kThrottlePlaces> entries_{};
   Entry shared_{};
 };
 

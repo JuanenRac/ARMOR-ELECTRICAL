@@ -3,7 +3,7 @@
 //
 // The panel and the node speak JSON, and the settings are stored as JSON, so the parser sees text that comes from the network: it is
 // strict (no comments, no trailing commas, no trailing text), bounded (depth and size) and never throws. It is small on purpose and
-// is tested on a computer together with the rest of the core (tests/test_core.cpp).
+// is tested on a computer (tests/test_base.cpp and tests/test_shared.cpp).
 #pragma once
 #include <cmath>
 #include <cstddef>
@@ -61,6 +61,7 @@ struct Value {
 
 constexpr std::size_t kMaxDepth = 12;
 constexpr std::size_t kMaxText = 64 * 1024;
+constexpr std::size_t kMaxValues = 4096;   // a short text of '[0,0,0,...]' would otherwise build thousands of values on a node with a few kilobytes of heap to spare
 
 namespace detail {
 class Parser {
@@ -78,6 +79,7 @@ class Parser {
  private:
   std::string_view text_;
   std::size_t at_ = 0;
+  std::size_t values_ = 0;
 
   bool more() const { return at_ < text_.size(); }
   char peek() const { return text_[at_]; }
@@ -89,7 +91,7 @@ class Parser {
   }
 
   bool value(Value& out, std::size_t depth) {
-    if (depth > kMaxDepth || !more()) return false;
+    if (depth > kMaxDepth || !more() || ++values_ > kMaxValues) return false;
     switch (peek()) {
       case '{': return object(out, depth);
       case '[': return array(out, depth);
@@ -159,6 +161,21 @@ class Parser {
       ++at_;
       if (c == '"') return true;
       if (c < 0x20) return false;  // a raw control character is not allowed in a JSON string
+      if (c >= 0x80) {   // a raw byte beyond ASCII must start a well-formed UTF-8 sequence (no overlong form, no surrogate, nothing above U+10FFFF)
+        const std::size_t extra = c >= 0xF0 ? 3 : c >= 0xE0 ? 2 : c >= 0xC2 ? 1 : 0;
+        if (extra == 0 || c > 0xF4 || at_ + extra > text_.size()) return false;
+        unsigned code = c & (0x3Fu >> extra);
+        for (std::size_t i = 0; i < extra; ++i) {
+          const unsigned char next = static_cast<unsigned char>(text_[at_ + i]);
+          if ((next & 0xC0) != 0x80) return false;
+          code = (code << 6) | (next & 0x3Fu);
+        }
+        if ((extra == 2 && code < 0x800) || (extra == 3 && (code < 0x10000 || code > 0x10FFFF)) || (code >= 0xD800 && code <= 0xDFFF)) return false;
+        out += static_cast<char>(c);
+        for (std::size_t i = 0; i < extra; ++i) out += text_[at_ + i];
+        at_ += extra;
+        continue;
+      }
       if (c != '\\') { out += static_cast<char>(c); continue; }
       if (!more()) return false;
       const char escape = peek();
@@ -278,14 +295,14 @@ class Writer {
   Writer& boolean(bool value) { separate(); out_ += value ? "true" : "false"; return *this; }
   Writer& null() { separate(); out_ += "null"; return *this; }
   Writer& integer(long long value) { separate(); out_ += std::to_string(value); return *this; }
-  // `decimals` < 0: the shortest faithful text (up to nine significant digits), otherwise a fixed number of decimals.
+  // `decimals` < 0: the shortest faithful text (up to nine significant digits below a billion, seventeen above), otherwise a fixed number of decimals.
   Writer& number(double value, int decimals = -1) {
     separate();
     if (!std::isfinite(value)) { out_ += "null"; return *this; }
     char text[40];
     // A whole number is written whole (1234567890 used to come out as 1.23456789e+09, which is another number to whoever reads it back).
     if (decimals < 0 && value == std::floor(value) && std::fabs(value) < 9007199254740992.0) std::snprintf(text, sizeof text, "%.0f", value);
-    else if (decimals < 0) std::snprintf(text, sizeof text, "%.9g", value);
+    else if (decimals < 0) std::snprintf(text, sizeof text, std::fabs(value) < 1e9 ? "%.9g" : "%.17g", value);   // from a billion up, nine digits would lose the units
     else std::snprintf(text, sizeof text, "%.*f", decimals, value);
     out_ += text;
     return *this;

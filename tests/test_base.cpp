@@ -429,23 +429,48 @@ static void test_json_strictness() {
   CHECK(!ble::parse_request("{\"id\":-1,\"op\":\"config.get\"}", request) && !ble::parse_request("{\"id\":1.5,\"op\":\"config.get\"}", request));
 }
 
+static void test_json_refuses_bad_text() {
+  using namespace armor;
+  json::Value v;
+  CHECK(json::parse("\"caf\xC3\xA9 \xE2\x82\xAC \xF0\x9F\x98\x80\"", v) && v.text == "caf\xC3\xA9 \xE2\x82\xAC \xF0\x9F\x98\x80");   // well-formed UTF-8 passes through
+  CHECK(!json::parse("\"\xC3\x28\"", v));            // a lead byte without its continuation
+  CHECK(!json::parse("\"\xC0\x80\"", v));            // an overlong NUL
+  CHECK(!json::parse("\"\xE0\x80\x80\"", v));        // an overlong three-byte form
+  CHECK(!json::parse("\"\xED\xA0\x80\"", v));        // a surrogate written raw
+  CHECK(!json::parse("\"\xF4\x90\x80\x80\"", v));    // beyond U+10FFFF
+  CHECK(!json::parse("\"\xFF\"", v) && !json::parse("\"\xE2\x82\"", v));   // a byte that never occurs, a sequence cut short
+  std::string many = "[";
+  for (int i = 0; i < 6000; ++i) many += i == 0 ? "0" : ",0";
+  many += "]";
+  CHECK(!json::parse(many, v));                           // thousands of values from a few kilobytes of text
+  std::string few = "[";
+  for (int i = 0; i < 1000; ++i) few += i == 0 ? "0" : ",0";
+  few += "]";
+  CHECK(json::parse(few, v) && v.items.size() == 1000);
+  // a large number keeps its digits when it is written and read back
+  json::Writer w;
+  w.begin_array().number(1234567890.5).number(12345678901234567890.0).number(0.1).end_array();
+  json::Value back;
+  CHECK(json::parse(w.str(), back) && back.items[0].number == 1234567890.5 && back.items[1].number == 12345678901234567890.0 && back.items[2].number == 0.1);
+}
+
 static void test_login_throttle_keeps_its_blocks() {
   using namespace armor::auth;
   LoginThrottle throttle;
-  // eight addresses get blocked ...
-  for (std::uint32_t i = 0; i < 8; ++i) for (int j = 0; j < 5; ++j) throttle.failure(100 + i, 1000 + j);
-  for (std::uint32_t i = 0; i < 8; ++i) CHECK(!throttle.allowed(100 + i, 2000));
-  // ... a ninth address does not push one of them out to make room: it waits too, and the blocks stand
+  // every place of the table gets a blocked address ...
+  for (std::uint32_t i = 0; i < 32; ++i) for (int j = 0; j < 5; ++j) throttle.failure(100 + i, 1000 + j);
+  for (std::uint32_t i = 0; i < 32; ++i) CHECK(!throttle.allowed(100 + i, 2000));
+  // ... one more address does not push one of them out to make room: it waits too, and the blocks stand
   CHECK(!throttle.allowed(900, 2000) && throttle.wait_s(900, 2000) > 0);
   for (int j = 0; j < 5; ++j) throttle.failure(900, 2001 + j);   // (a caller that did not look at allowed() gains nothing)
-  for (std::uint32_t i = 0; i < 8; ++i) CHECK(!throttle.allowed(100 + i, 2000));
+  for (std::uint32_t i = 0; i < 32; ++i) CHECK(!throttle.allowed(100 + i, 2000));
   // when a block ends the place is free again, for the address that is waiting
   CHECK(throttle.allowed(900, 1004 + 30000) && throttle.wait_s(900, 1004 + 30000) == 0);
   throttle.failure(900, 1004 + 30000);
   CHECK(throttle.allowed(900, 1004 + 30001));
   // an address that was only failing a little is the one that goes when the table is full
   LoginThrottle small;
-  for (std::uint32_t i = 0; i < 8; ++i) small.failure(200 + i, 10 + i);
+  for (std::uint32_t i = 0; i < 32; ++i) small.failure(200 + i, 10 + i);
   small.failure(300, 100);
   CHECK(small.allowed(200, 101) && small.allowed(300, 101));
 }
@@ -573,6 +598,7 @@ int main() {
   test_broker_uri();
 #endif
   test_json_strictness();
+  test_json_refuses_bad_text();
   test_login_throttle_keeps_its_blocks();
   test_ed25519();
   test_fw_trust();

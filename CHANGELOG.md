@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here.
 
+## [0.4.1] - Shared node base update
+
+- Shared base update: a wider login table, slot-sized download limit, stricter JSON text and a set-up code kept in capitals.
+
 ## [0.4.0] - Stored passwords follow their host
 
 - A stored password is tied to its host: changing the address of the broker (or of a backup broker slot) without typing a password erases the stored one instead of sending it to the new host, and the panel says under the field that the password has to be typed again. The same host (another port, other letter case) keeps it.

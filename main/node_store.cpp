@@ -2,6 +2,7 @@
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include "node_store.hpp"
 
+#include <cctype>
 #include <cstring>
 #include <mutex>
 extern "C" {
@@ -120,7 +121,10 @@ void init() {
                         reinterpret_cast<const unsigned char*>(mac_text.data()), mac_text.size(), digest) == 0) g_setup_code = auth::setup_code_from(digest, 10);
   }
   if (!g_setup_code.empty()) { /* derived from the fleet secret */ }
-  else if (std::strlen(CONFIG_ARMOR_SETUP_CODE) >= 8) g_setup_code = CONFIG_ARMOR_SETUP_CODE;
+  else if (std::strlen(CONFIG_ARMOR_SETUP_CODE) >= 8) {
+    g_setup_code = CONFIG_ARMOR_SETUP_CODE;
+    for (char& c : g_setup_code) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));   // the panel's form writes the code in capitals, so a code typed in lower case here would never match
+  }
   else if (read_blob(kSetupCodeKey, text) && text.size() >= 8) g_setup_code = text;
   else {
     std::uint8_t bytes[8];

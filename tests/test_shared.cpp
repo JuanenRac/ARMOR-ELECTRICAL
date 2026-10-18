@@ -371,8 +371,8 @@ static void test_login_throttle() {
   CHECK(t.allowed(source, now));   // the count started over
   // a source that was not blocked is let go of to make room, one that is blocked never is
   LoginThrottle crowd;
-  for (std::uint32_t i = 0; i < 8; ++i) crowd.failure(500 + i, 1000);   // eight places, one wrong password each
-  CHECK(crowd.allowed(999, 1000));                                       // the ninth can come in: nobody is blocked
+  for (std::uint32_t i = 0; i < 32; ++i) crowd.failure(500 + i, 1000);   // thirty-two places, one wrong password each
+  CHECK(crowd.allowed(999, 1000));                                       // one more can come in: nobody is blocked
   crowd.failure(999, 1001);
   CHECK(crowd.allowed(999, 1001));
   // the shared counter blocks everybody after `limit` in a row, with the same growing wait, and a success clears it

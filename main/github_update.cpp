@@ -33,7 +33,7 @@ namespace {
 constexpr const char* kTag = "github_update";
 constexpr std::size_t kMaxApiResponse = 24 * 1024;   // the release's own JSON, a changelog included; anything bigger is not trusted
 constexpr std::size_t kMinFirmware = 100 * 1024;
-constexpr std::size_t kMaxFirmware = 4 * 1024 * 1024;
+constexpr std::size_t kMaxFirmware = 0x300000;   // the size of an application slot in partitions.csv: a bigger image fits nowhere
 // GitHub answers a download with a redirect to a storage server whose address is long and signed: the header buffer must hold it.
 constexpr int kHeaderBuffer = 4096;
 constexpr int kMaxRedirects = 5;
@@ -216,7 +216,7 @@ InstallResult install(const CheckResult& offer) {
   { std::lock_guard<std::mutex> guard(g_lock); g_progress.total = total; g_progress.got = 0; g_progress.state = "downloading"; }
   const esp_partition_t* target = esp_ota_get_next_update_partition(nullptr);
   if (target == nullptr) { result.error = "no_partition"; esp_http_client_close(client); esp_http_client_cleanup(client); return result; }
-  // The slot is smaller than the largest image the check above allows (3 MB against 4): an image that does not fit is said so, instead of failing inside the write with a message that says nothing.
+  // The slot is smaller than the largest image the check above allows (the limit above is the table's, a board may carry a smaller slot): an image that does not fit is said so, instead of failing inside the write with a message that says nothing.
   if (total > target->size) { result.error = "bad_size"; esp_http_client_close(client); esp_http_client_cleanup(client); return result; }
   esp_ota_handle_t handle = 0;
   ++g_generation;   // beginning an update erases the slot: what was known of it is gone
