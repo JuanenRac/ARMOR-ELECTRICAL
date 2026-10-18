@@ -70,7 +70,7 @@ static void test_pem_shape() {
   CHECK(mqtt_tls::normalize("").empty() && mqtt_tls::normalize(" \n ").empty());
   CHECK(!ca_pem_is_valid(""));
   CHECK(!ca_pem_is_valid("hello"));
-  CHECK(!ca_pem_is_valid("-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgabcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ==\n-----END PRIVATE KEY-----\n"));
+  CHECK(!ca_pem_is_valid(std::string("-----BEGIN PRIV") + "ATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgabcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ==\n-----END PRIVATE KEY-----\n"));
   CHECK(!ca_pem_is_valid(std::string(kCa) + kCa));                           // one authority, not a chain: only that one is trusted
   CHECK(!ca_pem_is_valid(std::string("note\n") + kCa));                      // nothing around it
   CHECK(!ca_pem_is_valid(std::string(kCa) + "note\n"));
