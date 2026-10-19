@@ -34,6 +34,10 @@ inline bool is_official_url(const std::string& url, const std::string& repo) {
 // cost for the internal heap. A board with no external RAM (or none free) takes the smallest buffer that holds those headers.
 constexpr int kHeaderBufferExternal = 20480;
 constexpr int kHeaderBufferInternal = 6144;
+// The REQUEST buffer of the HTTP client (its default is 512 bytes): after GitHub's redirect the request line alone carries an address of about a thousand characters, and the client
+// refuses it with "Out of buffer" when it does not fit. 4096 holds that address, the host and the other request headers with room for a longer one.
+constexpr int kRequestBuffer = 4096;
+static_assert(kRequestBuffer >= 2048, "the request buffer must hold GitHub's long redirect address");
 inline int header_buffer_size(std::size_t free_external_bytes) { return free_external_bytes >= 2u * static_cast<std::size_t>(kHeaderBufferExternal) ? kHeaderBufferExternal : kHeaderBufferInternal; }
 
 // What to tell when a file of a release (`what` is "checksum" or "signature") could not be read: the real reason, never "the release has none" (that is only for a release that does

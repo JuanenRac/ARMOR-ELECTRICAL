@@ -32,6 +32,7 @@ extern "C" {
 #include "clock_sync.hpp"
 #include "mqtt_link.hpp"
 #include "node_health.hpp"
+#include "node_control.hpp"
 #include "network.hpp"
 #include "node_store.hpp"
 #include "analog_inputs.hpp"
@@ -120,6 +121,16 @@ extern "C" void app_main() {
     for (const armor::config::Problem& problem : problems) ESP_LOGE(kTag, "settings problem: %s (%s)", problem.path.c_str(), problem.code.c_str());
   }
 
+  // What the server can order (armor/control/<node>/...: restart, pause, standby, identify, diagnostics, maintenance; two steps with a one-time token the node gives, never a factory reset).
+  // A node that was put in standby boots straight into it, so this comes BEFORE the work starts. It listens from the broker's first connection, so it is set up before the link starts.
+  if (!setup && settings.mqtt.enabled) {
+    armor::node_control::Options control;
+    control.node_id = settings.node_id;
+    control.publish = [](const std::string& topic, const std::string& payload) { armor::mqtt_link::publish(topic, payload); };
+    control.publish_retained = [](const std::string& topic, const std::string& payload) { armor::mqtt_link::publish_retained(topic, payload); };
+    control.on_state = [](armor::control::State state) { armor::relay_outputs::hold_open(state != armor::control::State::kRunning); };   // paused or in standby: every relay is open and none moves
+    armor::node_control::start(control);
+  }
   // The meters run first: on the bench their statistics are the first thing to look at, with or without a network. A node in setup reads nothing yet.
   if (!setup) {
     armor::relay_outputs::start(settings, settings.node_id);   // every relay starts open

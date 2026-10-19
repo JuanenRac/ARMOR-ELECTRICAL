@@ -17,6 +17,10 @@ void start(const config::IoSettings& settings, const std::string& node_id);
 // Closes (on) or opens (off) relay `index` (0 to 7), from the panel. False when there is no such enabled relay, or when it is the siren's (only the alarm moves that one).
 bool set(std::size_t index, bool on);
 
+// The node's work is off (paused or in standby by the server's order): every relay is opened - the siren's too - and none moves, whoever asks (the panel, the broker, the central), until `hold` is
+// false again. The open state is the safe one of this project (fail to open). Safe to call before start(): the relays then start open and stay so.
+void hold_open(bool hold);
+
 // The relay the alarm uses for its siren: from now on nobody else moves it (the panel's page, the broker and the central are refused), it does not fall back to open with the broker,
 // and `siren()` is the only way to move it.
 void reserve_for_siren(std::size_t index);

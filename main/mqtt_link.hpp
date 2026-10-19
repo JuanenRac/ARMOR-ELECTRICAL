@@ -28,6 +28,9 @@ std::uint64_t wall_clock_ms();
 // publishes: its readings carry the time since it started (the callers do that), and the server stamps them with the time it receives them.
 void publish(const std::string& topic, const std::string& payload);
 
+// Publishes one message retained, at QoS 1: only the planned-maintenance signal (armor/control/<node>/maintenance) is sent so; everything else stays QoS 0 and not retained.
+void publish_retained(const std::string& topic, const std::string& payload);
+
 struct Status {
   bool enabled = false;
   bool connected = false;
