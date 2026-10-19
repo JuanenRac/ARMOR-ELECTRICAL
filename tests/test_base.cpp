@@ -17,6 +17,7 @@
 #include "../core/fw_trust.hpp"
 #include "../core/improv.hpp"
 #include "../core/json.hpp"
+#include "../core/memory_budget.hpp"
 #include "../core/node_health.hpp"
 #include "../core/task_health.hpp"
 #else
@@ -30,6 +31,7 @@
 #include "../main/core/fw_trust.hpp"
 #include "../main/core/improv.hpp"
 #include "../main/core/json.hpp"
+#include "../main/core/memory_budget.hpp"
 #include "../main/core/node_health.hpp"
 #include "../main/core/task_health.hpp"
 #endif
@@ -310,6 +312,12 @@ static void test_improv_rpc() {
 
 // ---- the health report every node says about itself -----------------------------------------------------------------------------------
 
+static membudget::Snapshot memory_sample(std::uint32_t internal_free, std::uint32_t largest, std::uint32_t psram_free = 7700u * 1024u, std::uint32_t psram_total = 8192u * 1024u) {
+  membudget::Snapshot s;
+  s.internal_free = internal_free; s.internal_min = internal_free > 5000 ? internal_free - 5000 : 0; s.internal_largest = largest; s.psram_free = psram_free; s.psram_total = psram_total;
+  return s;
+}
+
 static nodehealth::Report sample_report() {
   nodehealth::Report r;
   r.node_id = "alarm-1"; r.family = "alarm"; r.firmware = "0.3.6"; r.board = "s3-eth"; r.timestamp_ms = 9000; r.uptime_s = 86400; r.reset_reason = "power_on";
@@ -374,6 +382,66 @@ static void test_node_health() {
   CHECK(contains(odd_json, "\"heap_min\":142000") && contains(odd_json, "\"low_stack_tasks\":64") && !contains(odd_json, "\"board\""));   // never more than the contract allows
   json::Value parsed;
   CHECK(json::parse(wired, parsed) && parsed.is_object() && parsed.string_or("kind", "") == "node_health");
+  // the internal memory on its own, when the node reads it (the figures above add the external RAM, which hides a short internal memory)
+  nodehealth::Report with_memory = sample_report();
+  with_memory.has_memory = true;
+  with_memory.memory = memory_sample(72704, 36864);
+  const std::string memory_json = nodehealth::to_json(with_memory);
+  CHECK(contains(memory_json, "\"heap_min\":98000,\"heap_internal_free\":72704,\"heap_internal_min\":67704,\"heap_internal_largest\":36864,\"psram_free\":7884800,\"link\":\"ethernet\""));
+  CHECK(json::parse(memory_json, parsed) && parsed.integer_or("heap_internal_free", 0, 0, 1000000) == 72704);
+  nodehealth::Report no_psram = with_memory;
+  no_psram.memory = memory_sample(72704, 36864, 0, 0);
+  CHECK(contains(nodehealth::to_json(no_psram), "\"heap_internal_largest\":36864") && !contains(nodehealth::to_json(no_psram), "psram_free"));   // a board with no external RAM says nothing of it
+  nodehealth::Report odd_memory = with_memory;
+  odd_memory.memory.internal_min = 900000; odd_memory.memory.internal_largest = 900000; odd_memory.memory.psram_free = 9000u * 1024u;
+  const std::string odd_memory_json = nodehealth::to_json(odd_memory);
+  CHECK(contains(odd_memory_json, "\"heap_internal_min\":72704") && contains(odd_memory_json, "\"heap_internal_largest\":72704") && contains(odd_memory_json, "\"psram_free\":8388608"));   // never more than the contract allows
+  CHECK(!contains(wired, "heap_internal"));                                                                                              // a report with no reading says nothing of it
+}
+
+// ---- where the memory goes and how it is judged ---------------------------------------------------------------------------------------------
+
+static void test_memory_budget() {
+  using namespace membudget;
+  // "low" has two levels: a figure that hovers around the line neither raises the warning nor clears it all day
+  CHECK(!internal_is_low(memory_sample(71000, 36000), false));                  // the board that ran short before: 65 to 80 KB is above the line
+  CHECK(internal_is_low(memory_sample(39000, 30000), false) && !internal_is_low(memory_sample(41000, 30000), false));
+  CHECK(internal_is_low(memory_sample(45000, 30000), true) && !internal_is_low(memory_sample(50000, 30000), true));   // already low: it clears only over 48 KB
+  CHECK(internal_is_low(memory_sample(200000, 7000), false) && !internal_is_low(memory_sample(200000, 8192), false));   // plenty free but in pieces: no block of 8 KB
+  CHECK(!internal_is_low(Snapshot{}, false) && !internal_is_low(Snapshot{}, true));                                       // nothing read: no verdict
+  // where a big buffer or a stack goes
+  const Snapshot with_psram = memory_sample(80000, 40000);
+  const Snapshot without_psram = memory_sample(80000, 40000, 0, 0);
+  const Snapshot nearly_full = memory_sample(80000, 40000, 300u * 1024u, 8192u * 1024u);
+  Choice c = choose_place(true, 12288, with_psram);
+  CHECK(c.place == Place::kPsram && !c.degraded);
+  c = choose_place(false, 12288, with_psram);
+  CHECK(c.place == Place::kInternal && !c.degraded);                           // not wanted there: internal, and nothing to report
+  c = choose_place(true, 12288, without_psram);
+  CHECK(c.place == Place::kInternal && c.degraded);                            // a board with no PSRAM keeps working on the internal memory
+  c = choose_place(true, 64u * 1024u, nearly_full);
+  CHECK(c.place == Place::kInternal && c.degraded);                            // 300 KB free is not enough for 64 KB and the 256 KB that always stay
+  c = choose_place(true, 40u * 1024u, nearly_full);
+  CHECK(c.place == Place::kPsram);                                             // exactly what is left over the spare is enough
+  CHECK(choose_place(true, 0xFFFFFFFFu, with_psram).place == Place::kInternal);   // no overflow on a silly size
+  // the log: the first time, then every minute, and at once (not twice in ten seconds) when the memory turns low or back
+  LogState state;
+  const Snapshot fine = memory_sample(90000, 40000), low = memory_sample(30000, 20000);
+  CHECK(next_log(state, 20000, fine) == LogAction::kInfo);
+  CHECK(next_log(state, 21000, fine) == LogAction::kNone && next_log(state, 79999, fine) == LogAction::kNone);
+  CHECK(next_log(state, 80000, fine) == LogAction::kInfo);                     // a minute after the last
+  CHECK(next_log(state, 85000, low) == LogAction::kNone);                      // turned low only 5 s after the last line: not twice in ten seconds
+  CHECK(next_log(state, 90000, low) == LogAction::kWarn);                      // 10 s: said at once
+  CHECK(next_log(state, 100000, low) == LogAction::kNone && next_log(state, 150000, low) == LogAction::kWarn);   // while low: every minute, as a warning
+  CHECK(next_log(state, 155000, fine) == LogAction::kNone && next_log(state, 160000, memory_sample(60000, 40000)) == LogAction::kInfo);   // back over 48 KB: said once the gap allows
+  LogState late;
+  CHECK(next_log(late, 5, low) == LogAction::kWarn);                           // a node that starts low says so at the first look
+  LogState backwards;
+  backwards.started = true; backwards.last_ms = 500000;
+  CHECK(next_log(backwards, 1000, fine) == LogAction::kNone);                  // a clock that went back never makes a flood
+  // the line
+  CHECK(describe(memory_sample(72704, 36864), 7, 33792) == "memory: internal 71 KB free (least 66 KB, biggest block 36 KB), PSRAM 7700 KB free of 8192 KB, 7 task stacks (33 KB) in PSRAM");
+  CHECK(describe(memory_sample(72704, 36864, 0, 0), 0, 0) == "memory: internal 71 KB free (least 66 KB, biggest block 36 KB), no PSRAM");
 }
 
 static void test_task_health() {
@@ -716,6 +784,7 @@ int main() {
   test_improv_rpc();
   test_task_health();
   test_node_health();
+  test_memory_budget();
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

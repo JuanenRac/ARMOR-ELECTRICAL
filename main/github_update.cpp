@@ -27,6 +27,7 @@ extern "C" {
 #include "core/fw_trust.hpp"
 #include "core/release_assets.hpp"
 #include "core/semver.hpp"
+#include "psram_mem.hpp"
 
 namespace armor::github_update {
 namespace {
@@ -331,15 +332,29 @@ void install_task(void* raw) {
 }  // namespace
 
 namespace {
-void check_task(void* raw) {
-  const char* board = static_cast<const char*>(raw);
-  const CheckResult found = check(board);
-  {
-    std::lock_guard<std::mutex> guard(g_lock);
-    g_check.result = found;
-    g_check.state = found.ok ? "done" : "failed";
-    g_checking = false;
+void finish_check(const CheckResult& found) {
+  std::lock_guard<std::mutex> guard(g_lock);
+  g_check.result = found;
+  g_check.state = found.ok ? "done" : "failed";
+  g_checking = false;
+}
+
+// The look for the newest release reads from GitHub over TLS and writes nothing to the flash, so its stack (12 KB, the look is made with JSON and the TLS client on it) can be in the
+// external RAM. A task that ends would leave that stack behind, so one worker waits for the next look for good; where there is no external RAM the old way is kept (a task made for the look
+// and gone after it), which holds the 12 KB of internal memory only while it runs.
+const char* g_check_board = nullptr;
+TaskHandle_t g_check_worker = nullptr;
+bool g_check_worker_tried = false;
+
+void check_worker(void*) {
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    finish_check(check(g_check_board));
   }
+}
+
+void check_task(void* raw) {
+  finish_check(check(static_cast<const char*>(raw)));
   vTaskDelete(nullptr);
 }
 }  // namespace
@@ -351,6 +366,15 @@ bool start_check(const char* board_id) {
     g_checking = true;
     g_check = CheckProgress{};
     g_check.state = "checking";
+  }
+  if (!g_check_worker_tried) {   // only the one caller that got g_checking above gets here at a time
+    g_check_worker_tried = true;
+    memory::start_task(check_worker, "github-check", 12288, nullptr, 4, &g_check_worker, false);
+  }
+  if (g_check_worker != nullptr) {
+    g_check_board = board_id;
+    xTaskNotifyGive(g_check_worker);
+    return true;
   }
   if (xTaskCreate(check_task, "github-check", 12288, const_cast<char*>(board_id), 4, nullptr) != pdPASS) {
     std::lock_guard<std::mutex> guard(g_lock);

@@ -15,6 +15,7 @@ extern "C" {
 #include "core/node_health.hpp"
 #include "log_buffer.hpp"
 #include "network.hpp"
+#include "psram_mem.hpp"
 #include "task_health.hpp"
 
 namespace armor::node_health {
@@ -42,6 +43,8 @@ nodehealth::Report build(const std::string& node_id, const std::string& family) 
   report.reset_reason = nodehealth::reset_reason_text(static_cast<int>(esp_reset_reason()));
   report.heap_free = esp_get_free_heap_size();
   report.heap_min = esp_get_minimum_free_heap_size();
+  report.memory = memory::snapshot();   // the internal memory on its own: the figures above add the external RAM, which hides a short internal memory
+  report.has_memory = true;
   report.link = nodehealth::choose_link(net.ethernet_available, net.link_up, net.has_ip, net.sta_connected, net.sta_rssi);
   report.broker_reconnects = g_connects;
   report.low_stack_tasks = health::low_count(taskhealth::tasks());
@@ -65,7 +68,7 @@ void health_task(void*) {
 void start(const Options& options) {
   if (!nodehealth::valid_family(options.family) || !armor::node_id_is_valid(options.node_id)) { ESP_LOGW(kTag, "no health report: the node id or the family is not valid"); return; }
   g_options = options;
-  xTaskCreate(health_task, "node-health", 4096, nullptr, 2, nullptr);
+  memory::start_task(health_task, "node-health", 4096, nullptr, 2);   // it only reads counters and queues a message: no flash, so its stack can be in the external RAM
 }
 
 void note_broker_connected() { ++g_connects; }

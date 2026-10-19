@@ -26,6 +26,13 @@ CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_IGNORE_NOTFOUND=y
 CONFIG_SPIRAM_USE_MALLOC=y
+# A request of up to 4096 bytes goes to the internal memory first (sockets, the rings of the UARTs, the small objects of the drivers), a bigger one to the external RAM first (the strings, vectors and
+# JSON texts of the panel, which the stock 16384 kept in the internal memory); either falls back to the other kind when the first is full. 32 KB of the internal memory stay for what must be
+# there (DMA buffers, the stack of a new task) and for nothing else: a normal request reaches them only when everything else is gone.
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=32768
+# A task may have its stack in the external RAM (xTaskCreateStatic): main/psram_mem.hpp says which ones may, and none that touches the flash does.
+CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM=y
 
 CONFIG_LWIP_MAX_SOCKETS=16
 # The default (512 bytes) is too small for a real browser's request headers (cookies, Sec-CH-UA client hints, Accept-*):
@@ -35,7 +42,10 @@ CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
 CONFIG_ESP_HTTPS_SERVER_ENABLE=y
 CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
 # The TLS buffers go to the external memory: with a browser on the HTTPS panel and the download from GitHub at the same time the internal memory ran out (alloc failed, connect_failed).
-CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
+# This is the custom mode, not the stock "external" one: the stock mode answers NULL to every request on a board whose PSRAM is absent or did not start, and no TLS (the HTTPS panel, the
+# update from GitHub, an encrypted broker link) would work there at all. The custom allocator (armor::memory::install_tls_allocator, called first thing in app_main) takes the external RAM
+# and falls back to the internal memory.
+CONFIG_MBEDTLS_CUSTOM_MEM_ALLOC=y
 CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA=y
 CONFIG_MBEDTLS_DYNAMIC_FREE_CA_CERT=y
 # The node makes its own certificate on the first boot in this task: mbedTLS needs several KB of stack to write a certificate (a 4 KB output buffer

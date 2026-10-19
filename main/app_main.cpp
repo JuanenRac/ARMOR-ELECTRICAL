@@ -27,6 +27,7 @@ extern "C" {
 }
 #include "core/netplan.hpp"
 #include "log_buffer.hpp"
+#include "psram_mem.hpp"
 #include "improv_serial.hpp"
 #include "ble_provision.hpp"
 #include "clock_sync.hpp"
@@ -110,6 +111,8 @@ void confirm_firmware_task(void* argument) {
 
 extern "C" void app_main() {
   armor::logbuf::start();
+  armor::memory::install_tls_allocator();   // TLS memory: the external RAM, and the internal one where a board has none
+  armor::memory::start_monitor();           // the log says the state of the memory every minute
   armor::store::init();
   ESP_ERROR_CHECK(esp_event_loop_create_default());
   const armor::config::Settings settings = armor::store::settings();
