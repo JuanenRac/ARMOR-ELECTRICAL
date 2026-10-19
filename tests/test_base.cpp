@@ -12,6 +12,7 @@
 #include "../core/backoff.hpp"
 #include "../core/ble_dispatch.hpp"
 #include "../core/ble_frame.hpp"
+#include "../core/stored_load.hpp"
 #include "../core/ed25519_verify.hpp"
 #include "../core/fw_trust.hpp"
 #include "../core/improv.hpp"
@@ -24,6 +25,7 @@
 #include "../main/core/backoff.hpp"
 #include "../main/core/ble_dispatch.hpp"
 #include "../main/core/ble_frame.hpp"
+#include "../main/core/stored_load.hpp"
 #include "../main/core/ed25519_verify.hpp"
 #include "../main/core/fw_trust.hpp"
 #include "../main/core/improv.hpp"
@@ -475,6 +477,108 @@ static void test_login_throttle_keeps_its_blocks() {
   CHECK(small.allowed(200, 101) && small.allowed(300, 101));
 }
 
+// Settings kept in flash by another version of the firmware: read as far as they can be, never thrown away whole.
+namespace armor::config {
+namespace {
+struct FakeItem { std::string name; int level = 1; };
+struct FakeSettings {
+  std::string label = "first";
+  int count = 5;
+  bool on = false;
+  std::vector<FakeItem> items;
+};
+struct FakeProblem { std::string path, code; };
+using FakeProblems = std::vector<FakeProblem>;
+void fake_text(const json::Value& parent, const char* name, std::string& target, std::size_t longest, const std::string& path, FakeProblems& problems) {
+  const json::Value* member = parent.get(name);
+  if (member == nullptr) return;
+  if (!member->is_string()) { problems.push_back({path, "invalid"}); return; }
+  if (member->text.size() > longest) { problems.push_back({path, "too_long"}); return; }
+  target = member->text;
+}
+void fake_int(const json::Value& parent, const char* name, int& target, int lowest, int highest, const std::string& path, FakeProblems& problems) {
+  const json::Value* member = parent.get(name);
+  if (member == nullptr) return;
+  if (!member->is_number()) { problems.push_back({path, "invalid"}); return; }
+  if (member->number < lowest || member->number > highest) { problems.push_back({path, "range"}); return; }
+  target = static_cast<int>(member->number);
+}
+void read_settings(const json::Value& document, FakeSettings& s, FakeProblems& problems) {
+  fake_text(document, "label", s.label, 8, "label", problems);
+  fake_int(document, "count", s.count, 1, 10, "count", problems);
+  if (const json::Value* member = document.get("on"); member != nullptr) {
+    if (member->is_bool()) s.on = member->boolean; else problems.push_back({"on", "invalid"});
+  }
+  if (const json::Value* list = document.get("items"); list != nullptr && list->is_array()) {
+    s.items.clear();
+    for (std::size_t i = 0; i < list->items.size(); ++i) {
+      FakeItem item;
+      fake_text(list->items[i], "name", item.name, 4, "items." + std::to_string(i) + ".name", problems);
+      fake_int(list->items[i], "level", item.level, 1, 3, "items." + std::to_string(i) + ".level", problems);
+      s.items.push_back(item);
+    }
+  }
+}
+FakeProblems validate(const FakeSettings& s) {
+  FakeProblems problems;
+  if (s.on && s.count == 7) problems.push_back({"count", "conflict"});
+  return problems;
+}
+}  // namespace
+}  // namespace armor::config
+
+static void test_stored_settings_survive_an_update() {
+  using namespace armor::config;
+  const FakeSettings base;
+  FakeSettings out;
+  FakeProblems dropped;
+  // an intact document, with a member this version has never heard of
+  CHECK(load_stored(R"({"label":"mine","count":9,"on":true,"newer":{"x":[1,2,3]}})", base, out, dropped) && out.label == "mine" && out.count == 9 && out.on && dropped.empty());
+  // a member that is missing stays at its first value
+  CHECK(load_stored(R"({"on":true})", base, out, dropped) && out.label == "first" && out.count == 5 && out.on && dropped.empty());
+  // a value too long, out of range or of the wrong type loses only itself
+  CHECK(load_stored(R"({"label":"far too long","count":99,"on":"yes"})", base, out, dropped) && out.label == "first" && out.count == 5 && !out.on && dropped.size() == 3);
+  CHECK(load_stored(R"({"label":"kept","count":99})", base, out, dropped) && out.label == "kept" && out.count == 5);
+  // inside a list: the field goes, the item and the others stay
+  CHECK(load_stored(R"({"items":[{"name":"a","level":2},{"name":"toolong","level":9},{"name":"c","level":3}]})", base, out, dropped));
+  CHECK(out.items.size() == 3 && out.items[0].name == "a" && out.items[0].level == 2 && out.items[1].name == "" && out.items[1].level == 1 && out.items[2].level == 3 && dropped.size() == 2);
+  // a conflict between two values found by the check is resolved the same way
+  CHECK(load_stored(R"({"count":7,"on":true,"label":"x"})", base, out, dropped) && out.label == "x" && out.count == 5 && out.on);
+  // a document that is not JSON, or empty, cannot be read: the caller starts from its first settings
+  CHECK(!load_stored("not json", base, out, dropped) && dropped.size() == 1 && dropped[0].code == "not_json");
+  CHECK(!load_stored("", base, out, dropped));
+  // a top-level value that is not an object leaves everything at its first value
+  CHECK(load_stored("[1,2]", base, out, dropped) && out.label == "first" && dropped.empty());
+  // a huge list of bad fields is bounded, not looped on
+  std::string many = "{\"items\":[";
+  for (int i = 0; i < 300; ++i) many += std::string(i ? "," : "") + "{\"level\":99}";
+  many += "]}";
+  const bool loaded = load_stored(many, base, out, dropped);
+  CHECK(loaded || dropped.size() <= 128);
+}
+
+static void test_login_limit_per_minute() {
+  using namespace armor::auth;
+  LoginThrottle limit;
+  for (unsigned i = 0; i < LoginThrottle::kMinuteFailures; ++i) {
+    CHECK(limit.minute_allowed(1000 + i * 100));
+    limit.minute_failure(1000 + i * 100);   // thirty different sources, one wrong password each
+  }
+  const std::uint64_t full = 1000 + 29 * 100;
+  CHECK(!limit.minute_allowed(full + 1) && limit.minute_wait_s(full + 1) >= 57 && limit.minute_wait_s(full + 1) <= 60);
+  CHECK(!limit.minute_allowed(1000 + 60000 - 1));
+  CHECK(limit.minute_allowed(1000 + 60000) && limit.minute_wait_s(1000 + 60000) == 0);   // the oldest has left the minute: one more may try
+  limit.minute_failure(1000 + 60000);
+  CHECK(!limit.minute_allowed(1000 + 60000 + 1) && limit.minute_wait_s(1000 + 60000 + 1) >= 1);
+  CHECK(limit.minute_allowed(1100 + 60000));
+  LoginThrottle idle;   // a node that was never attacked never waits
+  CHECK(idle.minute_allowed(0) && idle.minute_wait_s(5) == 0);
+  for (int i = 0; i < 29; ++i) idle.minute_failure(10);
+  CHECK(idle.minute_allowed(11));   // 29 wrong passwords in a minute are still allowed
+  idle.minute_failure(11);
+  CHECK(!idle.minute_allowed(12));
+}
+
 // A phone that fails is blocked on its own; everybody is blocked only by many failures together.
 namespace {
 class StubBackend : public armor::ble::Backend {
@@ -600,6 +704,8 @@ int main() {
   test_json_strictness();
   test_json_refuses_bad_text();
   test_login_throttle_keeps_its_blocks();
+  test_login_limit_per_minute();
+  test_stored_settings_survive_an_update();
   test_ed25519();
   test_fw_trust();
   test_ble_passkey();

@@ -264,6 +264,13 @@ esp_err_t get_session(httpd_req_t* r) {
   return send_json(r, 200, w.str());
 }
 
+// The answer when the node as a whole has seen too many wrong passwords this minute.
+esp_err_t send_minute_wait(httpd_req_t* r, unsigned wait_s) {
+  json::Writer w;
+  w.begin_object().field("error", "too_many_attempts").field("wait_s", static_cast<int>(wait_s)).end_object();
+  return send_json(r, 429, w.str());
+}
+
 esp_err_t post_setup(httpd_req_t* r) {
   // A login or a set-up, like every request that changes something, must carry the header a page from another site cannot add: another site could otherwise sign a person in to an account it chose.
   if (header(r, "X-Requested-With") != "armor") return send_error(r, 403, "forbidden");
@@ -274,11 +281,13 @@ esp_err_t post_setup(httpd_req_t* r) {
   {
     std::lock_guard<std::mutex> guard(g_lock);
     if (!g_throttle.allowed(source, now_ms())) return send_error(r, 429, "too_many_attempts");
+    if (!g_throttle.minute_allowed(now_ms())) return send_minute_wait(r, g_throttle.minute_wait_s(now_ms()));
   }
   const std::string code = in.string_or("code", "");
   if (!auth::same_text(code, store::setup_code())) {
     std::lock_guard<std::mutex> guard(g_lock);
     g_throttle.failure(source, now_ms());
+    g_throttle.minute_failure(now_ms());
     return send_error(r, 403, "wrong_code");
   }
   const std::string user = in.string_or("user", ""), password = in.string_or("password", "");
@@ -344,11 +353,14 @@ esp_err_t post_login(httpd_req_t* r) {
       w.begin_object().field("error", "too_many_attempts").field("wait_s", static_cast<int>(by_address > by_person ? by_address : by_person)).end_object();
       return send_json(r, 429, w.str());
     }
+    // However many addresses and names are tried, the node as a whole lets through only so many wrong passwords per minute.
+    if (!g_throttle.minute_allowed(now_ms())) return send_minute_wait(r, g_throttle.minute_wait_s(now_ms()));
   }
   auth::Role role = auth::Role::kViewer;
   if (!store::user_verify(user, password, role)) {
     std::lock_guard<std::mutex> guard(g_lock);
     g_throttle.failure(source, now_ms());
+    g_throttle.minute_failure(now_ms());
     g_user_throttle.failure(person, now_ms());
     return send_error(r, 401, "wrong_credentials");
   }

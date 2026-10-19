@@ -99,11 +99,16 @@ void init() {
   g_settings = first_settings();
   if (read_blob(kSettingsKey, text)) {
     config::Settings loaded;
-    config::Problems problems;
-    if (config::load(text, first_settings(), loaded, problems)) { g_settings = loaded; g_stored = true; }
-    else {
-      ESP_LOGE(kTag, "the stored settings are not valid: using the first settings");
-      for (const config::Problem& problem : problems) ESP_LOGE(kTag, "  %s at %s", problem.code.c_str(), problem.path.c_str());
+    config::Problems dropped;
+    // Settings written by another version of the firmware are read as far as they can be: members this version does not know are ignored, and one that it cannot accept is left at its first value
+    // (the rest is kept), so an update never sends the node back to its first settings.
+    if (config::load_stored(text, first_settings(), loaded, dropped)) {
+      g_settings = loaded;
+      g_stored = true;
+      for (const config::Problem& problem : dropped) ESP_LOGW(kTag, "stored setting %s left at its first value (%s)", problem.path.c_str(), problem.code.c_str());
+    } else {
+      ESP_LOGE(kTag, "the stored settings could not be read: using the first settings");
+      for (const config::Problem& problem : dropped) ESP_LOGE(kTag, "  %s at %s", problem.code.c_str(), problem.path.c_str());
     }
   }
   if (read_blob(kUsersKey, text) && !g_users.from_json(text)) ESP_LOGE(kTag, "the stored users could not be read: the node is back in setup");

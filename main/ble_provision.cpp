@@ -43,7 +43,7 @@ const ble_uuid128_t kTxUuid = BLE_UUID128_INIT(0x00, 0x52, 0x4f, 0x4d, 0x52, 0x4
 
 std::string g_name;
 std::uint8_t g_own_address_type = 0;
-std::uint16_t g_connection = BLE_HS_CONN_HANDLE_NONE;
+std::atomic<std::uint16_t> g_connection{BLE_HS_CONN_HANDLE_NONE};   // written by the host task of the radio, read by the worker
 std::uint16_t g_tx_handle = 0;
 bool g_running = false;
 bool g_advertising_stopped = false;   // set once the node has an address and the phone had its chance to read the outcome: no more advertising
@@ -107,22 +107,31 @@ NodeBackend g_backend;
 
 void advertise();
 
-void send_message(const std::string& json_text) {
-  if (g_connection == BLE_HS_CONN_HANDLE_NONE) return;
+// Sends an answer to the phone that asked, and only to it: `generation` is the connection the request arrived in, and when that phone is gone (and perhaps another is here) the answer is dropped
+// at once, also halfway through - the next phone must never receive the rest of a message that was meant for the one before.
+void send_message(const std::string& json_text, unsigned generation) {
+  const std::uint16_t connection = g_connection.load();
+  if (connection == BLE_HS_CONN_HANDLE_NONE || generation != g_generation.load()) return;
   const std::string framed = ble::frame(json_text);
   if (framed.empty()) return;
-  const std::size_t payload = ble_att_mtu(g_connection) > 3 ? ble_att_mtu(g_connection) - 3u : 20u;
+  const std::size_t payload = ble_att_mtu(connection) > 3 ? ble_att_mtu(connection) - 3u : 20u;
   for (const std::string& piece : ble::chunks_of(framed, payload)) {
     for (int attempt = 0; attempt < 20; ++attempt) {
-      if (g_connection == BLE_HS_CONN_HANDLE_NONE) return;
+      if (g_connection.load() != connection || generation != g_generation.load()) return;
       struct os_mbuf* buffer = ble_hs_mbuf_from_flat(piece.data(), static_cast<std::uint16_t>(piece.size()));
       if (buffer == nullptr) { vTaskDelay(pdMS_TO_TICKS(10)); continue; }
-      const int rc = ble_gatts_notify_custom(g_connection, g_tx_handle, buffer);   // takes the buffer
+      const int rc = ble_gatts_notify_custom(connection, g_tx_handle, buffer);   // takes the buffer
       if (rc == 0) break;
       vTaskDelay(pdMS_TO_TICKS(15));   // the stack's queue is full: wait for it to drain
     }
     vTaskDelay(pdMS_TO_TICKS(3));
   }
+}
+
+// The requests waiting for the worker belong to the phone that sent them: when it connects or disconnects they are thrown away, so none is answered to a phone that did not ask.
+void drain_queue() {
+  Pending* waiting = nullptr;
+  while (g_queue != nullptr && xQueueReceive(g_queue, &waiting, 0) == pdTRUE) delete waiting;
 }
 
 void worker_task(void*) {
@@ -132,7 +141,7 @@ void worker_task(void*) {
     const std::unique_ptr<Pending> pending(raw);
     if (pending->generation != g_generation.load()) continue;   // it came from a phone that is gone: nobody is waiting for the answer, and it must not act as the phone that is here now
     ble::Request request;
-    if (!ble::parse_request(pending->text, request)) { send_message(ble::error_response(0, "bad_request")); continue; }
+    if (!ble::parse_request(pending->text, request)) { send_message(ble::error_response(0, "bad_request"), pending->generation); continue; }
     // The session is copied out, used for the (slow) request, and put back only if the same connection is still there: the host task clears it on every connect and disconnect.
     ble::Session session;
     { std::lock_guard<std::mutex> guard(g_session_lock); session = g_session; }
@@ -142,7 +151,7 @@ void worker_task(void*) {
       if (pending->generation != g_generation.load()) continue;
       g_session = session;
     }
-    send_message(reply);
+    send_message(reply, pending->generation);
   }
 }
 
@@ -183,30 +192,32 @@ int on_gap(struct ble_gap_event* event, void*) {
           ble_gap_terminate(event->connect.conn_handle, BLE_ERR_REM_USER_CONN_TERM);
           break;
         }
-        g_connection = event->connect.conn_handle;
         g_assembler.reset();
         {
           std::lock_guard<std::mutex> guard(g_session_lock);
           ++g_generation;
+          g_connection = event->connect.conn_handle;
           g_session.clear();
           struct ble_gap_conn_desc description;
           g_session.peer = ble_gap_conn_find(event->connect.conn_handle, &description) == 0 ? peer_number(description.peer_id_addr.val) : 0;
         }
         ESP_LOGI(kTag, "a phone connected");
-        ble_gap_security_initiate(g_connection);   // the phone pairs now, so the link is encrypted before the first request
+        drain_queue();
+        ble_gap_security_initiate(event->connect.conn_handle);   // the phone pairs now, so the link is encrypted before the first request
       } else {
         advertise();
       }
       break;
     case BLE_GAP_EVENT_DISCONNECT:
-      g_connection = BLE_HS_CONN_HANDLE_NONE;
       g_assembler.reset();
       {
         std::lock_guard<std::mutex> guard(g_session_lock);
         ++g_generation;
+        g_connection = BLE_HS_CONN_HANDLE_NONE;
         g_session.clear();
         g_session.peer = 0;
       }
+      drain_queue();
       ESP_LOGI(kTag, "the phone disconnected");
       advertise();
       break;
@@ -307,7 +318,7 @@ bool start(const config::Settings& settings, bool setup_mode) {
   if (!wanted) return false;
   g_name = "ARMOR-" + store::mac_tail();
   for (char& c : g_name) if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
-  g_queue = xQueueCreate(kQueueLength, sizeof(std::string*));
+  g_queue = xQueueCreate(kQueueLength, sizeof(Pending*));
   if (g_queue == nullptr) return false;
   if (nimble_port_init() != ESP_OK) { ESP_LOGE(kTag, "the Bluetooth stack could not start"); return false; }
   ble_hs_cfg.reset_cb = on_reset;

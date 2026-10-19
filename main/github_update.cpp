@@ -165,7 +165,10 @@ CheckResult check(const char* board_id) {
   // TLS connection (the hash), which is what the node was short of when it said it could not get the checksum.
   document = json::Value();
   std::string().swap(body);
-  const bool newer = !result.asset_url.empty() && semver::is_newer(result.latest_version, esp_app_get_description()->version);
+  const bool release_is_newer = semver::is_newer(result.latest_version, esp_app_get_description()->version);
+  // A newer release that carries no image built for THIS board (a board that was not part of the publication) is said so, instead of passing for "up to date".
+  if (release_is_newer && result.asset_url.empty()) { result.error = "no_asset_for_board"; return result; }
+  const bool newer = !result.asset_url.empty() && release_is_newer;
   if (newer) {
     // A newer release is offered only with the hash that lets the image be checked: without it the node says so instead of installing blind.
     std::string text, problem;

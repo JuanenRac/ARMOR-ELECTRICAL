@@ -28,6 +28,7 @@
 #include "json.hpp"
 #include "net_text.hpp"
 #include "node_id.hpp"
+#include "stored_load.hpp"
 
 namespace armor::config {
 

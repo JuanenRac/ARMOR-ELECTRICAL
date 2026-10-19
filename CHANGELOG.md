@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here.
 
+## [0.4.2] - Tolerant settings, global login limit, Bluetooth race, missing board image
+
+- Settings kept in flash are read as far as they can be after an update: unknown members are ignored and a value that cannot be accepted falls back alone, so the node never starts over because of one field.
+- The panel login limits the wrong passwords of all sources together to thirty per minute.
+- Bluetooth answers go only to the phone that asked; waiting requests are discarded on connect and disconnect.
+- A newer release without an image for this board is reported in the panel (8 languages) instead of passing for up to date.
+
 ## [0.4.1] - Shared node base update
 
 - Shared base update: a wider login table, slot-sized download limit, stricter JSON text and a set-up code kept in capitals.
