@@ -176,6 +176,16 @@ void start_client(const config::Broker& broker) {
   config.credentials.username = broker.username.c_str();
   config.credentials.authentication.password = broker.password.c_str();
   config.session.keepalive = g_settings.mqtt.heartbeat_s * 2;
+  // The broker tells the server when this node is lost without a goodbye (see core/mqtt_topic.hpp). The texts live as long as the client: they are rebuilt only when the node id is not the same.
+  static std::string will_topic, will_payload;
+  if (will_topic.empty() || will_topic != mqtt::will_topic(g_settings.node_id)) { will_topic = mqtt::will_topic(g_settings.node_id); will_payload = mqtt::will_payload(g_settings.node_id); }
+  if (!will_topic.empty()) {
+    config.session.last_will.topic = will_topic.c_str();
+    config.session.last_will.msg = will_payload.c_str();
+    config.session.last_will.msg_len = static_cast<int>(will_payload.size());
+    config.session.last_will.qos = 1;
+    config.session.last_will.retain = 0;
+  }
   config.network.disable_auto_reconnect = true;   // the retries are ours (a wait that grows), not the client's fixed ten seconds
   // Encrypted link (off unless the owner turned it on in the panel): only the authority stored in the settings is trusted, the certificate of the broker must be signed by it and must vouch for
   // the name or the address in the URL (the client checks the host name: skip_cert_common_name_check stays off). g_settings is never changed after start(), so the text outlives the client.

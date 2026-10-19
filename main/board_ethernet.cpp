@@ -54,8 +54,9 @@ esp_eth_handle_t ethernet_driver_create() {
   if (err != ESP_OK) { ESP_LOGE(kTag, "no W5500 answers on SPI (check the wiring and the pins): %s", esp_err_to_name(err)); return nullptr; }
 
   std::uint8_t address[6]{};
-  ESP_ERROR_CHECK(esp_read_mac(address, ESP_MAC_ETH));
-  ESP_ERROR_CHECK(esp_eth_ioctl(handle, ETH_CMD_S_MAC_ADDR, address));
+  err = esp_read_mac(address, ESP_MAC_ETH);
+  if (err == ESP_OK) err = esp_eth_ioctl(handle, ETH_CMD_S_MAC_ADDR, address);
+  if (err != ESP_OK) { ESP_LOGE(kTag, "the address of the cable port could not be set: %s", esp_err_to_name(err)); esp_eth_driver_uninstall(handle); return nullptr; }
   return handle;
 }
 

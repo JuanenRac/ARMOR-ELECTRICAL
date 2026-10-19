@@ -82,6 +82,7 @@ button.danger { border-color: #974b55; color: #ffc9ca; background: #3e1e28; }
 .actions { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: .3rem 1rem; font-size: .82rem; }
 .kv dt { color: #85a9b3; } .kv dd { margin: 0; color: #e6fcfc; font-family: var(--mono); overflow-wrap: anywhere; }
+.kv.framed dd { justify-self: start; padding: .3rem .6rem; border: 1px solid #2d8879; border-radius: 8px; background: #0d302e; color: #8ff2d8; letter-spacing: .02em; }
 table { width: 100%; border-collapse: collapse; font-size: .8rem; }
 th { text-align: left; color: #85a9b3; font: 500 .62rem var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: .35rem .4rem; border-bottom: 1px solid var(--line-soft); }
 td { padding: .35rem .4rem; border-bottom: 1px solid #16323e; vertical-align: middle; }

@@ -132,11 +132,38 @@ static void test_manifest() {
   CHECK(!fw_trust::manifest_signature_ok("armor_radar", "s3-eth", "0.6.7", hash, hash_signature));
 }
 
+// The answer of GitHub to the request of a checksum is a redirect whose headers add up to about 5.2 KB (a Location of 941 characters, a security policy, cookies): the buffer for
+// headers must hold that with room, in the external RAM (above the 16384 bytes the sdkconfig keeps in internal memory) and, with none, at the smallest size that still holds it.
+static void test_header_buffer() {
+  std::string headers = "HTTP/1.1 302 Found\r\n";
+  headers += "Location: https://release-assets.githubusercontent.com/github-production-release-asset/" + std::string(941 - 76, 'a') + "\r\n";
+  headers += "Content-Security-Policy: " + std::string(3800, 'p') + "\r\n";
+  headers += "Set-Cookie: " + std::string(400, 'c') + "\r\n\r\n";
+  CHECK(headers.size() > 5100 && headers.size() < 5400);
+  CHECK(release::header_buffer_size(8u * 1024 * 1024) == 20480 && release::header_buffer_size(8u * 1024 * 1024) > 16384);   // external RAM: past the internal threshold
+  CHECK(release::header_buffer_size(0) == 6144 && release::header_buffer_size(20480) == 6144 && release::header_buffer_size(40960) == 20480);
+  for (std::size_t external : {static_cast<std::size_t>(0), static_cast<std::size_t>(8u * 1024 * 1024)}) {
+    CHECK(static_cast<std::size_t>(release::header_buffer_size(external)) >= headers.size() + 512);
+  }
+}
+
+// Why a checksum or a signature could not be read is told as it is; "no_checksum" is only for a release that carries no such file.
+static void test_fetch_errors() {
+  CHECK(release::fetch_error("connect_failed", "checksum") == "checksum_unreachable" && release::fetch_error("read_error", "checksum") == "checksum_unreachable");
+  CHECK(release::fetch_error("client_init", "signature") == "signature_unreachable" && release::fetch_error("too_large", "signature") == "signature_too_large");
+  CHECK(release::fetch_error("http_404", "checksum") == "http_404" && release::fetch_error("http_503", "signature") == "http_503");
+  for (const char* problem : {"connect_failed", "read_error", "client_init", "too_large", "http_302", ""}) {
+    CHECK(release::fetch_error(problem, "checksum") != "no_checksum" && release::fetch_error(problem, "signature") != "no_signature");
+  }
+}
+
 int main() {
   test_semver();
   test_assets();
   test_official_urls();
   test_manifest();
+  test_header_buffer();
+  test_fetch_errors();
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

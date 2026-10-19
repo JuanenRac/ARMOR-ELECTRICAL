@@ -14,8 +14,8 @@ extern "C" {
 #include "esp_image_format.h"
 #include "esp_partition.h"
 #include "esp_crt_bundle.h"
-#include "esp_http_client.h"
 #include "esp_heap_caps.h"
+#include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_ota_ops.h"
@@ -34,8 +34,9 @@ constexpr const char* kTag = "github_update";
 constexpr std::size_t kMaxApiResponse = 24 * 1024;   // the release's own JSON, a changelog included; anything bigger is not trusted
 constexpr std::size_t kMinFirmware = 100 * 1024;
 constexpr std::size_t kMaxFirmware = 0x300000;   // the size of an application slot in partitions.csv: a bigger image fits nowhere
-// GitHub answers a download with a redirect to a storage server whose address is long and signed: the header buffer must hold it.
-constexpr int kHeaderBuffer = 4096;
+// GitHub answers a download with a redirect to a storage server whose address is long and signed (the headers of that answer add up to more than 5 KB): the header buffer must hold
+// them. Its size, and why it is above 16384 bytes, is told in release_assets.hpp.
+int header_buffer() { return release::header_buffer_size(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)); }
 constexpr int kMaxRedirects = 5;
 
 // Opens the connection and reads the headers, following redirects (a release asset is always one): `status` and `length` are those of the final answer.
@@ -68,8 +69,10 @@ bool get_bounded_once(const std::string& url, const char* accept, std::string& o
   config.url = url.c_str();
   config.crt_bundle_attach = esp_crt_bundle_attach;
   config.timeout_ms = 15000;
-  config.buffer_size = kHeaderBuffer;
+  config.buffer_size = header_buffer();
+  const unsigned internal_before = static_cast<unsigned>(esp_get_free_internal_heap_size());
   esp_http_client_handle_t client = esp_http_client_init(&config);
+  ESP_LOGI(kTag, "HTTP client opened with a %d-byte header buffer: %u bytes of internal memory free before, %u after", config.buffer_size, internal_before, static_cast<unsigned>(esp_get_free_internal_heap_size()));
   if (client == nullptr) { error = "client_init"; return false; }
   esp_http_client_set_header(client, "User-Agent", "ARMOR-ELECTRICAL");
   if (accept != nullptr) esp_http_client_set_header(client, "Accept", accept);
@@ -173,7 +176,7 @@ CheckResult check(const char* board_id) {
     // A newer release is offered only with the hash that lets the image be checked: without it the node says so instead of installing blind.
     std::string text, problem;
     if (checksum_url.empty()) { result.error = "no_checksum"; return result; }
-    if (!get_bounded(checksum_url, nullptr, text, problem)) { ESP_LOGW(kTag, "the checksum of the release could not be read: %s", problem.c_str()); result.error = "no_checksum"; return result; }
+    if (!get_bounded(checksum_url, nullptr, text, problem)) { ESP_LOGW(kTag, "the checksum of the release could not be read: %s", problem.c_str()); result.error = release::fetch_error(problem, "checksum"); return result; }
     result.sha256 = parse_sha256(text);
     if (result.sha256.empty()) { result.error = "no_checksum"; return result; }
     // ... and with the signature that says who published that hash: a release that is not signed is not offered (install() checks the signature again, with its own download of it).
@@ -199,8 +202,10 @@ InstallResult install(const CheckResult& offer) {
   config.url = asset_url.c_str();
   config.crt_bundle_attach = esp_crt_bundle_attach;
   config.timeout_ms = 20000;
-  config.buffer_size = kHeaderBuffer;
+  config.buffer_size = header_buffer();
+  const unsigned internal_before = static_cast<unsigned>(esp_get_free_internal_heap_size());
   esp_http_client_handle_t client = esp_http_client_init(&config);
+  ESP_LOGI(kTag, "HTTP client opened with a %d-byte header buffer: %u bytes of internal memory free before, %u after", config.buffer_size, internal_before, static_cast<unsigned>(esp_get_free_internal_heap_size()));
   if (client == nullptr) { result.error = "client_init"; return result; }
   esp_http_client_set_header(client, "User-Agent", "ARMOR-ELECTRICAL");
   int length = 0, status = 0;
@@ -266,7 +271,7 @@ InstallResult install(const CheckResult& offer) {
   if (!get_bounded(offer.signature_url, nullptr, signature_text, problem)) {
     esp_ota_abort(handle);
     ESP_LOGE(kTag, "the signature of the release could not be read (%s): refused", problem.c_str());
-    result.error = "no_signature";
+    result.error = release::fetch_error(problem, "signature");
     return result;
   }
   if (esp_ota_end(handle) != ESP_OK) { result.error = "image_invalid"; return result; }

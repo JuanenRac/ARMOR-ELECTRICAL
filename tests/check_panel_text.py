@@ -23,6 +23,32 @@ def rows(text):
     return found
 
 
+def check_help_and_frames(table, problems):
+    """The help names what the node does today (in every language), and the Summary puts its values in the green frames."""
+    needed = {"help_users_text": ["429", "30"], "help_update_text": ["GitHub"], "help_network_text": ["SHA-256", "PIN"], "help_overview_text": ["NTP"]}
+    if "help_server_text" in table:
+        needed["help_server_text"] = ["SHA-256"]
+    if "help_ports_text" in table:
+        needed["help_ports_text"] = ["RJ45", "115200", "pwrsys"]
+    for key, words in needed.items():
+        for language, text in enumerate(table.get(key, [])):
+            for word in words:
+                if word not in text:
+                    problems.append(f"{key}: the text {language} does not mention {word}")
+    app = (ROOT / "panel" / "app.js").read_text(encoding="utf-8")
+    for name in ("function overviewPage(", "function flashCard("):
+        start = app.find(name)
+        end = app.find("\n}", start)
+        body = app[start:end]
+        if start < 0 or "kvf(" not in body or re.search(r"(?<![\w])kv\(", body):
+            problems.append(f"{name[9:-1]} must show its values with kvf( (the green frames)")
+    if 'const kvf = rows => kv(rows, "kv framed");' not in app:
+        problems.append("app.js has no kvf")
+    css = (ROOT / "panel" / "style.css").read_text(encoding="utf-8")
+    if ".kv.framed dd" not in css:
+        problems.append("style.css has no .kv.framed rule")
+
+
 def main():
     text = (ROOT / "panel" / "text.js").read_text(encoding="utf-8")
     table = rows(text)
@@ -43,6 +69,7 @@ def main():
             problems.append(f"the firmware answers \"{code}\" and the panel has no text e_{code}")
     if "e_http" not in table:
         problems.append("e_http is missing (the download's HTTP status)")
+    check_help_and_frames(table, problems)
     if problems:
         print("PANEL_TEXT=FAIL")
         for problem in problems:

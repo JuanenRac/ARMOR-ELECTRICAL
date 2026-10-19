@@ -28,6 +28,22 @@ inline bool is_official_url(const std::string& url, const std::string& repo) {
   return slashes == 1 && url.size() > prefix.size() + 3 && url.find("..") == std::string::npos && url.back() != '/';
 }
 
+// The buffer the HTTP client keeps for the headers of an answer. GitHub redirects a download to a storage address whose headers add up to more than 5 KB (a signed Location of
+// about a thousand characters, a security policy, cookies): a buffer of 4 KB made the client give up with "out of buffer". The sdkconfig sends an allocation of 16384 bytes or less to
+// INTERNAL memory (the part the TLS handshake needs, and there is only some 65 to 80 KB of it free then) and a bigger one to the external RAM, so 20480 bytes is both roomy and free of
+// cost for the internal heap. A board with no external RAM (or none free) takes the smallest buffer that holds those headers.
+constexpr int kHeaderBufferExternal = 20480;
+constexpr int kHeaderBufferInternal = 6144;
+inline int header_buffer_size(std::size_t free_external_bytes) { return free_external_bytes >= 2u * static_cast<std::size_t>(kHeaderBufferExternal) ? kHeaderBufferExternal : kHeaderBufferInternal; }
+
+// What to tell when a file of a release (`what` is "checksum" or "signature") could not be read: the real reason, never "the release has none" (that is only for a release that does
+// not carry the file). `problem` is what the download said: connect_failed, read_error, client_init, http_<status> or too_large.
+inline std::string fetch_error(const std::string& problem, const std::string& what) {
+  if (problem.compare(0, 5, "http_") == 0) return problem;
+  if (problem == "too_large") return what + "_too_large";
+  return what + "_unreachable";
+}
+
 inline std::string asset_name(const char* board_id) { return std::string(kAssetPrefix) + "-" + (board_id != nullptr ? board_id : "") + ".bin"; }
 
 // The plain name, for the board whose image a release without the board's name carries; "" for every other board.

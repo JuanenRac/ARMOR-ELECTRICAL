@@ -88,10 +88,12 @@ void init() {
   esp_err_t err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
     ESP_LOGW(kTag, "the NVS partition is unusable (%s): erasing it", esp_err_to_name(err));
-    ESP_ERROR_CHECK(nvs_flash_erase());
+    const esp_err_t erased = nvs_flash_erase();
+    if (erased != ESP_OK) ESP_LOGE(kTag, "the NVS partition could not be erased: %s", esp_err_to_name(erased));
     err = nvs_flash_init();
   }
-  ESP_ERROR_CHECK(err);
+  // Without storage the node still starts, on the default settings and without remembering anything: it can be reached and set up again, which a node that aborts in a loop cannot.
+  if (err != ESP_OK) ESP_LOGE(kTag, "the settings storage could not be started (%s): running on the defaults, nothing will be kept", esp_err_to_name(err));
   esp_read_mac(g_mac, ESP_MAC_WIFI_STA);
 
   std::lock_guard<std::mutex> guard(g_lock);

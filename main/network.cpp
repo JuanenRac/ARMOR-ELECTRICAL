@@ -161,8 +161,9 @@ void apply_ip(esp_netif_t* netif, const config::Settings& s, const std::string& 
   info.ip.addr = esp_netif_htonl(address);
   info.netmask.addr = esp_netif_htonl(mask);
   info.gw.addr = esp_netif_htonl(gateway);
-  ESP_ERROR_CHECK(esp_netif_dhcpc_stop(netif));
-  ESP_ERROR_CHECK(esp_netif_set_ip_info(netif, &info));
+  const esp_err_t stopped = esp_netif_dhcpc_stop(netif);
+  if (stopped != ESP_OK && stopped != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED) { ESP_LOGE(kTag, "the DHCP client could not be stopped (%s): the address is asked for by DHCP", esp_err_to_name(stopped)); return; }
+  if (esp_netif_set_ip_info(netif, &info) != ESP_OK) { ESP_LOGE(kTag, "the fixed address could not be set: asking for an address by DHCP instead"); esp_netif_dhcpc_start(netif); return; }
   const std::string servers[2] = {s.ip.dns1.empty() ? s.ip.gateway : s.ip.dns1, s.ip.dns2};
   const esp_netif_dns_type_t kinds[2] = {ESP_NETIF_DNS_MAIN, ESP_NETIF_DNS_BACKUP};
   for (int i = 0; i < 2; ++i) {
@@ -396,14 +397,17 @@ bool start(const config::Settings& s, const netplan::Plan& plan) {
   esp_read_mac(mac, plan.wired ? ESP_MAC_ETH : ESP_MAC_WIFI_STA);
   g_status.mac = mac_text(mac);
 
-  ESP_ERROR_CHECK(esp_netif_init());
-  ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &on_wifi_event, nullptr));
-  ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &on_ip_event, nullptr));
-  ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_LOST_IP, &on_ip_lost, nullptr));
+  // A step that fails is said and makes start() answer false: the caller goes on without a network (the node stays reachable by Bluetooth and the serial port) instead of the whole
+  // node aborting and restarting in a loop.
+  const auto step = [](esp_err_t result, const char* what) { if (result != ESP_OK) ESP_LOGE(kTag, "%s failed: %s", what, esp_err_to_name(result)); return result == ESP_OK; };
+  if (!step(esp_netif_init(), "the network stack")) return false;
+  if (!step(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &on_wifi_event, nullptr), "the Wi-Fi events")) return false;
+  if (!step(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &on_ip_event, nullptr), "the address events")) return false;
+  if (!step(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_LOST_IP, &on_ip_lost, nullptr), "the address-lost events")) return false;
 #if defined(ARMOR_BOARD_S3_ETH)
-  ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &on_eth_event, nullptr));
-  ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &on_ip_event, nullptr));
-  ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_LOST_IP, &on_ip_lost, nullptr));
+  if (!step(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, &on_eth_event, nullptr), "the cable events")) return false;
+  if (!step(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &on_ip_event, nullptr), "the cable address events")) return false;
+  if (!step(esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_LOST_IP, &on_ip_lost, nullptr), "the cable address-lost events")) return false;
 #endif
 
   if (plan.station) {
@@ -421,9 +425,13 @@ bool start(const config::Settings& s, const netplan::Plan& plan) {
     } else {
       esp_netif_config_t eth_config = ESP_NETIF_DEFAULT_ETH();
       esp_netif_t* eth_netif = esp_netif_new(&eth_config);
-      ESP_ERROR_CHECK(esp_netif_attach(eth_netif, esp_eth_new_netif_glue(g_eth)));
-      g_ip_netif = eth_netif;
-      apply_ip(eth_netif, s, plan.hostname);
+      if (!step(esp_netif_attach(eth_netif, esp_eth_new_netif_glue(g_eth)), "attaching the cable")) {
+        g_status.ethernet_ok = false;
+        if (!plan.ap.enabled) return false;
+      } else {
+        g_ip_netif = eth_netif;
+        apply_ip(eth_netif, s, plan.hostname);
+      }
     }
   }
 #endif
@@ -436,10 +444,10 @@ bool start(const config::Settings& s, const netplan::Plan& plan) {
   }
   if (wifi && !wifi_setup(s, plan)) return false;
 #if defined(ARMOR_BOARD_S3_ETH)
-  if (g_eth != nullptr) ESP_ERROR_CHECK(esp_eth_start(g_eth));
+  if (g_eth != nullptr && !step(esp_eth_start(g_eth), "starting the cable")) { g_status.ethernet_ok = false; if (!wifi) return false; }
 #endif
   if (wifi) {
-    ESP_ERROR_CHECK(esp_wifi_start());
+    if (!step(esp_wifi_start(), "starting Wi-Fi")) return false;
     wifi_tune(plan);
     g_wifi_running = true;
   }

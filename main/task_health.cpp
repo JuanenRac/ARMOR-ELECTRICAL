@@ -3,6 +3,7 @@
 #include "task_health.hpp"
 
 #include <memory>
+#include <mutex>
 #include <new>
 #include <set>
 extern "C" {
@@ -47,8 +48,10 @@ std::string json() { return health::tasks_json(tasks()); }
 
 void warn_if_low() {
   static std::set<std::string> said;
+  static std::mutex said_lock;   // more than one task asks (the health report and the web panel)
   for (const health::TaskInfo& task : tasks()) {
-    if (!health::is_low(task) || !said.insert(task.name).second) continue;
+    if (!health::is_low(task)) continue;
+    { std::lock_guard<std::mutex> guard(said_lock); if (!said.insert(task.name).second) continue; }
     ESP_LOGW(kTag, "the task \"%s\" has only %u bytes of stack left at its worst: it may overflow", task.name.c_str(), static_cast<unsigned>(task.stack_free));
   }
 }
