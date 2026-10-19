@@ -14,6 +14,9 @@ namespace armor::clocksync {
 // Applies the zone and, when the settings ask for a time server, starts SNTP once the network has an address.
 void start(const config::Settings& settings);
 
+// Makes a new zone rule (a POSIX TZ string, already checked by the settings) the one in use at once: saving it in the panel needs no restart.
+void set_zone(const std::string& zone);
+
 bool is_set();   // the clock holds a real date (not the 1970 of a board that has just powered on)
 
 // Sets the clock to `seconds` since 1970, for a node with no time server. False for a date before the firmware existed or absurdly far.

@@ -3,6 +3,7 @@
 #include "clock_sync.hpp"
 
 #include <cstdio>
+#include <mutex>
 #include <cstdlib>
 #include <ctime>
 #include <sys/time.h>
@@ -22,6 +23,7 @@ constexpr std::time_t kFirstRealDate = 1700000000;   // Nov 2023: anything earli
 constexpr std::time_t kLastSaneDate = 4102444800;    // 2100
 
 std::string g_zone = "UTC0";
+std::mutex g_zone_lock;   // the panel can change the zone while another request reads it
 std::string g_server;
 bool g_ntp = false;
 
@@ -37,13 +39,18 @@ void sync_task(void*) {
 }  // namespace
 
 void start(const config::Settings& settings) {
-  g_zone = settings.time.zone;
+  set_zone(settings.time.zone);
   g_server = settings.time.ntp;
   g_ntp = settings.time.ntp_enabled;
-  setenv("TZ", g_zone.c_str(), 1);
-  tzset();
   if (g_ntp) xTaskCreate(sync_task, "clock-sync", 3072, nullptr, 2, nullptr);
   else ESP_LOGW(kTag, "no time server: the time has to be set from the panel after each restart");
+}
+
+void set_zone(const std::string& zone) {
+  std::lock_guard<std::mutex> guard(g_zone_lock);
+  g_zone = zone;
+  setenv("TZ", g_zone.c_str(), 1);
+  tzset();
 }
 
 bool is_set() { return std::time(nullptr) > kFirstRealDate; }
@@ -57,7 +64,7 @@ bool set_unix(std::int64_t seconds) {
 
 Info info() {
   Info out;
-  out.zone = g_zone;
+  { std::lock_guard<std::mutex> guard(g_zone_lock); out.zone = g_zone; }
   const std::time_t now = std::time(nullptr);
   out.set = now > kFirstRealDate;
   out.synced = g_ntp && esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED;

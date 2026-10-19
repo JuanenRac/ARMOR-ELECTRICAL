@@ -2,7 +2,9 @@
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include "api_shared.hpp"
 
+#include <memory>
 #include <mutex>
+#include <new>
 #include <cstring>
 extern "C" {
 #include "esp_app_desc.h"
@@ -239,21 +241,28 @@ std::string problems_json(const config::Problems& problems) {
 }
 
 namespace {
-// What changed in a way that needs a restart: everything but the node's display name and the panel language.
-bool needs_restart(config::Settings before, config::Settings after) {
-  before.node_name = after.node_name = "";
-  before.language = after.language = "en";
-  return config::to_json(before, true) != config::to_json(after, true);
+// What changed in a way that needs a restart: everything but the time zone (applied at once), the node's display name and the panel language.
+bool needs_restart(const config::Settings& before, const config::Settings& after) {
+  // The two copies are on the heap: this runs in the task of whoever saves (the web server, the Bluetooth worker, the serial set-up) and a Settings is about a kilobyte.
+  const std::unique_ptr<config::Settings> a(new (std::nothrow) config::Settings(before)), b(new (std::nothrow) config::Settings(after));
+  if (!a || !b) return true;
+  a->node_name = b->node_name = "";
+  a->language = b->language = "en";
+  a->time.zone = b->time.zone = "";   // the zone is applied as soon as it is saved (clocksync::set_zone below)
+  return config::to_json(*a, true) != config::to_json(*b, true);
 }
 }  // namespace
 
 PutResult put_config(std::string_view document, config::Problems& problems, bool& restart_required) {
-  const config::Settings before = store::settings();
-  config::Settings after;
+  // On the heap: the web, Bluetooth and serial paths all end here, and a whole Settings is about a kilobyte of the (small) stack of whichever task is saving.
+  const std::unique_ptr<config::Settings> before(new (std::nothrow) config::Settings(store::settings()));
+  const std::unique_ptr<config::Settings> after(new (std::nothrow) config::Settings());
+  if (!before || !after) return PutResult::kStorage;
   problems.clear();
-  if (!config::load(document, before, after, problems)) return PutResult::kInvalid;
-  if (!store::save_settings(after)) return PutResult::kStorage;
-  restart_required = needs_restart(before, after);
+  if (!config::load(document, *before, *after, problems)) return PutResult::kInvalid;
+  if (!store::save_settings(*after)) return PutResult::kStorage;
+  restart_required = needs_restart(*before, *after);
+  if (before->time.zone != after->time.zone) clocksync::set_zone(after->time.zone);
   return PutResult::kSaved;
 }
 

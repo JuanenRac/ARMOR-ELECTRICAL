@@ -7,6 +7,8 @@
 #include "improv_serial.hpp"
 
 #include <unistd.h>
+#include <memory>
+#include <new>
 #include <string>
 #include <vector>
 extern "C" {
@@ -67,8 +69,8 @@ void answer(const improv::Rpc& rpc) {
     case improv::Command::kIdentify: ESP_LOGI(kTag, "the Improv page asked the node to identify itself"); send(improv::result_packet(improv::Command::kIdentify, {})); break;
     case improv::Command::kGetCurrentState: send(improv::state_packet(current_state())); break;
     case improv::Command::kGetDeviceInfo: {
-      const config::Settings s = store::settings();
-      send(improv::result_packet(improv::Command::kGetDeviceInfo, {"A.R.M.O.R. electrical", api::version_text(), "ESP32-S3", s.node_name}));
+      const std::unique_ptr<config::Settings> s(new (std::nothrow) config::Settings(store::settings()));   // on the heap: the set-up task has a small stack
+      send(improv::result_packet(improv::Command::kGetDeviceInfo, {"A.R.M.O.R. electrical", api::version_text(), "ESP32-S3", s ? s->node_name : std::string()}));
       break;
     }
     case improv::Command::kGetWifiNetworks: send(improv::result_packet(improv::Command::kGetWifiNetworks, {})); break;   // an empty answer ends the list: scanning is the panel's
