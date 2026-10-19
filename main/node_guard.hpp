@@ -17,6 +17,10 @@ void expect_task(const char* name);
 // What this boot learned from the ledger of restarts: reads the memory that survives a software reset the first time it is called (call it early, before anything that depends on it).
 BootInfo boot_info();
 
+// A restart someone asked for on purpose (the server's order, through node_control) marks the memory that survives a software reset, so that the next boot tells it from a restart the guard made.
+// Call it right before the restart is scheduled. It does not touch the ledger: deliberate restarts do not count against the limit of the guard.
+void note_deliberate_restart();
+
 // Starts the task that looks at the node every few seconds, and the handler of a failed allocation. Called once, first thing, by memory::start_monitor().
 void start();
 

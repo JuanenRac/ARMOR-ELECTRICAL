@@ -62,9 +62,9 @@ std::vector<Subscription> g_subscriptions;   // filled before start(), read-only
 int g_broker_index = 0;
 
 // Hands one message to the client, if there is one; a negative number says it was not accepted.
-int client_publish(const char* topic, const char* data, int length, int qos) {
+int client_publish(const char* topic, const char* data, int length, int qos, int retain = 0) {
   std::lock_guard<std::mutex> guard(g_client_lock);
-  const int accepted = g_client == nullptr ? -1 : esp_mqtt_client_publish(g_client, topic, data, length, qos, 0);
+  const int accepted = g_client == nullptr ? -1 : esp_mqtt_client_publish(g_client, topic, data, length, qos, retain);
   if (accepted >= 0) nodeguard::note_publish();   // the dead-man switch of the guard counts the silence
   return accepted;
 }
@@ -72,7 +72,7 @@ int client_publish(const char* topic, const char* data, int length, int qos) {
 // publish() never waits for the client: the client holds its own lock while it runs the handlers of the incoming messages, and such a handler may be waiting for a lock of its module
 // while the task that holds that lock publishes - each waiting for the other, for ever, with the watchdog of the idle tasks seeing nothing. A message goes into a short queue, in order,
 // and a task of its own hands it to the client without holding anything. When the queue is full the oldest message is dropped (the newest state is the one that matters).
-struct Outgoing { std::string topic; std::string payload; };
+struct Outgoing { std::string topic; std::string payload; bool retained = false; };   // retained: QoS 1 and kept by the broker (only the planned-maintenance signal)
 std::mutex g_out_lock;
 std::deque<Outgoing> g_out;
 SemaphoreHandle_t g_out_ready = nullptr;
@@ -89,7 +89,7 @@ void outgoing_task(void*) {
         next = std::move(g_out.front());
         g_out.pop_front();
       }
-      if (g_connected && client_publish(next.topic.c_str(), next.payload.c_str(), static_cast<int>(next.payload.size()), 0) >= 0) ++g_published;
+      if (g_connected && client_publish(next.topic.c_str(), next.payload.c_str(), static_cast<int>(next.payload.size()), next.retained ? 1 : 0, next.retained ? 1 : 0) >= 0) ++g_published;
       else ++g_dropped;
     }
   }
@@ -327,7 +327,19 @@ void publish(const std::string& topic, const std::string& payload) {
   {
     std::lock_guard<std::mutex> guard(g_out_lock);
     if (g_out.size() >= kOutMax) { g_out.pop_front(); ++g_dropped; }
-    g_out.push_back({topic, payload});
+    g_out.push_back({topic, payload, false});
+  }
+  xSemaphoreGive(g_out_ready);
+}
+
+// The same, retained and at QoS 1: for the one message the broker has to keep, the node's planned-maintenance signal (active, or cleared when the node is back).
+void publish_retained(const std::string& topic, const std::string& payload) {
+  if (!g_enabled || g_out_ready == nullptr) return;
+  if (!g_connected) { ++g_dropped; return; }
+  {
+    std::lock_guard<std::mutex> guard(g_out_lock);
+    if (g_out.size() >= kOutMax) { g_out.pop_front(); ++g_dropped; }
+    g_out.push_back({topic, payload, true});
   }
   xSemaphoreGive(g_out_ready);
 }

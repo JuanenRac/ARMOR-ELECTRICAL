@@ -134,8 +134,18 @@ struct Ledger {
 // What the next boot learns from the ledger it finds.
 struct BootInfo {
   bool by_guard = false;        // this boot follows a restart the guard asked for
+  bool deliberate = false;      // this boot follows a restart someone asked for on purpose (the server's order, the panel): it is not in the ledger and does not count against the limit
   unsigned restarts_in_hour = 0;
 };
+
+// A restart that is asked on purpose (a restart order from the server, the panel) leaves this mark in the memory that survives a software reset, right before it restarts; the next boot reads it once.
+// It only tells the two kinds of restart apart in the log and the diagnostics: the ledger of the guard is not touched by it.
+constexpr std::uint32_t kDeliberateMark = 0x44454C31u;
+inline bool deliberate_boot(std::uint32_t mark, bool reset_kept_memory, bool by_guard) { return reset_kept_memory && !by_guard && mark == kDeliberateMark; }
+
+// The watchdog counts a missing task only while the node is meant to be working: a node the server paused or put in standby, or one that is on its way to a restart someone asked for, is not
+// restarted by the guard for a task it stopped on purpose. The memory rules keep working in every state.
+inline unsigned counted_missing_tasks(unsigned missing, bool node_working, bool restart_scheduled) { return node_working && !restart_scheduled ? missing : 0u; }
 
 // The ledger is kept in memory that survives a software reset, with a check number so that the garbage of a power-on is not taken for a ledger.
 inline std::uint32_t ledger_check(const Ledger& l) {

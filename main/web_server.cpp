@@ -43,6 +43,7 @@ extern "C" {
 #include "clock_sync.hpp"
 #include "network.hpp"
 #include "electrical_manager.hpp"
+#include "node_control.hpp"
 #include "node_store.hpp"
 #include "relay_outputs.hpp"
 #include "tls_cert.hpp"
@@ -721,6 +722,7 @@ esp_err_t post_time(httpd_req_t* r) {
 esp_err_t post_ota(httpd_req_t* r) {
   Who who;
   if (!require(r, who, true, true)) return ESP_OK;
+  const node_control::UploadGuard upload_guard;   // the node does not restart, pause or go to standby in the middle of an upload
   const std::size_t total = r->content_len;
   if (total < 100 * 1024 || total > kMaxFirmware) return send_error(r, 413, "bad_size");
   const esp_partition_t* target = esp_ota_get_next_update_partition(nullptr);

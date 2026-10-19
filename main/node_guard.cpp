@@ -17,6 +17,7 @@ extern "C" {
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 }
+#include "node_control.hpp"
 #include "node_health.hpp"
 #include "psram_mem.hpp"
 #include "web_server.hpp"
@@ -34,6 +35,7 @@ std::vector<std::string> g_expected;
 RTC_NOINIT_ATTR Ledger g_rtc_ledger;
 RTC_NOINIT_ATTR std::uint32_t g_rtc_check;
 RTC_NOINIT_ATTR OomRecord g_rtc_oom;
+RTC_NOINIT_ATTR std::uint32_t g_rtc_deliberate;   // kDeliberateMark when the last restart was asked for on purpose
 Ledger g_ledger;
 BootInfo g_boot;
 OomRecord g_previous_oom;   // what the last boot left (invalid when there was none)
@@ -60,6 +62,9 @@ void load_ledger() {
   save_ledger();   // the "pending" mark is read once
   if (kept && oom_valid(g_rtc_oom)) g_previous_oom = g_rtc_oom;
   g_rtc_oom = OomRecord{};   // read once
+  g_boot.deliberate = deliberate_boot(g_rtc_deliberate, kept, g_boot.by_guard);
+  g_rtc_deliberate = 0;   // read once
+  if (g_boot.deliberate) ESP_LOGW(kTag, "this start follows a restart that was asked for on purpose (the server or the panel), not one of the guard's: it does not count against the guard's limit");
   if (g_boot.by_guard) ESP_LOGW(kTag, "this start follows a restart the node asked for itself (%u in the last hour of running time): Bluetooth stays off", g_boot.restarts_in_hour);
   // The line below is also what the health report carries as its last error, so the server and the panel show why the last run ended.
   if (oom_valid(g_previous_oom)) ESP_LOGE(kTag, "%s", oom_text(g_previous_oom).c_str());
@@ -134,7 +139,9 @@ void guard_task(void*) {
     }
 
     // Tasks that are missing and memory that stays low.
-    const std::vector<std::string> missing = missing_tasks();
+    // A node the server paused or put in standby, or one with a restart on its way that someone asked for, is not restarted for a task it stopped on purpose; the memory rules stay in force.
+    std::vector<std::string> missing = missing_tasks();
+    if (counted_missing_tasks(static_cast<unsigned>(missing.size()), node_control::working(), node_control::restart_pending()) == 0) missing.clear();
     Inputs in;
     in.now_ms = now;
     in.internal_free = memory.internal_free;
@@ -170,6 +177,8 @@ void start() {
   // No flash is touched here (a log line, a message to the queue, a timer), so the stack can be in the external RAM.
   memory::start_task(guard_task, "node-guard", 4096, nullptr, 3);
 }
+
+void note_deliberate_restart() { g_rtc_deliberate = kDeliberateMark; }
 
 void note_broker_in_use() { g_broker_in_use = true; g_last_publish_ms = now_ms(); }
 void note_broker_connected(bool connected) {

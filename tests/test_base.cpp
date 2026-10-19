@@ -875,6 +875,28 @@ static void test_node_guard_survives_a_restart() {
   CHECK(!info.by_guard);
 }
 
+// A node the server paused or put in standby is not restarted for a missing task; a restart someone asked for is told from the guard's own.
+static void test_node_guard_and_control() {
+  using namespace armor::nodeguard;
+  CHECK(counted_missing_tasks(2, true, false) == 2);      // running: a missing task counts
+  CHECK(counted_missing_tasks(2, false, false) == 0);     // paused or standby: it does not
+  CHECK(counted_missing_tasks(2, true, true) == 0);       // a restart someone asked for is on its way
+  CHECK(counted_missing_tasks(0, true, false) == 0);
+  // a deliberate restart: the mark is there, the memory was kept and the guard did not ask for it
+  CHECK(deliberate_boot(kDeliberateMark, true, false));
+  CHECK(!deliberate_boot(kDeliberateMark, true, true));   // the guard's own restart wins
+  CHECK(!deliberate_boot(kDeliberateMark, false, false)); // a power-on leaves garbage: never a restart of ours
+  CHECK(!deliberate_boot(0u, true, false) && !deliberate_boot(kDeliberateMark + 1u, true, false));
+  // a deliberate restart does not enter the ledger, so it never uses up the three an hour
+  Ledger ledger;
+  ledger.note_restart(100);
+  BootInfo info;
+  Ledger next = ledger_at_boot(ledger, ledger_check(ledger), true, info);
+  CHECK(info.by_guard && !info.deliberate && next.count == 1);
+  Ledger again = ledger_at_boot(next, ledger_check(next), true, info);   // the boot after a deliberate restart finds no pending mark
+  CHECK(!info.by_guard && again.count == 1 && bluetooth_may_start(info));
+}
+
 // Bluetooth set-up closes by itself: after the minutes of the setting with nobody connected, or two minutes after a set-up node has an address; mode always never closes.
 static void test_ble_window() {
   using namespace armor::blewindow;
@@ -963,6 +985,7 @@ int main() {
   test_node_guard_rules();
   test_node_guard_restart_ledger();
   test_node_guard_survives_a_restart();
+  test_node_guard_and_control();
   test_ble_window();
   test_admin_sources();
   test_user_key();

@@ -17,6 +17,7 @@ extern "C" {
 #include "network.hpp"
 #include "node_guard.hpp"
 #include "psram_mem.hpp"
+#include "node_control.hpp"
 #include "task_health.hpp"
 
 namespace armor::node_health {
@@ -52,6 +53,14 @@ nodehealth::Report build(const std::string& node_id, const std::string& family) 
   report.low_stack_tasks = health::low_count(taskhealth::tasks());
   std::uint32_t next = 0;
   report.last_error = nodehealth::last_error_of_log(logbuf::read_from(0, next, 8192));
+  const node_control::Status ctl = node_control::status();   // a node that is not controlled by the server is always running
+  report.has_control = true;
+  report.control_state = control::state_name(ctl.state);
+  report.control_since_ms = ctl.since_ms;
+  report.control_by = ctl.by;
+  report.control_until_s = ctl.paused_left_s;
+  report.maintenance = ctl.maintenance;
+  report.maintenance_until_s = ctl.maintenance_left_s;
   return report;
 }
 

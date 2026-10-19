@@ -329,7 +329,8 @@ void window_task(void*) {
     const blewindow::Verdict verdict = blewindow::judge(watch, now_ms, true, !store::users_empty(), connected, kSetupMinutes);
     if (verdict == blewindow::Verdict::kKeepOpen) continue;
     if (g_busy.load() || (g_queue != nullptr && uxQueueMessagesWaiting(g_queue) > 0)) continue;   // an answer is on its way: next look
-    ESP_LOGI(kTag, verdict == blewindow::Verdict::kCloseIdle ? "nobody connected in %u minutes: Bluetooth set-up closes" : "the node has an address: Bluetooth stops advertising", kSetupMinutes);
+    if (verdict == blewindow::Verdict::kCloseIdle) ESP_LOGI(kTag, "nobody connected in %u minutes: Bluetooth set-up closes", static_cast<unsigned>(kSetupMinutes));
+    else ESP_LOGI(kTag, "the node has an address: Bluetooth stops advertising");
     close_stack();
     break;
   }

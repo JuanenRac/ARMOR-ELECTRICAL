@@ -34,6 +34,7 @@ std::string g_node_id;
 relays::LinkWatch g_watch;
 bool g_fell_back = false;
 int g_siren_index = -1;   // the relay the alarm owns, or -1
+bool g_hold = false;      // the node is paused or in standby by the server's order: every relay is open and none moves
 
 std::uint64_t now_ms() { return static_cast<std::uint64_t>(esp_timer_get_time()) / 1000ULL; }
 
@@ -108,9 +109,17 @@ void start(const config::IoSettings& settings, const std::string& node_id) {
   ESP_LOGI(kTag, "the broker may move the relays (armor/device/%s/<relay>/set)%s", node_id.c_str(), settings.remote.link_timeout_s > 0 ? ", and they fall back to open without it" : "");
 }
 
+void hold_open(bool hold) {
+  std::lock_guard<std::mutex> guard(g_lock);
+  g_hold = hold;
+  if (!hold || !g_bank) return;   // before start() the relays are made open anyway
+  ESP_LOGW(kTag, "the node's work is off: every relay is open and none moves until it is resumed");
+  for (std::size_t i = 0; i < board::kRelayCount; ++i) if (g_bank->enabled(i) && g_bank->is_on(i)) drive(i, false, "the pause");   // the siren's too
+}
+
 bool set(std::size_t index, bool on) {
   std::lock_guard<std::mutex> guard(g_lock);
-  if (!g_bank || !g_bank->enabled(index) || static_cast<int>(index) == g_siren_index) return false;
+  if (!g_bank || !g_bank->enabled(index) || static_cast<int>(index) == g_siren_index || (g_hold && on)) return false;
   drive(index, on, "the panel");
   return true;
 }
@@ -123,6 +132,7 @@ void reserve_for_siren(std::size_t index) {
 void siren(bool on) {
   std::lock_guard<std::mutex> guard(g_lock);
   if (!g_bank || g_siren_index < 0) return;
+  if (g_hold) on = false;   // paused or in standby: the siren stays silent whatever the alarm asks
   const std::size_t index = static_cast<std::size_t>(g_siren_index);
   if (g_bank->is_on(index) != on) { drive(index, on, "the alarm"); return; }
   put(index);   // the same level again: nothing is said, but the pin is made to hold it
@@ -131,6 +141,7 @@ void siren(bool on) {
 Outcome command(const std::string& relay, const std::string& payload) {
   std::lock_guard<std::mutex> guard(g_lock);
   if (!g_bank || !g_settings.remote.relays) return Outcome::kRemoteOff;
+  if (g_hold) { ESP_LOGW(kTag, "a command for \"%s\" was ignored: the node's work is off", relay.c_str()); return Outcome::kRemoteOff; }
   const int index = g_bank->find(relay);
   if (index < 0) { ESP_LOGW(kTag, "a command for \"%s\" was ignored: no such relay", relay.c_str()); return Outcome::kUnknownRelay; }
   const relays::Action action = relays::parse_broker_command(payload);
@@ -144,6 +155,7 @@ Outcome command(const std::string& relay, const std::string& payload) {
 Outcome command_direct(const std::string& relay, relays::Action action, bool& now_on) {
   std::lock_guard<std::mutex> guard(g_lock);
   if (!g_bank) return Outcome::kUnknownRelay;
+  if (g_hold) { ESP_LOGW(kTag, "a command from the central for \"%s\" was ignored: the node's work is off", relay.c_str()); return Outcome::kRemoteOff; }
   const int index = g_bank->find(relay);
   if (index < 0) { ESP_LOGW(kTag, "a command from the central for \"%s\" was ignored: no such relay", relay.c_str()); return Outcome::kUnknownRelay; }
   if (action == relays::Action::kNone) return Outcome::kNotUnderstood;

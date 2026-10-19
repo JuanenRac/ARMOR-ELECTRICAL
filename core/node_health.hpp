@@ -125,6 +125,14 @@ struct Report {
   std::uint32_t broker_reconnects = 0;
   int low_stack_tasks = 0;
   std::string last_error;        // may be empty
+  // What the server has made of the node (see control_gate.hpp): whether it works, since when and for whom, the maintenance flag. Said only when `has_control` is set.
+  bool has_control = false;
+  std::string control_state = "running";   // running, paused or standby
+  std::uint64_t control_since_ms = 0;      // wall clock when the pause or standby began, 0 if unknown
+  std::string control_by;                  // who asked for it, may be empty
+  long long control_until_s = -1;          // seconds until a pause ends, -1 when not paused
+  bool maintenance = false;
+  long long maintenance_until_s = -1;
 };
 
 inline bool valid_family(const std::string& family) { return family == "radar" || family == "solar" || family == "electrical" || family == "alarm" || family == "hmi"; }
@@ -154,6 +162,18 @@ inline std::string to_json(const Report& r) {
   w.key("broker_reconnects").integer(static_cast<long long>(r.broker_reconnects));
   w.key("low_stack_tasks").integer(r.low_stack_tasks < 0 ? 0 : (r.low_stack_tasks > 64 ? 64 : r.low_stack_tasks));
   if (!r.last_error.empty()) w.field("last_error", r.last_error.substr(0, kMaxErrorChars));
+  if (r.has_control) {
+    // Since and by go only with a pause or a standby, the time left only with a pause, the maintenance time only with the flag on (the contract says so).
+    const bool away = r.control_state == "paused" || r.control_state == "standby";
+    w.field("control_state", away ? r.control_state : std::string("running"));
+    if (away) {
+      w.key("control_since_ms").integer(static_cast<long long>(r.control_since_ms));
+      if (!r.control_by.empty() && r.control_by.size() <= 64) w.field("control_by", r.control_by);
+      if (r.control_state == "paused" && r.control_until_s >= 0) w.key("control_until_s").integer(r.control_until_s > 86400 ? 86400 : r.control_until_s);
+    }
+    w.field("maintenance", r.maintenance);
+    if (r.maintenance && r.maintenance_until_s >= 0) w.key("maintenance_until_s").integer(r.maintenance_until_s > 86400 ? 86400 : r.maintenance_until_s);
+  }
   w.end_object();
   return w.str();
 }
