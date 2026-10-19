@@ -216,6 +216,10 @@ def analyse(root: Path) -> tuple[list[tuple[str, int, str, str]], list[str]]:
     return tasks, seen_problems
 
 
+def found_configs(text):
+    return list(re.finditer(r"buffer_size\s*=\s*[^;]+;", text))
+
+
 HEADER_BUFFER_MIN = 6144               # the redirect of a GitHub download carries about 5.2 KB of headers
 
 
@@ -231,6 +235,16 @@ def http_buffer_problems(root: Path, sources: dict[Path, str]) -> list[str]:
             number = re.fullmatch(r"\d+", expression)
             if "header_buffer()" not in expression and not (number and int(expression) >= HEADER_BUFFER_MIN):
                 problems.append(f"{path.name}:{line_of(text, m.start())}: buffer_size = {expression} is not header_buffer() nor a number of {HEADER_BUFFER_MIN} or more")
+    for path, text in updater:
+        # the REQUEST buffer too: after GitHub's redirect the request line carries an address of about a thousand characters, and the client's default of 512 bytes says "Out of buffer"
+        tx = list(re.finditer(r"buffer_size_tx\s*=\s*([^;]+);", text))
+        if len(tx) < len(found_configs(text)):
+            problems.append(f"{path.name}: an HTTP client does not set buffer_size_tx (the default 512 bytes cannot hold GitHub's redirect address)")
+        for m in tx:
+            expression = m.group(1).strip()
+            number = re.fullmatch(r"\d+", expression)
+            if "kRequestBuffer" not in expression and not (number and int(expression) >= 2048):
+                problems.append(f"{path.name}:{line_of(text, m.start())}: buffer_size_tx = {expression} is not release::kRequestBuffer nor a number of 2048 or more")
     release = root / "main" / "core" / "release_assets.hpp"
     if updater and release.is_file():
         text = release.read_text(encoding="utf-8")

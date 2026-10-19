@@ -2,7 +2,7 @@
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // A node publishes, now and then, one message to armor/health/<node> (contract node_health.schema.json in ARMOR-COMMON): how long it has been up and why it last restarted, the memory it has
-// (now and at its worst), the link it reaches the network by, how often it has connected to the broker, how many of its tasks are short of stack and the last error it logged. The server keeps
+// (now and at its worst, the internal memory on its own and the external RAM), the link it reaches the network by, how often it has connected to the broker, how many of its tasks are short of stack and the last error it logged. The server keeps
 // the last few reports and warns of a node that is short of memory, restarts too often or keeps losing the broker (it judges; the node only tells). Everything here is a pure function of
 // numbers and text handed in, so it is tested on a computer; main/node_health.cpp reads the real values and sends the message.
 #pragma once
@@ -10,6 +10,7 @@
 #include <string>
 
 #include "json.hpp"
+#include "memory_budget.hpp"
 #include "node_id.hpp"
 
 namespace armor::nodehealth {
@@ -117,6 +118,9 @@ struct Report {
   std::string reset_reason = "unknown";
   std::uint64_t heap_free = 0;
   std::uint64_t heap_min = 0;
+  // The internal memory on its own (heap_free above counts the external RAM too, so it never looks short): left out of the message when `has_memory` is false.
+  bool has_memory = false;
+  membudget::Snapshot memory;
   LinkInfo link;
   std::uint32_t broker_reconnects = 0;
   int low_stack_tasks = 0;
@@ -137,6 +141,13 @@ inline std::string to_json(const Report& r) {
   w.field("reset_reason", r.reset_reason);
   const std::uint64_t heap_min = r.heap_min > r.heap_free ? r.heap_free : r.heap_min;
   w.key("heap_free").integer(static_cast<long long>(r.heap_free)).key("heap_min").integer(static_cast<long long>(heap_min));
+  if (r.has_memory) {   // the least and the biggest block are never more than what is free (the contract says so); the external RAM only on a board that has it
+    const membudget::Snapshot& m = r.memory;
+    w.key("heap_internal_free").integer(static_cast<long long>(m.internal_free));
+    w.key("heap_internal_min").integer(static_cast<long long>(m.internal_min > m.internal_free ? m.internal_free : m.internal_min));
+    w.key("heap_internal_largest").integer(static_cast<long long>(m.internal_largest > m.internal_free ? m.internal_free : m.internal_largest));
+    if (m.has_psram()) w.key("psram_free").integer(static_cast<long long>(m.psram_free > m.psram_total ? m.psram_total : m.psram_free));
+  }
   const bool up = r.link.link != Link::kNone && r.link.up;
   w.field("link", link_text(r.link.link)).field("link_up", up);
   if (r.link.link == Link::kWifi && up) w.key("rssi_dbm").integer(r.link.rssi_dbm);

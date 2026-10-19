@@ -15,6 +15,8 @@ extern "C" {
 #include "core/node_health.hpp"
 #include "log_buffer.hpp"
 #include "network.hpp"
+#include "node_guard.hpp"
+#include "psram_mem.hpp"
 #include "task_health.hpp"
 
 namespace armor::node_health {
@@ -22,6 +24,7 @@ namespace {
 constexpr char kTag[] = "armor-health";
 std::atomic<std::uint32_t> g_connects{0};
 Options g_options;
+std::atomic<bool> g_started{false};
 
 // The wall clock in milliseconds when the node has one; otherwise the time since it started (the server stamps such a message with the time it receives it).
 std::uint64_t stamp_ms() {
@@ -42,6 +45,8 @@ nodehealth::Report build(const std::string& node_id, const std::string& family) 
   report.reset_reason = nodehealth::reset_reason_text(static_cast<int>(esp_reset_reason()));
   report.heap_free = esp_get_free_heap_size();
   report.heap_min = esp_get_minimum_free_heap_size();
+  report.memory = memory::snapshot();   // the internal memory on its own: the figures above add the external RAM, which hides a short internal memory
+  report.has_memory = true;
   report.link = nodehealth::choose_link(net.ethernet_available, net.link_up, net.has_ip, net.sta_connected, net.sta_rssi);
   report.broker_reconnects = g_connects;
   report.low_stack_tasks = health::low_count(taskhealth::tasks());
@@ -50,13 +55,17 @@ nodehealth::Report build(const std::string& node_id, const std::string& family) 
   return report;
 }
 
+void publish_report() {
+  if (g_options.publish && (!g_options.connected || g_options.connected())) {
+    const std::string topic = nodehealth::topic(g_options.node_id);
+    if (!topic.empty()) g_options.publish(topic, nodehealth::to_json(build(g_options.node_id, g_options.family)));
+  }
+}
+
 void health_task(void*) {
   vTaskDelay(pdMS_TO_TICKS(20000));
   for (;;) {
-    if (g_options.publish && (!g_options.connected || g_options.connected())) {
-      const std::string topic = nodehealth::topic(g_options.node_id);
-      if (!topic.empty()) g_options.publish(topic, nodehealth::to_json(build(g_options.node_id, g_options.family)));
-    }
+    publish_report();
     vTaskDelay(pdMS_TO_TICKS(static_cast<std::uint32_t>(g_options.every_s < 10 ? 10 : g_options.every_s) * 1000));
   }
 }
@@ -65,10 +74,16 @@ void health_task(void*) {
 void start(const Options& options) {
   if (!nodehealth::valid_family(options.family) || !armor::node_id_is_valid(options.node_id)) { ESP_LOGW(kTag, "no health report: the node id or the family is not valid"); return; }
   g_options = options;
-  xTaskCreate(health_task, "node-health", 4096, nullptr, 2, nullptr);
+  g_started = true;
+  nodeguard::expect_task("node-health");
+  memory::start_task(health_task, "node-health", 4096, nullptr, 2);   // it only reads counters and queues a message: no flash, so its stack can be in the external RAM
 }
 
 void note_broker_connected() { ++g_connects; }
+
+void publish_now() {
+  if (g_started) publish_report();
+}
 
 std::string report_json(const std::string& node_id, const std::string& family) { return nodehealth::to_json(build(node_id, family)); }
 

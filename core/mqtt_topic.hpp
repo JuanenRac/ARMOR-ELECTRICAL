@@ -25,7 +25,7 @@ inline bool topic_matches(std::string_view filter, std::string_view topic) {
   }
 }
 
-// The last will of a node: what the broker publishes for it when the connection is lost without a goodbye. It goes on the node's health topic and says nothing else, so no health report
+// The last will of a node: what the broker publishes (and keeps) for it when the connection is lost without a goodbye. It goes on the node's health topic and says nothing else, so no health report
 // can be mistaken for it; the server takes it as "this node went away" at once instead of waiting for the silence limit. An id with a character that would break the JSON gives "".
 inline bool will_id_is_safe(std::string_view id) {
   if (id.empty() || id.size() > 64) return false;
@@ -34,5 +34,7 @@ inline bool will_id_is_safe(std::string_view id) {
 }
 inline std::string will_topic(std::string_view node_id) { return will_id_is_safe(node_id) ? "armor/health/" + std::string(node_id) : std::string(); }
 inline std::string will_payload(std::string_view node_id) { return will_id_is_safe(node_id) ? "{\"node_id\":\"" + std::string(node_id) + "\",\"online\":false}" : std::string(); }
+// The other half: what the node says on the same topic each time it connects ("online": true). Both are kept (retained) by the broker, so the last one is always the state the node is in.
+inline std::string birth_payload(std::string_view node_id) { return will_id_is_safe(node_id) ? "{\"node_id\":\"" + std::string(node_id) + "\",\"online\":true}" : std::string(); }
 
 }  // namespace armor::mqtt

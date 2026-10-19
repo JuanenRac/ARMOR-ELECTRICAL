@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here.
 
+## [0.4.4] - The node protects its memory: tasks before Bluetooth, a closing Bluetooth window, a guard and a gate
+
+- The checksum and the image are read again from GitHub: the HTTP request buffer is 4 KB, because the request that follows GitHub's redirect carries an address of about a thousand characters.
+- **The node protects itself when its internal memory runs short:** the tasks it cannot do without (the broker link, the health report and the node's own work) are made at start-up and Bluetooth is started last; a guard looks for them and for the internal memory and, after a minute of trouble, says it (log and an immediate health report) and restarts the node once, cleanly - never more than three times an hour, then it stays up and repeats the alarm.
+- **Bluetooth uses less internal memory and closes by itself:** the Bluetooth host stack is allocated in the external RAM and the controller is limited to the three activities it uses; in mode `setup` it switches off after 10 minutes (`CONFIG_ARMOR_BLE_SETUP_MINUTES`) with nobody connected, or two minutes after a node that has users gets an address, and frees its memory; it is not started when less than 40 KB of internal memory is free nor after a restart the node asked for itself.
+- **New panel connections are refused while the internal memory is short** (under 28 KB free or a 12 KB biggest block, open again over 40 KB and 16 KB), before anything is allocated for them; the broker link and the node's work are not touched.
+- **A failed allocation restarts the node cleanly once** and the next start reports `oom heap=<free>/<largest>`; during a firmware write, or twice within a minute, it aborts as before. A node that hands nothing to a connected broker for ten minutes restarts through the same limit of three an hour, then stays up, degraded.
+- **Last will and birth, retained:** the node says `online` true on `armor/health/<node>` each time it connects and the broker keeps its last will (`online` false) there, so a server that starts later knows the state of every node (the radar node does the same on its presence topic).
+- **Memory log and the figures of the health report:** the internal memory, the external RAM and the biggest block (see the Memory section of the node's firmware guide), with the stack of the telemetry task kept at 6144 bytes.
+- **Smaller fixes:** the MQTT client of the radar node no longer restarts the node when it cannot be created (it tries again), the report of a sensor's firmware and mode is written under the same lock it is read with, the Improv page says `provisioned` only after the Wi-Fi network was joined, and `tools/check_sdkconfig.py` compares a build with `sdkconfig.defaults`.
+
 ## [0.4.3] - Update from GitHub through long redirects, a richer help and the green frames of the Summary
 
 - **Update from GitHub works again when GitHub answers with a long redirect:** the checksum file is fetched through a redirect whose headers add up to more than 5 KB, and the 4 KB header buffer made the HTTP client give up. The buffer is now 20 KB, which the memory settings place in the external RAM (above 16 KB), so it costs no internal memory; a board with no external RAM falls back to 6 KB. The log says how much internal memory was free before and after the client was opened.

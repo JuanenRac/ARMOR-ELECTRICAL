@@ -38,6 +38,14 @@ config ARMOR_FLEET_SECRET
         With a secret here, the set-up code of a board is made from the secret and the board's own MAC address, so the same universal image gives each board a
         different code. The secret ends up inside the image: it protects a fleet against the network, not against someone holding a board. 16 characters or more.
 
+config ARMOR_BLE_SETUP_MINUTES
+    int "Minutes Bluetooth set-up stays open with nobody connected (mode setup)"
+    range 1 120
+    default 10
+    help
+        In Bluetooth mode "setup" the node listens after every start. When nobody connects for this long it switches Bluetooth off and frees its memory, and it stays off until the node
+        is restarted by its owner (mode "always" never closes, and a restart the node asks for itself because it is short of memory leaves Bluetooth off).
+
 menu "Ethernet (W5500 over SPI)"
     depends on ARMOR_BOARD_S3_ETH
 

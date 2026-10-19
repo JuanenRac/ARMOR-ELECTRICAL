@@ -27,6 +27,7 @@ extern "C" {
 }
 #include "core/netplan.hpp"
 #include "log_buffer.hpp"
+#include "psram_mem.hpp"
 #include "improv_serial.hpp"
 #include "ble_provision.hpp"
 #include "clock_sync.hpp"
@@ -110,6 +111,8 @@ void confirm_firmware_task(void* argument) {
 
 extern "C" void app_main() {
   armor::logbuf::start();
+  armor::memory::install_tls_allocator();   // TLS memory: the external RAM, and the internal one where a board has none
+  armor::memory::start_monitor();           // the log says the state of the memory every minute
   armor::store::init();
   ESP_ERROR_CHECK(esp_event_loop_create_default());
   const armor::config::Settings settings = armor::store::settings();
@@ -148,7 +151,6 @@ extern "C" void app_main() {
     armor::node_health::start(health);
   }
   if (!setup) armor::zigbee_bridge::start(settings);   // the radio's serial line, lent to one client once the network is up
-  armor::ble_provision::start(settings, setup);   // only when the settings say so: Bluetooth stays unused otherwise
 
   // A periodic, unconditional restart the panel can turn on (0: never) - a board left running for weeks without anyone touching it.
   if (settings.auto_restart_hours > 0) armor::web::restart_after(static_cast<unsigned>(settings.auto_restart_hours) * 3600u * 1000u);
@@ -163,4 +165,6 @@ extern "C" void app_main() {
   if (!button_is_a_pin) xTaskCreate(boot_button_task, "boot-button", 3072, nullptr, 2, nullptr);
 #endif
   xTaskCreate(confirm_firmware_task, "confirm", 3072, panel_ok ? reinterpret_cast<void*>(1) : nullptr, 2, nullptr);
+  // Bluetooth goes last: its controller takes a large share of the internal memory, and every task above (the broker link, the health report, the confirmation of a new image) must already exist.
+  armor::ble_provision::start(settings, setup);   // only when the settings say so: Bluetooth stays unused otherwise
 }

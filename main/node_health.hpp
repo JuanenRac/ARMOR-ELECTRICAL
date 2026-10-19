@@ -18,6 +18,9 @@ struct Options {
 // Starts the task that publishes the report: the first one about 20 s after the start, then every `every_s` seconds while the broker is connected. Call it after the network and the broker link are up.
 void start(const Options& options);
 
+// Publishes the report now, outside its minute (the guard has found the node in trouble). Does nothing before start() or while the broker is not connected.
+void publish_now();
+
 // The mqtt link calls this each time the broker accepts the connection: the count in the report is how often that happened since the node started.
 void note_broker_connected();
 

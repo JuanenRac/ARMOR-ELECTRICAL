@@ -29,6 +29,8 @@ extern "C" {
 #include "core/mqtt_tls.hpp"
 #include "network.hpp"
 #include "node_health.hpp"
+#include "node_guard.hpp"
+#include "psram_mem.hpp"
 
 namespace armor::mqtt_link {
 namespace {
@@ -62,7 +64,9 @@ int g_broker_index = 0;
 // Hands one message to the client, if there is one; a negative number says it was not accepted.
 int client_publish(const char* topic, const char* data, int length, int qos) {
   std::lock_guard<std::mutex> guard(g_client_lock);
-  return g_client == nullptr ? -1 : esp_mqtt_client_publish(g_client, topic, data, length, qos, 0);
+  const int accepted = g_client == nullptr ? -1 : esp_mqtt_client_publish(g_client, topic, data, length, qos, 0);
+  if (accepted >= 0) nodeguard::note_publish();   // the dead-man switch of the guard counts the silence
+  return accepted;
 }
 
 // publish() never waits for the client: the client holds its own lock while it runs the handlers of the incoming messages, and such a handler may be waiting for a lock of its module
@@ -148,13 +152,19 @@ void on_mqtt(void*, esp_event_base_t, int32_t event_id, void* data) {
   switch (event_id) {
     case MQTT_EVENT_CONNECTED:
       g_connected = true;
+      nodeguard::note_broker_connected(true);
       g_mqtt_backoff.reset();
       node_health::note_broker_connected();   // the health report counts how often the broker was reached
       ESP_LOGI(kTag, "MQTT connected to %s", current_broker(g_settings, g_broker_index).uri.c_str());
+      {   // The other half of the last will: "online", kept by the broker until the will (or the next start) replaces it.
+        const std::string birth_topic = mqtt::will_topic(g_settings.node_id);
+        const std::string birth = mqtt::birth_payload(g_settings.node_id);
+        if (!birth_topic.empty()) esp_mqtt_client_publish(event->client, birth_topic.c_str(), birth.c_str(), static_cast<int>(birth.size()), 1, 1);
+      }
       for (const Subscription& subscription : g_subscriptions) esp_mqtt_client_subscribe(event->client, subscription.filter.c_str(), 1);
       for (const Subscription& subscription : g_subscriptions) if (subscription.on_connected) subscription.on_connected();
       break;
-    case MQTT_EVENT_DISCONNECTED: g_connected = false; ESP_LOGW(kTag, "MQTT disconnected"); schedule_retry(); break;
+    case MQTT_EVENT_DISCONNECTED: g_connected = false; nodeguard::note_broker_connected(false); ESP_LOGW(kTag, "MQTT disconnected"); schedule_retry(); break;
     case MQTT_EVENT_ERROR: ESP_LOGW(kTag, "MQTT error (the broker refused the identity, or is not reachable)"); schedule_retry(); break;
     case MQTT_EVENT_DATA: {
       if (event->data_len != event->total_data_len || event->current_data_offset != 0) break;   // a command is a few bytes: never a fragment
@@ -184,7 +194,7 @@ void start_client(const config::Broker& broker) {
     config.session.last_will.msg = will_payload.c_str();
     config.session.last_will.msg_len = static_cast<int>(will_payload.size());
     config.session.last_will.qos = 1;
-    config.session.last_will.retain = 0;
+    config.session.last_will.retain = 1;   // the last state of the node stays on the broker, so a server that starts later learns that the node is gone
   }
   config.network.disable_auto_reconnect = true;   // the retries are ours (a wait that grows), not the client's fixed ten seconds
   // Encrypted link (off unless the owner turned it on in the panel): only the authority stored in the settings is trusted, the certificate of the broker must be signed by it and must vouch for
@@ -276,7 +286,8 @@ void link_task(void*) {
   // The certificate of the broker has dates: with the encryption on, the node waits (two minutes at most) for its clock before it connects, or a clock still at 1970 would refuse every certificate.
   if (g_settings.mqtt.tls) for (int waited = 0; waited < 120 && !clock_is_set(); ++waited) vTaskDelay(pdMS_TO_TICKS(1000));
   start_client(current_broker(g_settings, g_broker_index));
-  xTaskCreate(broker_watchdog_task, "mqtt-link-wd", 4096, nullptr, 2, nullptr);
+  nodeguard::expect_task("mqtt-link-wd");
+  memory::start_task(broker_watchdog_task, "mqtt-link-wd", 4096, nullptr, 2);   // only counts and restarts the client: no flash, so its stack is in the external RAM
   vTaskDelete(nullptr);
 }
 }  // namespace
@@ -289,8 +300,10 @@ void start(const config::Settings& settings) {
     return;
   }
   g_enabled = true;
+  nodeguard::note_broker_in_use();
   g_out_ready = xSemaphoreCreateBinary();
-  xTaskCreate(outgoing_task, "mqtt-out", 4096, nullptr, 4, nullptr);
+  nodeguard::expect_task("mqtt-out");
+  memory::start_task(outgoing_task, "mqtt-out", 4096, nullptr, 4);   // hands queued messages to the client: no flash, so its stack is in the external RAM
   xTaskCreate(link_task, "mqtt-link", 6144, nullptr, 4, nullptr);
 }
 

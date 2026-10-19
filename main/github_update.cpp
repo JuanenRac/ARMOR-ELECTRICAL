@@ -27,6 +27,8 @@ extern "C" {
 #include "core/fw_trust.hpp"
 #include "core/release_assets.hpp"
 #include "core/semver.hpp"
+#include "node_guard.hpp"
+#include "psram_mem.hpp"
 
 namespace armor::github_update {
 namespace {
@@ -70,6 +72,7 @@ bool get_bounded_once(const std::string& url, const char* accept, std::string& o
   config.crt_bundle_attach = esp_crt_bundle_attach;
   config.timeout_ms = 15000;
   config.buffer_size = header_buffer();
+  config.buffer_size_tx = release::kRequestBuffer;   // GitHub's redirect address does not fit the default 512-byte request buffer
   const unsigned internal_before = static_cast<unsigned>(esp_get_free_internal_heap_size());
   esp_http_client_handle_t client = esp_http_client_init(&config);
   ESP_LOGI(kTag, "HTTP client opened with a %d-byte header buffer: %u bytes of internal memory free before, %u after", config.buffer_size, internal_before, static_cast<unsigned>(esp_get_free_internal_heap_size()));
@@ -203,6 +206,7 @@ InstallResult install(const CheckResult& offer) {
   config.crt_bundle_attach = esp_crt_bundle_attach;
   config.timeout_ms = 20000;
   config.buffer_size = header_buffer();
+  config.buffer_size_tx = release::kRequestBuffer;   // GitHub's redirect address does not fit the default 512-byte request buffer
   const unsigned internal_before = static_cast<unsigned>(esp_get_free_internal_heap_size());
   esp_http_client_handle_t client = esp_http_client_init(&config);
   ESP_LOGI(kTag, "HTTP client opened with a %d-byte header buffer: %u bytes of internal memory free before, %u after", config.buffer_size, internal_before, static_cast<unsigned>(esp_get_free_internal_heap_size()));
@@ -307,6 +311,7 @@ InstallResult install(const CheckResult& offer) {
 namespace {
 void install_task(void* raw) {
   std::unique_ptr<Job> job(static_cast<Job*>(raw));
+  nodeguard::note_firmware_write(true);   // an allocation that fails now aborts instead of restarting in the middle of the write
   InstallResult result;
   if (job->board != nullptr) {
     // The look for the newest release is part of the task (the panel's request returned long ago): what was found is what is installed.
@@ -326,20 +331,35 @@ void install_task(void* raw) {
     g_progress.version = result.version;
     g_running = false;
   }
+  nodeguard::note_firmware_write(false);
   vTaskDelete(nullptr);
 }
 }  // namespace
 
 namespace {
-void check_task(void* raw) {
-  const char* board = static_cast<const char*>(raw);
-  const CheckResult found = check(board);
-  {
-    std::lock_guard<std::mutex> guard(g_lock);
-    g_check.result = found;
-    g_check.state = found.ok ? "done" : "failed";
-    g_checking = false;
+void finish_check(const CheckResult& found) {
+  std::lock_guard<std::mutex> guard(g_lock);
+  g_check.result = found;
+  g_check.state = found.ok ? "done" : "failed";
+  g_checking = false;
+}
+
+// The look for the newest release reads from GitHub over TLS and writes nothing to the flash, so its stack (12 KB, the look is made with JSON and the TLS client on it) can be in the
+// external RAM. A task that ends would leave that stack behind, so one worker waits for the next look for good; where there is no external RAM the old way is kept (a task made for the look
+// and gone after it), which holds the 12 KB of internal memory only while it runs.
+const char* g_check_board = nullptr;
+TaskHandle_t g_check_worker = nullptr;
+bool g_check_worker_tried = false;
+
+void check_worker(void*) {
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    finish_check(check(g_check_board));
   }
+}
+
+void check_task(void* raw) {
+  finish_check(check(static_cast<const char*>(raw)));
   vTaskDelete(nullptr);
 }
 }  // namespace
@@ -351,6 +371,15 @@ bool start_check(const char* board_id) {
     g_checking = true;
     g_check = CheckProgress{};
     g_check.state = "checking";
+  }
+  if (!g_check_worker_tried) {   // only the one caller that got g_checking above gets here at a time
+    g_check_worker_tried = true;
+    memory::start_task(check_worker, "github-check", 12288, nullptr, 4, &g_check_worker, false);
+  }
+  if (g_check_worker != nullptr) {
+    g_check_board = board_id;
+    xTaskNotifyGive(g_check_worker);
+    return true;
   }
   if (xTaskCreate(check_task, "github-check", 12288, const_cast<char*>(board_id), 4, nullptr) != pdPASS) {
     std::lock_guard<std::mutex> guard(g_lock);

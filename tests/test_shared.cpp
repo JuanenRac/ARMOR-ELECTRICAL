@@ -397,6 +397,7 @@ static void test_topic_filters() {
   using armor::mqtt::topic_matches;
   CHECK(topic_matches("a/b/c", "a/b/c") && !topic_matches("a/b/c", "a/b/d") && !topic_matches("a/b/c", "a/b") && !topic_matches("a/b", "a/b/c") && !topic_matches("a/b", "a/b/"));
   CHECK(armor::mqtt::will_topic("radar-1") == "armor/health/radar-1" && armor::mqtt::will_payload("radar-1") == "{\"node_id\":\"radar-1\",\"online\":false}");
+  CHECK(armor::mqtt::birth_payload("radar-1") == "{\"node_id\":\"radar-1\",\"online\":true}" && armor::mqtt::birth_payload("a\"b").empty());   // the other half of the will, on the same topic
   CHECK(armor::mqtt::will_topic("").empty() && armor::mqtt::will_payload("a\"b").empty() && armor::mqtt::will_topic("Radar").empty() && armor::mqtt::will_topic(std::string(65, 'a')).empty());
   CHECK(topic_matches("armor/health/+", armor::mqtt::will_topic("radar-1")));
   CHECK(topic_matches("a/+/c", "a/x/c") && topic_matches("a/+/c", "a//c") && !topic_matches("a/+/c", "a/x/y/c") && !topic_matches("a/+/c", "a/c") && topic_matches("+", "a") && !topic_matches("+", "a/b"));

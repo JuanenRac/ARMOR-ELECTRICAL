@@ -141,6 +141,10 @@ static void test_header_buffer() {
   headers += "Set-Cookie: " + std::string(400, 'c') + "\r\n\r\n";
   CHECK(headers.size() > 5100 && headers.size() < 5400);
   CHECK(release::header_buffer_size(8u * 1024 * 1024) == 20480 && release::header_buffer_size(8u * 1024 * 1024) > 16384);   // external RAM: past the internal threshold
+  {  // the request that follows GitHub's redirect: an address of about a thousand characters plus the usual headers must fit the request buffer (the default 512 made the client say "Out of buffer")
+    const std::string address(1100, 'a'), request = "GET /" + address + " HTTP/1.1\r\nHost: release-assets.githubusercontent.com\r\nUser-Agent: ARMOR-ELECTRICAL\r\nAccept: */*\r\n\r\n";
+    CHECK(request.size() > 512 && static_cast<std::size_t>(release::kRequestBuffer) >= request.size() + 1024);
+  }
   CHECK(release::header_buffer_size(0) == 6144 && release::header_buffer_size(20480) == 6144 && release::header_buffer_size(40960) == 20480);
   for (std::size_t external : {static_cast<std::size_t>(0), static_cast<std::size_t>(8u * 1024 * 1024)}) {
     CHECK(static_cast<std::size_t>(release::header_buffer_size(external)) >= headers.size() + 512);

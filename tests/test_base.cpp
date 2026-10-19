@@ -17,6 +17,9 @@
 #include "../core/fw_trust.hpp"
 #include "../core/improv.hpp"
 #include "../core/json.hpp"
+#include "../core/ble_window.hpp"
+#include "../core/memory_budget.hpp"
+#include "../core/node_guard.hpp"
 #include "../core/node_health.hpp"
 #include "../core/task_health.hpp"
 #else
@@ -30,6 +33,9 @@
 #include "../main/core/fw_trust.hpp"
 #include "../main/core/improv.hpp"
 #include "../main/core/json.hpp"
+#include "../main/core/ble_window.hpp"
+#include "../main/core/memory_budget.hpp"
+#include "../main/core/node_guard.hpp"
 #include "../main/core/node_health.hpp"
 #include "../main/core/task_health.hpp"
 #endif
@@ -310,6 +316,12 @@ static void test_improv_rpc() {
 
 // ---- the health report every node says about itself -----------------------------------------------------------------------------------
 
+static membudget::Snapshot memory_sample(std::uint32_t internal_free, std::uint32_t largest, std::uint32_t psram_free = 7700u * 1024u, std::uint32_t psram_total = 8192u * 1024u) {
+  membudget::Snapshot s;
+  s.internal_free = internal_free; s.internal_min = internal_free > 5000 ? internal_free - 5000 : 0; s.internal_largest = largest; s.psram_free = psram_free; s.psram_total = psram_total;
+  return s;
+}
+
 static nodehealth::Report sample_report() {
   nodehealth::Report r;
   r.node_id = "alarm-1"; r.family = "alarm"; r.firmware = "0.3.6"; r.board = "s3-eth"; r.timestamp_ms = 9000; r.uptime_s = 86400; r.reset_reason = "power_on";
@@ -374,6 +386,66 @@ static void test_node_health() {
   CHECK(contains(odd_json, "\"heap_min\":142000") && contains(odd_json, "\"low_stack_tasks\":64") && !contains(odd_json, "\"board\""));   // never more than the contract allows
   json::Value parsed;
   CHECK(json::parse(wired, parsed) && parsed.is_object() && parsed.string_or("kind", "") == "node_health");
+  // the internal memory on its own, when the node reads it (the figures above add the external RAM, which hides a short internal memory)
+  nodehealth::Report with_memory = sample_report();
+  with_memory.has_memory = true;
+  with_memory.memory = memory_sample(72704, 36864);
+  const std::string memory_json = nodehealth::to_json(with_memory);
+  CHECK(contains(memory_json, "\"heap_min\":98000,\"heap_internal_free\":72704,\"heap_internal_min\":67704,\"heap_internal_largest\":36864,\"psram_free\":7884800,\"link\":\"ethernet\""));
+  CHECK(json::parse(memory_json, parsed) && parsed.integer_or("heap_internal_free", 0, 0, 1000000) == 72704);
+  nodehealth::Report no_psram = with_memory;
+  no_psram.memory = memory_sample(72704, 36864, 0, 0);
+  CHECK(contains(nodehealth::to_json(no_psram), "\"heap_internal_largest\":36864") && !contains(nodehealth::to_json(no_psram), "psram_free"));   // a board with no external RAM says nothing of it
+  nodehealth::Report odd_memory = with_memory;
+  odd_memory.memory.internal_min = 900000; odd_memory.memory.internal_largest = 900000; odd_memory.memory.psram_free = 9000u * 1024u;
+  const std::string odd_memory_json = nodehealth::to_json(odd_memory);
+  CHECK(contains(odd_memory_json, "\"heap_internal_min\":72704") && contains(odd_memory_json, "\"heap_internal_largest\":72704") && contains(odd_memory_json, "\"psram_free\":8388608"));   // never more than the contract allows
+  CHECK(!contains(wired, "heap_internal"));                                                                                              // a report with no reading says nothing of it
+}
+
+// ---- where the memory goes and how it is judged ---------------------------------------------------------------------------------------------
+
+static void test_memory_budget() {
+  using namespace membudget;
+  // "low" has two levels: a figure that hovers around the line neither raises the warning nor clears it all day
+  CHECK(!internal_is_low(memory_sample(71000, 36000), false));                  // the board that ran short before: 65 to 80 KB is above the line
+  CHECK(internal_is_low(memory_sample(39000, 30000), false) && !internal_is_low(memory_sample(41000, 30000), false));
+  CHECK(internal_is_low(memory_sample(45000, 30000), true) && !internal_is_low(memory_sample(50000, 30000), true));   // already low: it clears only over 48 KB
+  CHECK(internal_is_low(memory_sample(200000, 7000), false) && !internal_is_low(memory_sample(200000, 8192), false));   // plenty free but in pieces: no block of 8 KB
+  CHECK(!internal_is_low(Snapshot{}, false) && !internal_is_low(Snapshot{}, true));                                       // nothing read: no verdict
+  // where a big buffer or a stack goes
+  const Snapshot with_psram = memory_sample(80000, 40000);
+  const Snapshot without_psram = memory_sample(80000, 40000, 0, 0);
+  const Snapshot nearly_full = memory_sample(80000, 40000, 300u * 1024u, 8192u * 1024u);
+  Choice c = choose_place(true, 12288, with_psram);
+  CHECK(c.place == Place::kPsram && !c.degraded);
+  c = choose_place(false, 12288, with_psram);
+  CHECK(c.place == Place::kInternal && !c.degraded);                           // not wanted there: internal, and nothing to report
+  c = choose_place(true, 12288, without_psram);
+  CHECK(c.place == Place::kInternal && c.degraded);                            // a board with no PSRAM keeps working on the internal memory
+  c = choose_place(true, 64u * 1024u, nearly_full);
+  CHECK(c.place == Place::kInternal && c.degraded);                            // 300 KB free is not enough for 64 KB and the 256 KB that always stay
+  c = choose_place(true, 40u * 1024u, nearly_full);
+  CHECK(c.place == Place::kPsram);                                             // exactly what is left over the spare is enough
+  CHECK(choose_place(true, 0xFFFFFFFFu, with_psram).place == Place::kInternal);   // no overflow on a silly size
+  // the log: the first time, then every minute, and at once (not twice in ten seconds) when the memory turns low or back
+  LogState state;
+  const Snapshot fine = memory_sample(90000, 40000), low = memory_sample(30000, 20000);
+  CHECK(next_log(state, 20000, fine) == LogAction::kInfo);
+  CHECK(next_log(state, 21000, fine) == LogAction::kNone && next_log(state, 79999, fine) == LogAction::kNone);
+  CHECK(next_log(state, 80000, fine) == LogAction::kInfo);                     // a minute after the last
+  CHECK(next_log(state, 85000, low) == LogAction::kNone);                      // turned low only 5 s after the last line: not twice in ten seconds
+  CHECK(next_log(state, 90000, low) == LogAction::kWarn);                      // 10 s: said at once
+  CHECK(next_log(state, 100000, low) == LogAction::kNone && next_log(state, 150000, low) == LogAction::kWarn);   // while low: every minute, as a warning
+  CHECK(next_log(state, 155000, fine) == LogAction::kNone && next_log(state, 160000, memory_sample(60000, 40000)) == LogAction::kInfo);   // back over 48 KB: said once the gap allows
+  LogState late;
+  CHECK(next_log(late, 5, low) == LogAction::kWarn);                           // a node that starts low says so at the first look
+  LogState backwards;
+  backwards.started = true; backwards.last_ms = 500000;
+  CHECK(next_log(backwards, 1000, fine) == LogAction::kNone);                  // a clock that went back never makes a flood
+  // the line
+  CHECK(describe(memory_sample(72704, 36864), 7, 33792) == "memory: internal 71 KB free (least 66 KB, biggest block 36 KB), PSRAM 7700 KB free of 8192 KB, 7 task stacks (33 KB) in PSRAM");
+  CHECK(describe(memory_sample(72704, 36864, 0, 0), 0, 0) == "memory: internal 71 KB free (least 66 KB, biggest block 36 KB), no PSRAM");
 }
 
 static void test_task_health() {
@@ -694,7 +766,204 @@ static void test_admin_sources() {
   CHECK(allowed(ip("192.168.0.50"), "garbage") && !allowed(ip("8.8.8.8"), "garbage"));   // a list that cannot be read falls back to the house, never to "everybody"
 }
 
+// The node's watchdog: a minute of trouble before it acts, one clean restart, never more than three in an hour, and an alarm that repeats when it cannot restart.
+static armor::nodeguard::Inputs guard_look(std::uint64_t seconds, std::uint32_t internal_free, unsigned missing = 0) {
+  armor::nodeguard::Inputs in;
+  in.now_ms = seconds * 1000ULL;
+  in.internal_free = internal_free;
+  in.internal_largest = internal_free / 2;
+  in.missing_tasks = missing;
+  return in;
+}
+
+static void test_node_guard_rules() {
+  using namespace armor::nodeguard;
+  const std::uint32_t fine = 60u * 1024u, low = 12u * 1024u;
+  { State s; CHECK(step(s, guard_look(0, fine), true) == Action::kNone && !s.trouble); }
+  { Inputs unreadable; CHECK(!memory_is_low(unreadable, false)); }   // a heap that could not be read is not trouble
+  // a task that is missing for a minute: told, and the node restarts once
+  { State s;
+    CHECK(step(s, guard_look(0, fine, 1), true) == Action::kNone);
+    CHECK(step(s, guard_look(30, fine, 1), true) == Action::kNone);
+    CHECK(step(s, guard_look(59, fine, 1), true) == Action::kNone);
+    CHECK(step(s, guard_look(60, fine, 1), true) == Action::kAlertAndRestart);
+    CHECK(step(s, guard_look(65, fine, 1), true) == Action::kNone);   // said once: not again while it lasts
+  }
+  // trouble that ends before the minute is over is forgotten
+  { State s;
+    step(s, guard_look(0, low), true);
+    CHECK(step(s, guard_look(40, low), true) == Action::kNone);
+    CHECK(step(s, guard_look(50, fine), true) == Action::kNone && !s.trouble);
+    step(s, guard_look(55, low), true);
+    CHECK(step(s, guard_look(100, low), true) == Action::kNone);   // the minute counts from the second time
+    CHECK(step(s, guard_look(115, low), true) == Action::kAlertAndRestart);
+  }
+  // the memory is low under 16 KB and back to normal only over 24 KB (a figure that hovers around the line does not flap)
+  { State s;
+    step(s, guard_look(0, 15u * 1024u), true);
+    CHECK(s.memory_low);
+    step(s, guard_look(5, 20u * 1024u), true);
+    CHECK(s.memory_low && s.trouble);
+    step(s, guard_look(10, 25u * 1024u), true);
+    CHECK(!s.memory_low && !s.trouble);
+  }
+  // at the limit of restarts the node stays up and repeats the alarm every ten minutes
+  { State s;
+    step(s, guard_look(0, low), false);
+    CHECK(step(s, guard_look(60, low), false) == Action::kAlert);
+    CHECK(step(s, guard_look(120, low), false) == Action::kNone);
+    CHECK(step(s, guard_look(60 + 599, low), false) == Action::kNone);
+    CHECK(step(s, guard_look(60 + 600, low), false) == Action::kAlert);
+    CHECK(step(s, guard_look(60 + 601, low), false) == Action::kNone);
+  }
+  // what it says is short and names what is missing
+  { std::vector<std::string> none, some{"telemetry", "heartbeat"}, many{"a", "b", "c", "d"};
+    CHECK(reason_text(some, guard_look(0, fine), false) == "guard: tasks telemetry,heartbeat missing");
+    CHECK(reason_text(none, guard_look(0, 12u * 1024u), true) == "guard: internal memory 12 KB for over a minute");
+    CHECK(reason_text(many, guard_look(0, 12u * 1024u), true).size() <= 90);
+    CHECK(reason_text(std::vector<std::string>{"x"}, guard_look(0, fine), false) == "guard: task x missing");
+  }
+}
+
+static void test_node_guard_restart_ledger() {
+  using namespace armor::nodeguard;
+  Ledger ledger;
+  CHECK(ledger.may_restart(100));
+  ledger.note_restart(100);            // boot 1 ran 100 s
+  CHECK(ledger.pending && ledger.recent(0) == 1);
+  ledger.pending = false;
+  ledger.note_restart(200);            // boot 2 ran 200 s: the running clock is at 300
+  ledger.pending = false;
+  CHECK(ledger.clock(0) == 300 && ledger.recent(0) == 2 && ledger.may_restart(0));
+  ledger.note_restart(300);            // boot 3 ran 300 s: the clock is at 600
+  CHECK(ledger.recent(0) == 3 && !ledger.may_restart(0));   // the fourth is not allowed within the hour
+  CHECK(!ledger.may_restart(3000));    // the clock is at 3600: the first restart (at 100) is still inside the hour
+  CHECK(ledger.may_restart(3100));     // 3700: it is out, there is room for one
+  ledger.note_restart(3100);
+  CHECK(ledger.count <= kMaxRestartsPerHour && ledger.recent(0) <= kMaxRestartsPerHour);
+  // never more than three in any hour of running time, however often it asks: a boot of 50 s asks again at once
+  { Ledger l; unsigned granted = 0;
+    for (int i = 0; i < 200; ++i) {
+      if (l.may_restart(50)) { l.note_restart(50); ++granted; }
+      else l.base_s += 50;   // the boot ran on without restarting
+    }
+    CHECK(granted >= 3 && granted <= 3u + 200u * 50u / 3600u * 3u + 3u);
+    CHECK(l.recent(0) <= kMaxRestartsPerHour);
+  }
+}
+
+static void test_node_guard_survives_a_restart() {
+  using namespace armor::nodeguard;
+  Ledger saved;
+  saved.note_restart(500);
+  BootInfo info;
+  // a software reset keeps the memory: the next boot knows the guard asked for it, and reads that once
+  Ledger next = ledger_at_boot(saved, ledger_check(saved), true, info);
+  CHECK(info.by_guard && info.restarts_in_hour == 1 && !next.pending && next.count == 1 && !bluetooth_may_start(info));
+  Ledger after = ledger_at_boot(next, ledger_check(next), true, info);
+  CHECK(!info.by_guard && bluetooth_may_start(info) && after.count == 1);   // the boot after that is an ordinary one
+  // a power-on leaves garbage: it is not a ledger, however it looks
+  Ledger garbage = saved;
+  ledger_at_boot(garbage, ledger_check(garbage), false, info);
+  CHECK(!info.by_guard && info.restarts_in_hour == 0 && bluetooth_may_start(info));
+  Ledger damaged = saved;
+  ledger_at_boot(damaged, ledger_check(damaged) + 1, true, info);   // the check number does not fit
+  CHECK(!info.by_guard);
+  Ledger absurd = saved;
+  absurd.count = 99;
+  ledger_at_boot(absurd, ledger_check(absurd), true, info);
+  CHECK(!info.by_guard);
+}
+
+// Bluetooth set-up closes by itself: after the minutes of the setting with nobody connected, or two minutes after a set-up node has an address; mode always never closes.
+static void test_ble_window() {
+  using namespace armor::blewindow;
+  CHECK(clamp_minutes(0) == 1 && clamp_minutes(-5) == 1 && clamp_minutes(10) == 10 && clamp_minutes(500) == 120);
+  Watch watch;
+  const std::uint64_t minute = 60000ULL;
+  CHECK(judge(watch, 9 * minute, true, false, false, 10) == Verdict::kKeepOpen);
+  CHECK(judge(watch, 10 * minute, true, false, false, 10) == Verdict::kCloseIdle);
+  CHECK(judge(watch, 10 * minute, false, false, false, 10) == Verdict::kKeepOpen);   // mode always
+  CHECK(judge(watch, 99 * minute, true, true, true, 10) == Verdict::kKeepOpen);     // a phone is connected
+  // a phone that stays connected keeps the window open; the count starts again when it leaves
+  watch.observe(30 * minute, true, false, 5);
+  CHECK(watch.idle_since_ms == 30 * minute);
+  CHECK(judge(watch, 39 * minute, true, false, false, 10) == Verdict::kKeepOpen);
+  CHECK(judge(watch, 40 * minute, true, false, false, 10) == Verdict::kCloseIdle);
+  // a node that has users closes two minutes after it has an address; one that has none does not (it still has to be set up)
+  Watch with_address;
+  for (unsigned s = 0; s < 115; s += 5) with_address.observe(s * 1000ULL, false, true, 5);
+  CHECK(judge(with_address, 115 * 1000ULL, true, true, false, 10) == Verdict::kKeepOpen);
+  with_address.observe(120 * 1000ULL, false, true, 5);
+  CHECK(judge(with_address, 120 * 1000ULL, true, true, false, 10) == Verdict::kCloseHasAddress);
+  CHECK(judge(with_address, 120 * 1000ULL, true, false, false, 10) == Verdict::kKeepOpen);
+  with_address.observe(125 * 1000ULL, false, false, 5);   // the address was lost: the two minutes start again
+  CHECK(with_address.address_s == 0);
+}
+
+// The gate at the door of the panel, the failed allocation, the dead-man switch and the probation of a new image.
+static void test_node_guard_gate_and_streams() {
+  using namespace armor::nodeguard;
+  const std::uint32_t kb = 1024;
+  Gate gate;
+  CHECK(!gate.step(0, 0) && !gate.closed);                 // a heap that could not be read leaves it open
+  CHECK(!gate.step(60 * kb, 30 * kb) && !gate.closed);
+  CHECK(gate.step(27 * kb, 30 * kb) && gate.closed);       // under 28 KB free: closed
+  CHECK(!gate.step(35 * kb, 30 * kb) && gate.closed);      // between the two levels it stays closed (no flapping)
+  CHECK(!gate.step(45 * kb, 14 * kb) && gate.closed);      // plenty free but the biggest block is still under 16 KB
+  CHECK(gate.step(45 * kb, 20 * kb) && !gate.closed);      // over 40 KB and 16 KB: open again
+  CHECK(gate.step(60 * kb, 11 * kb) && gate.closed);       // a heap in pieces closes it although the sum looks fine
+  CHECK(gate.transitions == 3);
+  CHECK(!gate.step(0, 0) && gate.closed);
+  GateThresholds odd;
+  odd.open_free = 1;       // opens "below" where it closes: put right, the gate must still close and open
+  odd.open_block = 1;
+  Gate other;
+  CHECK(other.step(10 * kb, 30 * kb, odd) && other.closed);
+  CHECK(other.step(odd.sane().open_free + 1, 30 * kb, odd) && !other.closed);
+  // streams: capped, and none while the gate is closed
+  CHECK(may_open_stream(0, false) && may_open_stream(3, false) && !may_open_stream(4, false) && !may_open_stream(0, true) && may_open_stream(1, false, 2) && !may_open_stream(2, false, 2));
+  CHECK(gate_text(true, 24 * kb, 10 * kb) == "guard: no new panel connections while the memory is short (internal 24/10 KB)");
+  CHECK(gate_text(false, 41 * kb, 20 * kb).find("accepted again") != std::string::npos);
+}
+
+static void test_node_guard_out_of_memory() {
+  using namespace armor::nodeguard;
+  OomRecord none;
+  CHECK(!oom_valid(none));
+  const OomRecord first = make_oom(9000, 3000, 120, 500);
+  CHECK(oom_valid(first) && oom_text(first) == "oom heap=9000/3000 after 120 s");
+  OomRecord damaged = first;
+  damaged.free_bytes = 1;
+  CHECK(!oom_valid(damaged));
+  CHECK(oom_decide(none, 500, false) == OomAction::kRestart);
+  CHECK(oom_decide(none, 500, true) == OomAction::kAbort);                 // while an image is written: abort, as before
+  CHECK(oom_decide(first, 500 + 59, false) == OomAction::kAbort);          // a second one within a minute of running time: abort, the loop stays visible
+  CHECK(oom_decide(first, 500 + 60, false) == OomAction::kRestart);
+  CHECK(oom_decide(damaged, 501, false) == OomAction::kRestart);           // a record that does not check out is not a record
+}
+
+static void test_node_guard_dead_man_and_probation() {
+  using namespace armor::nodeguard;
+  const std::uint64_t minute = 60000ULL;
+  CHECK(dead_man(false, 99 * minute, 0, true) == DeadMan::kFine);          // no broker at all: never restarted for it
+  CHECK(dead_man(true, 9 * minute, 0, true) == DeadMan::kFine);
+  CHECK(dead_man(true, 10 * minute, 0, true) == DeadMan::kRestart);
+  CHECK(dead_man(true, 10 * minute, 0, false) == DeadMan::kDegraded);      // the limit is used up: stays up, degraded
+  CHECK(dead_man(true, 15 * minute, 14 * minute, true) == DeadMan::kFine); // it published a minute ago
+  CHECK(dead_man(true, 5, 10, true) == DeadMan::kFine);                    // a clock that went back is not silence
+  CHECK(!image_may_be_confirmed(59, true, true) && image_may_be_confirmed(60, true, true) && !image_may_be_confirmed(300, false, true) && !image_may_be_confirmed(300, true, false));
+  CHECK(!settings_reverted(7, 7) && settings_reverted(7, 8));
+}
+
 int main() {
+  test_node_guard_gate_and_streams();
+  test_node_guard_out_of_memory();
+  test_node_guard_dead_man_and_probation();
+  test_node_guard_rules();
+  test_node_guard_restart_ledger();
+  test_node_guard_survives_a_restart();
+  test_ble_window();
   test_admin_sources();
   test_user_key();
   test_ble_throttle_per_phone();
@@ -716,6 +985,7 @@ int main() {
   test_improv_rpc();
   test_task_health();
   test_node_health();
+  test_memory_budget();
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

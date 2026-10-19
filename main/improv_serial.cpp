@@ -37,7 +37,8 @@ void send(const std::vector<std::uint8_t>& bytes) {
   }
 }
 
-improv::State current_state() { return network::has_ip() ? improv::State::kProvisioned : improv::State::kReady; }
+// "Provisioned" says that the node joined the Wi-Fi network it was given, not that it has an address: a board with a cable has one without ever having used Improv, and told the page its job was done.
+improv::State current_state() { return network::status().sta_connected && network::has_ip() ? improv::State::kProvisioned : improv::State::kReady; }
 
 std::string json_string(const std::string& text) {
   json::Writer w;

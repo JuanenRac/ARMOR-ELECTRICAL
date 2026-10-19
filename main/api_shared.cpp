@@ -26,6 +26,7 @@ extern "C" {
 #include "core/zigbee_bridge.hpp"
 #include "mqtt_link.hpp"
 #include "network.hpp"
+#include "psram_mem.hpp"
 #include "task_health.hpp"
 #include "node_store.hpp"
 #include "electrical_manager.hpp"
@@ -145,10 +146,12 @@ std::string status_json() {
   const config::Settings s = store::settings();
   const mqtt_link::Status m = mqtt_link::status();
   const esp_partition_t* running = esp_ota_get_running_partition();
+  const membudget::Snapshot mem = memory::snapshot();   // heap_free below counts the external RAM too; these three are the internal memory on its own
   json::Writer w;
   w.begin_object().field("node_id", s.node_id).field("name", s.node_name).field("version", version_text()).field("uptime_s", static_cast<long long>(esp_timer_get_time() / 1000000LL))
       .field("reset_reason", reset_reason_text()).field("heap_free", static_cast<long long>(esp_get_free_heap_size())).field("heap_min", static_cast<long long>(esp_get_minimum_free_heap_size()))
-      .field("psram_free", static_cast<long long>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM))).field("partition", running != nullptr ? running->label : "?");
+      .field("psram_free", static_cast<long long>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)))
+      .field("heap_internal_free", static_cast<long long>(mem.internal_free)).field("heap_internal_min", static_cast<long long>(mem.internal_min)).field("heap_internal_largest", static_cast<long long>(mem.internal_largest)).field("partition", running != nullptr ? running->label : "?");
   write_hardware(w);
   write_clock(w, s);
   write_flash(w);

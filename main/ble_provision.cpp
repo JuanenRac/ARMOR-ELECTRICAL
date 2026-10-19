@@ -27,9 +27,13 @@ extern "C" {
 }
 #include "api_shared.hpp"
 #include "core/ble_dispatch.hpp"
+#include "core/ble_window.hpp"
 #include "network.hpp"
+#include "node_guard.hpp"
 #include "node_store.hpp"
+#include "psram_mem.hpp"
 #include "web_server.hpp"
+#include "sdkconfig.h"
 
 namespace armor::ble_provision {
 namespace {
@@ -53,6 +57,14 @@ std::mutex g_session_lock;                 // g_session is read and written by t
 std::atomic<unsigned> g_generation{0};     // changes with every connection and disconnection; a request carries the one it arrived in
 auth::LoginThrottle g_throttle;
 QueueHandle_t g_queue = nullptr;           // pointers to Pending: whole requests for the worker
+TaskHandle_t g_worker = nullptr;
+std::atomic<bool> g_busy{false};           // the worker is dealing with a request: the stack is not closed under it
+struct BusyMark { BusyMark() { g_busy = true; } ~BusyMark() { g_busy = false; } };
+#ifdef CONFIG_ARMOR_BLE_SETUP_MINUTES
+constexpr unsigned kSetupMinutes = CONFIG_ARMOR_BLE_SETUP_MINUTES;
+#else
+constexpr unsigned kSetupMinutes = blewindow::kDefaultMinutes;
+#endif
 struct Pending { unsigned generation = 0; std::string text; };
 
 // Pairing: five failures in a row (a wrong PIN, or an attacker trying the million possible ones) shut the door to new connections for five minutes.
@@ -139,6 +151,7 @@ void worker_task(void*) {
     Pending* raw = nullptr;
     if (xQueueReceive(g_queue, &raw, portMAX_DELAY) != pdTRUE || raw == nullptr) continue;
     const std::unique_ptr<Pending> pending(raw);
+    const BusyMark busy;
     if (pending->generation != g_generation.load()) continue;   // it came from a phone that is gone: nobody is waiting for the answer, and it must not act as the phone that is here now
     ble::Request request;
     if (!ble::parse_request(pending->text, request)) { send_message(ble::error_response(0, "bad_request"), pending->generation); continue; }
@@ -287,20 +300,38 @@ void on_sync() {
 
 void on_reset(int reason) { ESP_LOGW(kTag, "the Bluetooth stack reset (%d)", reason); }
 
-// A node that is set up but whose Wi-Fi was just given over Bluetooth is not reachable until it has an address: it keeps advertising, so the app can come back
-// and read why it did not join (hello: has_ip, sta_connected, sta_error), and stops two minutes after it has an address.
-void advertising_watch_task(void*) {
-  constexpr int kGraceSeconds = 120;
-  int with_address = 0;
+// Switches Bluetooth off and gives its memory back: the advertising stops, the host and the controller are stopped and freed, and the worker that waited for requests goes. Nothing starts
+// it again until the node is restarted. Called by the watch task only (the stack cannot be stopped from its own host task).
+void close_stack() {
+  g_advertising_stopped = true;
+  ble_gap_adv_stop();
+  const membudget::Snapshot before = memory::snapshot();
+  const int stopped = nimble_port_stop();
+  if (stopped == 0) nimble_port_deinit();
+  else ESP_LOGE(kTag, "the Bluetooth stack did not stop (%d): it stays as it is, without advertising", stopped);
+  drain_queue();
+  if (g_worker != nullptr) { vTaskDelete(g_worker); g_worker = nullptr; }
+  g_running = false;
+  const membudget::Snapshot after = memory::snapshot();
+  ESP_LOGI(kTag, "Bluetooth is off: %u KB of internal memory free before, %u KB after", static_cast<unsigned>(before.internal_free / 1024u), static_cast<unsigned>(after.internal_free / 1024u));
+}
+
+// In mode "setup" the window closes by itself (core/ble_window.hpp): after the configured minutes with nobody connected, or two minutes after a set-up node has an address (a node that is set up but
+// whose Wi-Fi was just given over Bluetooth keeps advertising until it has one, so the app can come back and read why it did not join: hello has_ip, sta_connected, sta_error).
+void window_task(void*) {
+  constexpr unsigned kLookSeconds = 5;
+  blewindow::Watch watch;
   for (;;) {
-    vTaskDelay(pdMS_TO_TICKS(5000));
-    with_address = network::has_ip() ? with_address + 5 : 0;
-    if (with_address >= kGraceSeconds && g_connection == BLE_HS_CONN_HANDLE_NONE) {
-      g_advertising_stopped = true;
-      ble_gap_adv_stop();
-      ESP_LOGI(kTag, "the node has an address: Bluetooth stops advertising");
-      break;
-    }
+    vTaskDelay(pdMS_TO_TICKS(kLookSeconds * 1000));
+    const std::uint64_t now_ms = static_cast<std::uint64_t>(esp_timer_get_time()) / 1000ULL;
+    const bool connected = g_connection.load() != BLE_HS_CONN_HANDLE_NONE;
+    watch.observe(now_ms, connected, network::has_ip(), kLookSeconds);
+    const blewindow::Verdict verdict = blewindow::judge(watch, now_ms, true, !store::users_empty(), connected, kSetupMinutes);
+    if (verdict == blewindow::Verdict::kKeepOpen) continue;
+    if (g_busy.load() || (g_queue != nullptr && uxQueueMessagesWaiting(g_queue) > 0)) continue;   // an answer is on its way: next look
+    ESP_LOGI(kTag, verdict == blewindow::Verdict::kCloseIdle ? "nobody connected in %u minutes: Bluetooth set-up closes" : "the node has an address: Bluetooth stops advertising", kSetupMinutes);
+    close_stack();
+    break;
   }
   vTaskDelete(nullptr);
 }
@@ -312,15 +343,25 @@ void host_task(void*) {
 }  // namespace
 
 bool start(const config::Settings& settings, bool setup_mode) {
+  static_cast<void>(setup_mode);   // the window closes by the clock and by the users the node has (core/ble_window.hpp), not by this flag
   // In `setup` mode the node listens at every start: until it has an address it cannot be reached any other way (a board with a cable that is not plugged in, a Wi-Fi
-  // network that was not joined), and the watch task stops the advertising a couple of minutes after the node has an address.
+  // network that was not joined), and the window task closes it again (core/ble_window.hpp).
   const bool wanted = settings.ble == config::BleMode::kAlways || settings.ble == config::BleMode::kSetup;
   if (!wanted) return false;
+  // After a restart the node asked for itself because it was short of memory, Bluetooth stays off: the radio is what takes it, and the node must come back up without it.
+  if (!nodeguard::bluetooth_may_start(nodeguard::boot_info())) { ESP_LOGW(kTag, "Bluetooth stays off at this start (the node restarted itself to recover its memory); switch the node off and on to open it again"); return false; }
+  const membudget::Snapshot room = memory::snapshot();
+  if (room.internal_free != 0 && room.internal_free < nodeguard::kBluetoothNeedsBytes) {
+    ESP_LOGW(kTag, "Bluetooth is not started: %u KB of internal memory are free and it needs about %u KB", static_cast<unsigned>(room.internal_free / 1024u), static_cast<unsigned>(nodeguard::kBluetoothNeedsBytes / 1024u));
+    return false;
+  }
+  ESP_LOGI(kTag, "starting Bluetooth with %u KB of internal memory free", static_cast<unsigned>(room.internal_free / 1024u));
   g_name = "ARMOR-" + store::mac_tail();
   for (char& c : g_name) if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
   g_queue = xQueueCreate(kQueueLength, sizeof(Pending*));
   if (g_queue == nullptr) return false;
-  if (nimble_port_init() != ESP_OK) { ESP_LOGE(kTag, "the Bluetooth stack could not start"); return false; }
+  if (xTaskCreate(worker_task, "ble-worker", 16384, nullptr, 4, &g_worker) != pdPASS) { ESP_LOGE(kTag, "the Bluetooth worker could not start: no memory"); g_worker = nullptr; return false; }
+  if (nimble_port_init() != ESP_OK) { ESP_LOGE(kTag, "the Bluetooth stack could not start"); vTaskDelete(g_worker); g_worker = nullptr; return false; }
   ble_hs_cfg.reset_cb = on_reset;
   ble_hs_cfg.sync_cb = on_sync;
   ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;   // the node shows a PIN and the phone types it: a passer-by in the middle cannot pair
@@ -332,10 +373,11 @@ bool start(const config::Settings& settings, bool setup_mode) {
   if (ble_gatts_count_cfg(kServices) != 0 || ble_gatts_add_svcs(kServices) != 0) { ESP_LOGE(kTag, "the Bluetooth service could not be added"); return false; }
   ble_svc_gap_device_name_set(g_name.c_str());
   ble_att_set_preferred_mtu(247);
-  xTaskCreate(worker_task, "ble-worker", 16384, nullptr, 4, nullptr);
   nimble_port_freertos_init(host_task);
   g_running = true;
-  if (settings.ble == config::BleMode::kSetup && !setup_mode) xTaskCreate(advertising_watch_task, "ble-watch", 3072, nullptr, 2, nullptr);
+  if (settings.ble == config::BleMode::kSetup && xTaskCreate(window_task, "ble-window", 3072, nullptr, 2, nullptr) != pdPASS) ESP_LOGW(kTag, "the task that closes the set-up window could not start: Bluetooth stays open until the node restarts");
+  const membudget::Snapshot used = memory::snapshot();
+  ESP_LOGI(kTag, "Bluetooth is up: %u KB of internal memory free now (%u KB before)", static_cast<unsigned>(used.internal_free / 1024u), static_cast<unsigned>(room.internal_free / 1024u));
   return true;
 }
 

@@ -11,7 +11,7 @@ The setting *Bluetooth* (Network page of the panel, `ble.mode` in the settings) 
 
 | Value | The node advertises |
 |---|---|
-| `setup` (the default) | while it has no user, that is, until its first administrator is created, and also while a node set up to join a Wi-Fi network has no address yet (it stops two minutes after it gets one) |
+| `setup` (the default) | after every start, and closes by itself: after 10 minutes (`CONFIG_ARMOR_BLE_SETUP_MINUTES`, 1 to 120) with nobody connected, or two minutes after a node that already has users gets an address. Once closed it stays off until the node is restarted, and it is not started at all after a restart the node asked for itself because it was short of memory |
 | `always` | all the time; every operation but `hello` still needs a login |
 | `off` | never; the Bluetooth stack is not even started |
 
