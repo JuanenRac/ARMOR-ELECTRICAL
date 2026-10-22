@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here.
 
+## [Unreleased]
+
+- The banner follows the animated style of the ecosystem banners, with the name, the kind and the technologies of the project.
+
 ## [0.4.4] - The node protects its memory, and the server can control it
 
 - The checksum and the image are read again from GitHub: the HTTP request buffer is 4 KB, because the request that follows GitHub's redirect carries an address of about a thousand characters.
