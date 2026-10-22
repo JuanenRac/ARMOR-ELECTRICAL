@@ -194,7 +194,7 @@ try {
   await goto("update");
   body = await text();
   check("the firmware page offers the GitHub check", body.includes("Check GitHub for a new version") && body.includes("Check now"), body.slice(0, 200));
-  await clickButton("Check now"); await sleep(700);
+  await clickButton("Check now"); await sleep(1800);   // the node looks in a task of its own: started, then asked about after 0.8 s
   body = await text();
   check("the check says a newer version is available and offers to install it", body.includes("Version 9.9.9 is available.") && body.includes("Download and install"), body.slice(0, 300));
   await clickButton("Download and install"); await sleep(1200);

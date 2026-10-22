@@ -281,19 +281,27 @@ class LoginThrottle {
 
   // A limit on the wrong passwords of ALL the sources together, per minute: however many addresses and names are tried, no more than kMinuteFailures wrong attempts are let through in
   // any minute (each one costs the node a third of a second of password hashing). Only failures are counted, so people who sign in correctly are not what fills it.
+  // The number is a setting of the node (set_minute_limit): 30 unless it says otherwise, 0 turns this limit off (the limits of each address and of each person stay), at most kMinuteFailuresMax.
   static constexpr unsigned kMinuteFailures = 30;
+  static constexpr unsigned kMinuteFailuresMax = 120;
   static constexpr std::uint64_t kMinuteMs = 60000;
+  void set_minute_limit(unsigned limit) { minute_limit_ = limit > kMinuteFailuresMax ? kMinuteFailuresMax : limit; }
+  unsigned minute_limit() const { return minute_limit_; }
   bool minute_allowed(std::uint64_t now_ms) const { return minute_wait_s(now_ms) == 0; }
   unsigned minute_wait_s(std::uint64_t now_ms) const {
-    if (minute_count_ < kMinuteFailures) return 0;
-    const std::uint64_t oldest = minute_recent_[minute_head_];   // the ring is full: the next slot to be overwritten holds the oldest
-    if (now_ms >= oldest + kMinuteMs) return 0;
-    return static_cast<unsigned>((oldest + kMinuteMs - now_ms + 999) / 1000);
+    if (minute_limit_ == 0) return 0;
+    unsigned inside = 0;
+    for (unsigned back = 1; back <= minute_count_; ++back) {   // from the newest failure to the oldest still remembered
+      const std::uint64_t at = minute_recent_[(minute_head_ + kMinuteFailuresMax - back) % kMinuteFailuresMax];
+      if (now_ms >= at + kMinuteMs) break;                       // this one and every older one have left the minute
+      if (++inside == minute_limit_) return static_cast<unsigned>((at + kMinuteMs - now_ms + 999) / 1000);   // the limit-th newest frees the place when it leaves
+    }
+    return 0;
   }
   void minute_failure(std::uint64_t now_ms) {
     minute_recent_[minute_head_] = now_ms;
-    minute_head_ = (minute_head_ + 1) % kMinuteFailures;
-    if (minute_count_ < kMinuteFailures) ++minute_count_;
+    minute_head_ = (minute_head_ + 1) % kMinuteFailuresMax;
+    if (minute_count_ < kMinuteFailuresMax) ++minute_count_;
   }
 
  private:
@@ -335,8 +343,8 @@ class LoginThrottle {
   }
   std::array<Entry, kThrottlePlaces> entries_{};
   Entry shared_{};
-  std::array<std::uint64_t, kMinuteFailures> minute_recent_{};
-  unsigned minute_head_ = 0, minute_count_ = 0;
+  std::array<std::uint64_t, kMinuteFailuresMax> minute_recent_{};
+  unsigned minute_head_ = 0, minute_count_ = 0, minute_limit_ = kMinuteFailures;
 };
 
 }  // namespace armor::auth

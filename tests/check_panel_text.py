@@ -49,6 +49,20 @@ def check_help_and_frames(table, problems):
         problems.append("style.css has no .kv.framed rule")
 
 
+def check_panel_features(table, problems):
+    """The Broker page can load the certificate of the broker from a file (and refuses a key), and the System page has the node's limit on wrong passwords per minute, with their texts."""
+    app = (ROOT / "panel" / "app.js").read_text(encoding="utf-8")
+    if "function loadCaFile(" not in app or 'tip: "brokerCaUpload"' not in app or "PRIVATE KEY" not in app:
+        problems.append("the Broker page cannot load the certificate from a file (loadCaFile, the button, and the refusal of a private key)")
+    for key in ("brokerCaUpload", "tip_brokerCaUpload", "brokerCaLoaded", "brokerCaBad", "brokerCaKey", "brokerCaBig", "loginLimit", "tip_loginLimit", "loginLimitNote"):
+        if key not in table:
+            problems.append(f"the panel has no text {key}")
+    if '"system.login_limit_per_minute"' not in app:
+        problems.append("the System page does not offer system.login_limit_per_minute")
+    if '"voiceUrl"' in app and "192.168.0.180:18090" not in app:
+        problems.append("the voice page suggests an address other than the port 18090 where ARMOR-VOICE-AI listens")
+
+
 def main():
     text = (ROOT / "panel" / "text.js").read_text(encoding="utf-8")
     table = rows(text)
@@ -70,6 +84,7 @@ def main():
     if "e_http" not in table:
         problems.append("e_http is missing (the download's HTTP status)")
     check_help_and_frames(table, problems)
+    check_panel_features(table, problems)
     if problems:
         print("PANEL_TEXT=FAIL")
         for problem in problems:

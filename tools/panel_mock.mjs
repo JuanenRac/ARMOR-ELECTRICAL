@@ -46,7 +46,7 @@ const config = {
   analogs: Array.from({ length: 8 }, (_, i) => ({ enabled: i < 2, channel: ["battery", "oven"][i] ?? `analog${i + 1}`, label: ["Battery", ""][i] ?? "", pin: [1, 2, 4, 5, 6, 7, 3, -1][i], quantity: i === 1 ? "current" : "voltage", mode: i === 1 ? "ac" : "dc",
     scale: i === 1 ? 30 : 11, offset_v: 0, zero_below: i === 1 ? 0.3 : 0, nominal_voltage_v: i === 1 ? 230 : 0 })),
   time: { ntp_enabled: true, ntp: "pool.ntp.org", zone: "CET-1CEST,M3.5.0,M10.5.0/3" },
-  system: { auto_restart_hours: 0 },
+  system: { auto_restart_hours: 0, login_limit_per_minute: 30 },
   web: { mode: "both" },
   ble: { mode: "setup" },
   ui: { language: "en" },
@@ -256,6 +256,15 @@ const server = createServer(async (request, response) => {
     return json(response, 200, { ok: true, restart_required: false });
   }
   if (method === "GET" && route === "log") return json(response, 200, { next: logText.length, text: logText.slice(Number(url.searchParams.get("from") ?? 0)) });
+  // the routes of the family that the panel calls and a stand-in must know too (tests/check_routes.py compares what the panel calls with this file and with the firmware)
+  if (method === "GET" && route === "ble-pin") { if (!needAdmin()) return; return json(response, 200, { pin: "123456" }); }
+  if (method === "GET" && route === "config/export") { if (!needAdmin()) return; return json(response, 200, { config }); }
+  if (method === "GET" && route === "coredump/info") { if (!needAdmin()) return; return json(response, 200, { present: false }); }
+  if (method === "POST" && route === "coredump/erase") { if (!needAdmin()) return; return json(response, 200, { ok: true }); }
+  if (method === "POST" && route === "ota/copy") { if (!needAdmin()) return; return json(response, 200, { ok: true, started: true }); }
+  if (method === "GET" && route === "ota/copy") { if (!needAdmin()) return; return json(response, 200, { state: "done", done: 1, total: 1, error: "", version: "0.0.3" }); }
+  if (method === "POST" && route === "time") { if (!needAdmin()) return; return json(response, 200, { ok: true }); }
+  if (method === "POST" && route === "ota/check") { if (!needAdmin()) return; return json(response, 200, { ok: true, started: true }); }   // the look for a release is started, then asked about
   if (method === "GET" && route === "ota/check") { if (!needAdmin()) return; return json(response, 200, { ok: true, current_version: "0.2.3", latest_version: "9.9.9", update_available: true }); }
   if (method === "POST" && route === "ota/install") { if (!needAdmin()) return; return json(response, 200, { ok: true, started: true }); }
   if (method === "GET" && route === "ota/progress") { if (!needAdmin()) return; return json(response, 200, { state: "downloading", got: 300000, total: 1200000 }); }

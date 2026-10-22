@@ -1,7 +1,8 @@
 menu "A.R.M.O.R. electrical node"
 
 # The board the image is for. tools/build_node.sh NODE BOARD picks it (sdkconfig.board.<board>); the two profiles differ in the pin table, in the default way in
-# (the cable or Wi-Fi) and in whether the W5500 Ethernet driver is built.
+# (the cable or Wi-Fi) and in whether the W5500 Ethernet driver is built. The touch panel (ARMOR-HMI) is a single board, the Waveshare ESP32-S3-Touch-LCD-7C-BOX (profile lcd7box): it has
+# no Ethernet, so its profile takes the Wi-Fi-only entry below, and its image says "lcd7box" wherever it names its board.
 choice ARMOR_BOARD
     prompt "Board"
     default ARMOR_BOARD_S3_WIFI
@@ -37,6 +38,8 @@ config ARMOR_FLEET_SECRET
     help
         With a secret here, the set-up code of a board is made from the secret and the board's own MAC address, so the same universal image gives each board a
         different code. The secret ends up inside the image: it protects a fleet against the network, not against someone holding a board. 16 characters or more.
+        An image built with a secret (or with a set-up code above) is for the boards of its owner only: whoever downloads it can read the secret out of it and work out the code of
+        every board of the fleet from its MAC address. Never publish such an image: the build script names it *-local, and the release tool refuses it.
 
 config ARMOR_BLE_SETUP_MINUTES
     int "Minutes Bluetooth set-up stays open with nobody connected (mode setup)"

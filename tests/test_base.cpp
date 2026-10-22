@@ -651,6 +651,35 @@ static void test_login_limit_per_minute() {
   CHECK(!idle.minute_allowed(12));
 }
 
+// The limit is a setting of the node: 30 as always until it says otherwise, 0 turns it off, and a limit above the table is held at the table's size.
+static void test_login_limit_per_minute_is_a_setting() {
+  using namespace armor::auth;
+  LoginThrottle standard;
+  CHECK(standard.minute_limit() == 30 && LoginThrottle::kMinuteFailures == 30);   // the behaviour of every earlier version
+  LoginThrottle strict;
+  strict.set_minute_limit(5);
+  for (int i = 0; i < 4; ++i) strict.minute_failure(100 + i);
+  CHECK(strict.minute_allowed(200));
+  strict.minute_failure(104);
+  CHECK(!strict.minute_allowed(200) && strict.minute_wait_s(200) >= 59 && strict.minute_wait_s(200) <= 60);
+  CHECK(strict.minute_allowed(100 + 60000 + 4));   // the fifth newest has left the minute
+  strict.set_minute_limit(6);   // a looser setting lets the next one through at once
+  CHECK(strict.minute_allowed(200));
+  LoginThrottle off;
+  off.set_minute_limit(0);
+  for (int i = 0; i < 500; ++i) off.minute_failure(1000 + i);
+  CHECK(off.minute_allowed(1500) && off.minute_wait_s(1500) == 0);   // no global limit: only the limits of each address and each person remain
+  off.set_minute_limit(30);
+  CHECK(!off.minute_allowed(1500));   // and turning it back on counts what was recorded meanwhile
+  LoginThrottle huge;
+  huge.set_minute_limit(100000);
+  CHECK(huge.minute_limit() == LoginThrottle::kMinuteFailuresMax);
+  for (unsigned i = 0; i < LoginThrottle::kMinuteFailuresMax - 1; ++i) huge.minute_failure(10 + i);
+  CHECK(huge.minute_allowed(500));
+  huge.minute_failure(500);
+  CHECK(!huge.minute_allowed(501));
+}
+
 // A phone that fails is blocked on its own; everybody is blocked only by many failures together.
 namespace {
 class StubBackend : public armor::ble::Backend {
@@ -997,6 +1026,7 @@ int main() {
   test_json_refuses_bad_text();
   test_login_throttle_keeps_its_blocks();
   test_login_limit_per_minute();
+  test_login_limit_per_minute_is_a_setting();
   test_stored_settings_survive_an_update();
   test_ed25519();
   test_fw_trust();

@@ -268,6 +268,9 @@ esp_err_t get_session(httpd_req_t* r) {
   return send_json(r, 200, w.str());
 }
 
+// The node's own limit on wrong passwords per minute (system.login_limit_per_minute: 30 by default, 0 for none), read from the settings each time somebody tries to sign in.
+unsigned login_limit() { return static_cast<unsigned>(store::settings().login_limit_per_minute); }
+
 // The answer when the node as a whole has seen too many wrong passwords this minute.
 esp_err_t send_minute_wait(httpd_req_t* r, unsigned wait_s) {
   json::Writer w;
@@ -285,6 +288,7 @@ esp_err_t post_setup(httpd_req_t* r) {
   {
     std::lock_guard<std::mutex> guard(g_lock);
     if (!g_throttle.allowed(source, now_ms())) return send_error(r, 429, "too_many_attempts");
+    g_throttle.set_minute_limit(login_limit());
     if (!g_throttle.minute_allowed(now_ms())) return send_minute_wait(r, g_throttle.minute_wait_s(now_ms()));
   }
   const std::string code = in.string_or("code", "");
@@ -358,6 +362,7 @@ esp_err_t post_login(httpd_req_t* r) {
       return send_json(r, 429, w.str());
     }
     // However many addresses and names are tried, the node as a whole lets through only so many wrong passwords per minute.
+    g_throttle.set_minute_limit(login_limit());
     if (!g_throttle.minute_allowed(now_ms())) return send_minute_wait(r, g_throttle.minute_wait_s(now_ms()));
   }
   auth::Role role = auth::Role::kViewer;

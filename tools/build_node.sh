@@ -27,7 +27,14 @@ if [[ "$NODE" == "generic" ]]; then
   # by the panel). secrets/generic.conf, if it exists (write it by hand), holds the fleet secret from which each
   # board's set-up code is derived using its MAC.
   DEFAULTS="sdkconfig.defaults;sdkconfig.board.$BOARD"
-  [[ -f "$ROOT/secrets/generic.conf" ]] && DEFAULTS="$DEFAULTS;secrets/generic.conf"
+  # The fleet secret goes into the image only when asked for (ARMOR_WITH_FLEET_SECRET=1): an image that holds it gives the set-up code of every board to whoever reads it, so it is for the owner's own
+  # boards, is named *-local.bin and is never published. Without the variable the image is the public one and holds no secret.
+  if [[ "${ARMOR_WITH_FLEET_SECRET:-0}" == "1" ]]; then
+    [[ -f "$ROOT/secrets/generic.conf" ]] || { echo "ARMOR_WITH_FLEET_SECRET=1 needs secrets/generic.conf" >&2; exit 1; }
+    DEFAULTS="$DEFAULTS;secrets/generic.conf"
+    IMAGE="$NODE-$BOARD-local"
+    echo "WARNING: this image holds the fleet secret. It is for your own boards only (dist/$IMAGE.bin): never publish it." >&2
+  fi
 else
   [[ -f "$ROOT/$CONF" ]] || { echo "missing $CONF - copy secrets/node.conf.example to $CONF and edit it, or build the universal image: tools/build_node.sh generic" >&2; exit 1; }
   grep -q "CONFIG_ARMOR_NODE_ID=\"$NODE\"" "$ROOT/$CONF" || { echo "$CONF must set CONFIG_ARMOR_NODE_ID=\"$NODE\"" >&2; exit 1; }
@@ -46,6 +53,11 @@ $DOCKER run --rm --cpuset-cpus="${ARMOR_BUILD_CPUSET:-0-3}" -u "$(id -u):$(id -g
   cd \$BUILD
   python -m esptool --chip esp32s3 merge_bin -o /project/dist/$IMAGE.bin @flash_args
 "
+# A public (generic, no-secret) image must hold neither the fleet secret nor a set-up code, whatever a defaults file or the environment added to it: the result is read, not assumed.
+if [[ "$NODE" == "generic" && "${ARMOR_WITH_FLEET_SECRET:-0}" != "1" ]] && grep -Eq '^CONFIG_ARMOR_(FLEET_SECRET|SETUP_CODE)="[^"]+"' "$ROOT/build/$IMAGE/sdkconfig"; then
+  echo "REFUSED: dist/$IMAGE.bin was built with a fleet secret or a set-up code (see build/$IMAGE/sdkconfig). Do not publish it; remove the secret from the defaults and build again." >&2
+  exit 1
+fi
 ls -l "$ROOT/dist/$IMAGE.bin"
 sha256sum "$ROOT/dist/$IMAGE.bin" | cut -d' ' -f1 | sed "s/^/sha256 /"
 echo "flash it (to a $BOARD board only) with: python -m esptool --chip esp32s3 -p COMx write_flash 0x0 dist/$IMAGE.bin"

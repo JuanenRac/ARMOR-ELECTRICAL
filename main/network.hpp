@@ -14,7 +14,7 @@ struct Status {
   bool link_up = false;               // the Ethernet cable has a link, or the station is associated with its network
   bool ethernet_available = false;    // this board has an Ethernet port (the s3-eth profile)
   bool ethernet_ok = true;            // false: the W5500 did not answer
-  std::string board;                  // "s3-wifi" or "s3-eth"
+  std::string board;                  // the profile of the board: "s3-wifi" or "s3-eth", or "lcd7box" for the touch panel
   bool has_ip = false;
   std::string ip, netmask, gateway, dns, mac;
   bool ap_active = false;

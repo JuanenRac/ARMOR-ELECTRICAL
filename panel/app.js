@@ -174,6 +174,23 @@ function importConfig(file) {
   reader.readAsText(file);
 }
 
+// Loads the broker's certificate (the authority of the installation, PEM) from a file into the box, not sent to the node yet: Save applies it like any other edit. A file that is not a
+// certificate, that holds a private key, or that is longer than the node keeps is refused here, with the reason.
+function loadCaFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const text = String(reader.result).replace(/\r\n/g, "\n").trim();
+    if (/PRIVATE KEY/.test(text)) { S.message = { kind: "err", text: t("brokerCaKey") }; render(); return; }
+    if (!/-----BEGIN CERTIFICATE-----/.test(text) || !/-----END CERTIFICATE-----/.test(text)) { S.message = { kind: "err", text: t("brokerCaBad") }; render(); return; }
+    if (text.length > 2048) { S.message = { kind: "err", text: t("brokerCaBig") }; render(); return; }
+    setValue("mqtt.ca_pem", text);
+    S.message = { kind: "warn", text: t("brokerCaLoaded") };
+    render();
+  };
+  reader.onerror = () => { S.message = { kind: "err", text: t("brokerCaBad") }; render(); };
+  reader.readAsText(file);
+}
+
 async function save(restartAfter) {
   S.busy = true; S.message = { kind: "warn", text: t("working") }; refreshBar();
   const r = await api("PUT", "config", S.cfg);
@@ -334,7 +351,8 @@ function networkPage() {
       isAdmin() && S.blePin !== undefined && S.blePin !== null ? (S.blePin === "" ? note(t("blePinNone"), "info") : el("p", { class: "note info" }, t("blePinIs") + ": ", el("b", { class: "mono" }, S.blePin))) : null),
     card(t("systemTitle"), field("autoRestart", "system.auto_restart_hours", { type: "select", number: true,
       options: [[0, t("autoRestartNever")], [1, t("autoRestart1")], [2, t("autoRestart2")], [3, t("autoRestart3")], [4, t("autoRestart4")], [6, t("autoRestart6")], [12, t("autoRestart12")], [24, t("autoRestart24")], [48, t("autoRestart48")]] }),
-      note(t("autoRestartNote"), "info")),
+      note(t("autoRestartNote"), "info"),
+      field("loginLimit", "system.login_limit_per_minute", { type: "number", min: 0, max: 120 }), note(t("loginLimitNote"), "info")),
     isAdmin() ? card(t("configBackupTitle"),
       el("div", { class: "row" },
         el("button", { class: "b", tip: "exportConfig", onclick: exportConfig }, t("exportConfig")),
@@ -420,7 +438,9 @@ function brokerPage() {
         el("div", { class: "row" }, field("brokerUser", "mqtt.username"), field("brokerPassword", "mqtt.password", { type: "password", hint: t("passwordHostBound") })),
         el("div", { class: "row" }, field("heartbeat", "mqtt.heartbeat_s", { type: "number", min: 2, max: 300 })),
         field("brokerTls", "mqtt.tls", { type: "checkbox", rerender: true }),
-        mq.tls ? [field("brokerCa", "mqtt.ca_pem", { type: "textarea", rows: 8, max: 2048, placeholder: "-----BEGIN CERTIFICATE-----" }), note(t("brokerTlsNote"), "info")] : null,
+        mq.tls ? [field("brokerCa", "mqtt.ca_pem", { type: "textarea", rows: 8, max: 2048, placeholder: "-----BEGIN CERTIFICATE-----" }),
+          isAdmin() ? el("div", { class: "actions" }, el("label", { class: "b", tip: "brokerCaUpload" }, t("brokerCaUpload"), el("input", { type: "file", accept: ".pem,.crt,.cer,.txt,text/plain", hidden: true, onchange: e => { if (e.target.files[0]) loadCaFile(e.target.files[0]); e.target.value = ""; } }))) : null,
+          note(t("brokerTlsNote"), "info")] : null,
         backupBrokers()] : null,
       note(t("brokerNote"), "info")));
 }

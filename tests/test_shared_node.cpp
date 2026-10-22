@@ -409,6 +409,15 @@ static void test_node_read_rules() {
   s.language = "en";
   p = read(s, "{\"system\":{\"auto_restart_hours\":49}}"); CHECK(has(p, "system.auto_restart_hours", "range") && s.auto_restart_hours == 0);
   p = read(s, "{\"system\":{\"auto_restart_hours\":5}}"); CHECK(p.empty() && s.auto_restart_hours == 5 && has(check(s), "system.auto_restart_hours", "invalid"));
+  // the limit on wrong passwords per minute is a setting: 30 until it says otherwise, 0 for none, 120 at most
+  CHECK(s.login_limit_per_minute == 30);
+  p = read(s, "{\"system\":{\"login_limit_per_minute\":121}}"); CHECK(has(p, "system.login_limit_per_minute", "range") && s.login_limit_per_minute == 30);
+  p = read(s, "{\"system\":{\"login_limit_per_minute\":-1}}"); CHECK(has(p, "system.login_limit_per_minute", "range") && s.login_limit_per_minute == 30);
+  p = read(s, "{\"system\":{\"login_limit_per_minute\":\"ten\"}}"); CHECK(has(p, "system.login_limit_per_minute", "invalid") && s.login_limit_per_minute == 30);
+  p = read(s, "{\"system\":{\"login_limit_per_minute\":0}}"); CHECK(p.empty() && s.login_limit_per_minute == 0 && !has(check(s), "system.login_limit_per_minute", "invalid"));
+  p = read(s, "{\"system\":{\"login_limit_per_minute\":10}}"); CHECK(p.empty() && s.login_limit_per_minute == 10);
+  p = read(s, "{\"system\":{\"auto_restart_hours\":0}}"); CHECK(p.empty() && s.login_limit_per_minute == 10);   // a document without it keeps it
+  s.login_limit_per_minute = 30;
   // the older place of the time server
   s.auto_restart_hours = 0;
   p = read(s, "{\"mqtt\":{\"ntp\":\"old.example\"}}"); CHECK(p.empty() && s.time.ntp == "old.example");

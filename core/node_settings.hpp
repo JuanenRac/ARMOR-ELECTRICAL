@@ -99,6 +99,9 @@ struct NodeSettings {
   // A periodic, unconditional restart (disconnect_before_restart() then esp_restart()), independent of any fault: 0 means never. One of
   // {0, 1, 2, 3, 4, 6, 12, 24, 48} hours (auto_restart_hours_is_valid()).
   int auto_restart_hours = 0;
+  // Wrong passwords the whole node lets through in a minute, from all addresses and names together (auth::LoginThrottle). 30 is how the node has always behaved; 0 turns this limit off (the limit of
+  // each address and each person stays); at most 120.
+  int login_limit_per_minute = 30;
 };
 
 inline const char* to_text(WifiSecurity v) {
@@ -292,7 +295,10 @@ inline void node_read(const json::Value& document, NodeSettings& s, Problems& pr
     read_text(*time, "zone", s.time.zone, 48, "time.zone", problems);
   }
   if (const json::Value* ui = document.get("ui"); ui != nullptr && ui->is_object()) read_text(*ui, "language", s.language, 4, "ui.language", problems);
-  if (const json::Value* system = document.get("system"); system != nullptr && system->is_object()) read_int(*system, "auto_restart_hours", s.auto_restart_hours, 0, 48, "system.auto_restart_hours", problems);
+  if (const json::Value* system = document.get("system"); system != nullptr && system->is_object()) {
+    read_int(*system, "auto_restart_hours", s.auto_restart_hours, 0, 48, "system.auto_restart_hours", problems);
+    read_int(*system, "login_limit_per_minute", s.login_limit_per_minute, 0, 120, "system.login_limit_per_minute", problems);
+  }
 }
 
 // ---- checking -------------------------------------------------------------------------------------------------------------------
@@ -400,7 +406,7 @@ inline void node_write_tail(json::Writer& w, const NodeSettings& s) {
   w.key("ble").begin_object().field("mode", to_text(s.ble)).end_object();
   w.key("ui").begin_object().field("language", s.language).end_object();
   w.key("time").begin_object().field("ntp_enabled", s.time.ntp_enabled).field("ntp", s.time.ntp).field("zone", s.time.zone).end_object();
-  w.key("system").begin_object().field("auto_restart_hours", s.auto_restart_hours).end_object();
+  w.key("system").begin_object().field("auto_restart_hours", s.auto_restart_hours).field("login_limit_per_minute", s.login_limit_per_minute).end_object();
 }
 
 }  // namespace armor::config
