@@ -2,12 +2,17 @@
 
 All notable changes to this project are documented here.
 
-## [Unreleased]
+## [0.4.5] - Diagnostics, watched meters task and reading quality
 
 - The repository has a security policy, a code of conduct, a contributing guide and a support file.
 - The banner follows the animated style of the ecosystem banners, with the name, the kind and the technologies of the project.
 - **The meters task is watched by the task watchdog,** like the analog inputs and the relays: a bus read that hangs restarts the board instead of leaving every reading stale unseen.
 - **Each meter channel says how old its reading is and how many requests failed** (`reading_age_ms`, `errors`), so the server can tell `0 W` from no data; the fields are optional in the contract.
+- **How the last run ended:** after a start that was not clean (a crash, a watchdog, a sag of the supply, a failed allocation, a restart by the node's own guard) the health report carries the cause for the first ten minutes, so nobody has to be at the board with a cable.
+- **The memory gate and the core dump in the health report:** whether new panel connections are being refused now and whether a core dump is waiting.
+- **Crash report in the panel:** a crash writes its core dump (ELF, with a checksum, up to 32 tasks) to the `coredump` partition (128 KB in the table of the repository); the Update page has a *Crash report (core dump)* card for administrators to look at it, download it or erase it. A node flashed before with the older 64 KB table keeps it and may not fit a long dump.
+- **Settings that survive an update:** right before a firmware is installed the node keeps a copy of the stored settings next to them, with the version that wrote it and a check number, and reads both with the tolerant reader at every start.
+- **Diagnostic package and log on request:** an administrator can ask the node, through the server, for its `diagnostics` with `detail` `package` or `log` (the same two steps and one-time token as the other orders); the answer carries the memory as it is now and the tasks with the least stack they have had free.
 
 ## [0.4.4] - The node protects its memory, and the server can control it
 
