@@ -38,6 +38,9 @@ struct RelaySetting {
   std::string label;
   int pin = -1;
   bool active_low = false; // the relay closes when the pin is low (an opto-isolated board often does)
+  // The name of another relay that must never be closed at the same time as this one (two sources of one load, a motor's two directions): empty, none. It works both ways - naming it on one
+  // of the two is enough - and a request to close a relay while its partner is closed is refused, never carried out by opening the partner on its own. The alarm's siren is not held back by it.
+  std::string interlock = std::string();   // (an initializer, so that the aggregates of the tests that list the first five members stay complete)
 };
 
 // Whether the broker may move the relays. OFF by default: a relay then answers only to the panel. On, each relay is a device of the device layer (core/relay_remote.hpp) and
@@ -96,6 +99,7 @@ inline void io_read(const json::Value& document, IoSettings& io, Problems& probl
       read_text(item, "label", relay.label, 40, base + "label", problems);
       read_int(item, "pin", relay.pin, -1, board::kLastGpio, base + "pin", problems);
       read_bool(item, "active_low", relay.active_low, base + "active_low", problems);
+      read_text(item, "interlock", relay.interlock, 32, base + "interlock", problems);
     }
   }
   if (const json::Value* remote = document.get("remote"); remote != nullptr && remote->is_object()) {
@@ -142,6 +146,14 @@ inline void io_validate(const IoSettings& io, bool broker_enabled, Claim&& claim
     std::size_t label_characters = 0;
     if (!relay.label.empty() && (!net::valid_utf8(relay.label, &label_characters) || label_characters > 40)) bad(problems, base + "label", "invalid");
   }
+  // an interlock names another relay that is in use; a relay cannot be locked against itself
+  for (std::size_t i = 0; i < board::kRelayCount; ++i) {
+    const RelaySetting& relay = s.relays[i];
+    if (!relay.enabled || relay.interlock.empty()) continue;
+    const std::string base = "relays." + std::to_string(i) + ".";
+    if (relay.interlock == relay.name) bad(problems, base + "interlock", "invalid");
+    else if (std::find(relay_names.begin(), relay_names.end(), relay.interlock) == relay_names.end()) bad(problems, base + "interlock", "unknown_relay");
+  }
 
   // the broker moving the relays: it needs a broker, and a fall back time is 0 (never) or at least ten seconds
   if (s.remote.relays && !broker_enabled) bad(problems, "remote.relays", "needs_broker");
@@ -159,7 +171,7 @@ inline void io_write(json::Writer& w, const IoSettings& io, bool secrets = false
       .field("baud", s.zigbee.baud).field("port", s.zigbee.port).field("allowed_client", s.zigbee.allowed_client).field("fallback_client", s.zigbee.fallback_client).field("fallback_after_s", s.zigbee.fallback_after_s).end_object();
   w.key("relays").begin_array();
   for (const RelaySetting& relay : s.relays) {
-    w.begin_object().field("enabled", relay.enabled).field("name", relay.name).field("label", relay.label).field("pin", relay.pin).field("active_low", relay.active_low).end_object();
+    w.begin_object().field("enabled", relay.enabled).field("name", relay.name).field("label", relay.label).field("pin", relay.pin).field("active_low", relay.active_low).field("interlock", relay.interlock).end_object();
   }
   w.end_array();
   w.key("remote").begin_object().field("relays", s.remote.relays).field("link_timeout_s", s.remote.link_timeout_s).field("http", s.remote.http);

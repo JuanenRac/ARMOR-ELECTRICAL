@@ -569,6 +569,7 @@ function relayCard(index) {
     cfg.enabled ? [
       el("div", { class: "row" }, field("relayName", base + "name", { max: 32, hint: t("relayNameHint") }), field("relayLabel", base + "label", { max: 40 })),
       el("div", { class: "row" }, field("relayPin", base + "pin", { type: "select", number: true, options: pinOptions(cfg.pin, true, base + "pin") }), field("relayActiveLow", base + "active_low", { type: "checkbox" })),
+      field("relayInterlock", base + "interlock", { type: "select", hint: t("relayInterlockHint"), options: [["", t("relayInterlockNone")]].concat(S.cfg.relays.map((other, at) => [other, at]).filter(([other, at]) => other.enabled && other.name && at !== index).map(([other]) => [other.name, other.label || other.name])) }),
       running.enabled ? el("div", { class: "actions" },
         el("span", { class: "pill " + (running.on ? "warn" : "ok"), id: "relay-pill-" + index }, running.on ? t("relayClosed") : t("relayOpen")),
         isAdmin() ? el("button", { class: "b" + (running.on ? "" : " danger"), onclick: () => relayAction(index, !running.on) }, running.on ? t("relayOpenBtn") : t("relayCloseBtn")) : null)

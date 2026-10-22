@@ -52,11 +52,20 @@ void publish_one(std::size_t index) {
 }
 void publish_all_locked() { for (std::size_t i = 0; i < board::kRelayCount; ++i) publish_one(i); }
 
-void drive(std::size_t index, bool on, const char* who) {
-  g_bank->set(index, on);
+// Moves a relay. False when an interlock refused to close it (the other relay of the pair is closed): nothing moved, the pin is held where it was and the broker is told the state it still has.
+// `force` is for the alarm's siren, which no interlock holds back.
+bool drive(std::size_t index, bool on, const char* who, bool force = false) {
+  if (!g_bank->set(index, on, force)) {
+    const int other = on ? g_bank->blocked_by(index) : -1;
+    if (other >= 0) ESP_LOGW(kTag, "relay %u (%s) was not closed by %s: it is interlocked with %s, which is closed", static_cast<unsigned>(index + 1), g_bank->name(index).c_str(), who, g_bank->name(static_cast<std::size_t>(other)).c_str());
+    put(index);
+    publish_one(index);
+    return false;
+  }
   put(index);
   ESP_LOGW(kTag, "relay %u (%s) %s by %s", static_cast<unsigned>(index + 1), g_bank->name(index).c_str(), on ? "closed" : "opened", who);
   publish_one(index);
+  return true;
 }
 
 // Every half minute the state is said again (a server that restarted learns it), and a relay that was closed falls back to open when the broker has been lost for long enough.
@@ -124,6 +133,11 @@ bool set(std::size_t index, bool on) {
   return true;
 }
 
+bool interlocked(std::size_t index, bool on) {
+  std::lock_guard<std::mutex> guard(g_lock);
+  return g_bank && on && g_bank->enabled(index) && g_bank->blocked_by(index) >= 0;
+}
+
 void reserve_for_siren(std::size_t index) {
   std::lock_guard<std::mutex> guard(g_lock);
   g_siren_index = g_bank && g_bank->enabled(index) ? static_cast<int>(index) : -1;
@@ -134,7 +148,7 @@ void siren(bool on) {
   if (!g_bank || g_siren_index < 0) return;
   if (g_hold) on = false;   // paused or in standby: the siren stays silent whatever the alarm asks
   const std::size_t index = static_cast<std::size_t>(g_siren_index);
-  if (g_bank->is_on(index) != on) { drive(index, on, "the alarm"); return; }
+  if (g_bank->is_on(index) != on) { drive(index, on, "the alarm", true); return; }
   put(index);   // the same level again: nothing is said, but the pin is made to hold it
 }
 
@@ -148,7 +162,7 @@ Outcome command(const std::string& relay, const std::string& payload) {
   if (action == relays::Action::kNone) { ESP_LOGW(kTag, "a command for \"%s\" was ignored: not ON or OFF (a TOGGLE from the broker is refused: a message can be delivered twice)", relay.c_str()); return Outcome::kNotUnderstood; }
   const std::size_t i = static_cast<std::size_t>(index);
   if (index == g_siren_index) { ESP_LOGW(kTag, "a command for \"%s\" was ignored: it is the siren's relay", relay.c_str()); return Outcome::kReserved; }
-  drive(i, action == relays::Action::kToggle ? !g_bank->is_on(i) : action == relays::Action::kOn, "the broker");
+  if (!drive(i, action == relays::Action::kToggle ? !g_bank->is_on(i) : action == relays::Action::kOn, "the broker")) return Outcome::kInterlocked;
   return Outcome::kOk;
 }
 
@@ -162,9 +176,9 @@ Outcome command_direct(const std::string& relay, relays::Action action, bool& no
   const std::size_t i = static_cast<std::size_t>(index);
   if (index == g_siren_index) return Outcome::kReserved;
   const bool on = action == relays::Action::kToggle ? !g_bank->is_on(i) : action == relays::Action::kOn;
-  drive(i, on, "the central");
+  const bool moved = drive(i, on, "the central");
   now_on = g_bank->is_on(i);
-  return Outcome::kOk;
+  return moved ? Outcome::kOk : Outcome::kInterlocked;
 }
 
 std::string json() {

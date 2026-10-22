@@ -22,9 +22,21 @@ class Bank {
   bool enabled(std::size_t index) const { return index < settings_.size() && settings_[index].enabled; }
   bool is_on(std::size_t index) const { return enabled(index) && on_[index]; }
 
-  // Tells relay `index` to close (on) or open (off). False when there is no such relay or it is not enabled.
-  bool set(std::size_t index, bool on) {
+  // The relay that stops relay `index` from closing right now (an interlock between the two, in either direction, and that one is closed), or -1.
+  int blocked_by(std::size_t index) const {
+    if (!enabled(index)) return -1;
+    for (std::size_t other = 0; other < settings_.size(); ++other) {
+      if (other == index || !is_on(other)) continue;
+      if ((!settings_[index].interlock.empty() && settings_[index].interlock == settings_[other].name) || (!settings_[other].interlock.empty() && settings_[other].interlock == settings_[index].name)) return static_cast<int>(other);
+    }
+    return -1;
+  }
+
+  // Tells relay `index` to close (on) or open (off). False when there is no such relay or it is not enabled, or when closing it would close two relays that are interlocked (`force` is for the
+  // alarm's siren, which is never held back; opening is always allowed).
+  bool set(std::size_t index, bool on, bool force = false) {
     if (!enabled(index)) return false;
+    if (on && !force && blocked_by(index) >= 0) return false;
     on_[index] = on;
     return true;
   }

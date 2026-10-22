@@ -489,6 +489,7 @@ esp_err_t post_relay(httpd_req_t* r, const std::string& number) {
   if (!read_json(r, in)) return ESP_OK;
   const json::Value* on = in.get("on");
   if (on == nullptr || !on->is_bool() || number.size() != 1 || number[0] < '1' || number[0] > '8') return send_error(r, 422, "invalid");
+  if (relay_outputs::interlocked(static_cast<std::size_t>(number[0] - '1'), on->boolean)) return send_error(r, 409, "relay_interlocked");   // the other relay of an interlocked pair is closed
   if (!relay_outputs::set(static_cast<std::size_t>(number[0] - '1'), on->boolean)) return send_error(r, 409, "relay_not_available");
   ESP_LOGW(kTag, "relay %s %s by \"%s\"", number.c_str(), on->boolean ? "closed" : "opened", who.user.c_str());
   return send_ok(r);
@@ -529,6 +530,7 @@ esp_err_t post_remote_relay(httpd_req_t* r) {
   switch (relay_outputs::command_direct(request.relay, request.action, now_on)) {
     case relay_outputs::Outcome::kOk: return send_json(r, 200, central::relay_answer(request.relay, now_on));
     case relay_outputs::Outcome::kUnknownRelay: return send_error(r, 404, "unknown_relay");
+    case relay_outputs::Outcome::kInterlocked: return send_error(r, 409, "relay_interlocked");
     default: return send_error(r, 422, "invalid");
   }
 }

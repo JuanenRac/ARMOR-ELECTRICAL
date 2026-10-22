@@ -151,6 +151,9 @@ try {
   await goto("io");
   body = await text();
   check("the page has eight relays and eight analog inputs", [1, 2, 8].every(n => body.includes(`Relay ${n}`)) && [1, 2, 8].every(n => body.includes(`Input ${n}`)) && body.includes("Relay outputs") && body.includes("Analog inputs"), body.slice(0, 300));
+  check("each relay can be interlocked with another, and the node says why it refuses a second closing", body.includes("Never closed together with") && body.includes("No other relay"), body.slice(0, 300));
+  const interlocked = await ev(`(async () => { const send = (method, path, data) => fetch('/api/v1/' + path, { method, headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'armor' }, body: data ? JSON.stringify(data) : undefined }).then(async r => [r.status, await r.json().catch(() => ({}))]); const set = await send('PUT', 'config', { relays: [{ interlock: 'pump' }] }); const first = await send('POST', 'relays/2', { on: true }); const second = await send('POST', 'relays/1', { on: true }); const bad = await send('PUT', 'config', { relays: [{ interlock: 'nothing' }] }); await send('POST', 'relays/2', { on: false }); await send('PUT', 'config', { relays: [{ interlock: '' }] }); return [set[0], first[0], second[0], second[1].error, bad[0], JSON.stringify(bad[1].problems)]; })()`);
+  check("closing a relay is refused while the one it is interlocked with is closed, and an interlock must name a relay in use", interlocked && interlocked[0] === 200 && interlocked[1] === 200 && interlocked[2] === 409 && interlocked[3] === "relay_interlocked" && interlocked[4] === 422 && /unknown_relay/.test(interlocked[5]), JSON.stringify(interlocked));
   check("the direct API for a central is offered with its token", body.includes("Let a central read and command this node over HTTP"));
   await ev(`(() => { const box = [...document.querySelectorAll('label')].find(l => l.textContent.includes('Let a central read')); box.querySelector('input').click(); })()`);
   await sleep(300);
@@ -233,7 +236,7 @@ try {
   check("a fresh node shows the set-up screen", (await text()).includes("Set up this node"));
   await shot(`epanel-${board}-setup.png`);
 
-  const real = errors.filter(e => !/favicon|401|403|422/.test(e));
+  const real = errors.filter(e => !/favicon|401|403|422/.test(e) && !/409.*relays[/]1/.test(e));   // the 409 of the interlock check above is the answer that test asks for
   check("no errors in the browser console", real.length === 0, JSON.stringify(real).slice(0, 400));
   console.log(`${results.filter(Boolean).length}/${results.length} checks passed`);
 } catch (e) { console.log("FAILED", e); } finally { cleanup(); process.exit(0); }

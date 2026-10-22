@@ -632,6 +632,53 @@ static void test_relay_bank() {
         !state.items[1].bool_or("on", true) && state.items[1].bool_or("enabled", false) && !state.items[2].bool_or("enabled", true) && state.items[7].number_or("relay", 0) == 8);
 }
 
+// Two relays that must never be closed together (AC mains and a generator, the two directions of a motor): the settings name the partner, the bank refuses the second closing and never opens the
+// other by itself, and the alarm's siren, which forces its relay, is not held back.
+static void test_relay_interlock() {
+  using namespace relays;
+  config::IoSettings io;
+  config::io_defaults(io);
+  io.relays[0].enabled = true; io.relays[0].name = "mains";
+  io.relays[1].enabled = true; io.relays[1].name = "generator"; io.relays[1].interlock = "mains";
+  io.relays[2].enabled = true; io.relays[2].name = "lamp";
+  CHECK(io_check(io, false).empty());
+  CHECK(io.relays[0].interlock.empty() && io.relays[2].interlock.empty());   // no interlock unless it is asked for
+  // the settings: the partner is another relay in use
+  { config::IoSettings m = io; m.relays[1].interlock = "relay9"; CHECK(has(io_check(m, false), "relays.1.interlock", "unknown_relay")); }
+  { config::IoSettings m = io; m.relays[1].interlock = "generator"; CHECK(has(io_check(m, false), "relays.1.interlock", "invalid")); }
+  { config::IoSettings m = io; m.relays[2].enabled = false; m.relays[1].interlock = "lamp"; CHECK(has(io_check(m, false), "relays.1.interlock", "unknown_relay")); }   // a relay that is off is not a partner
+  { config::IoSettings m = io; m.relays[3].enabled = false; m.relays[3].interlock = "nothing"; CHECK(io_check(m, false).empty()); }   // a relay that is not in use is not checked
+  // reading and writing keep it
+  config::IoSettings read_back;
+  config::io_defaults(read_back);
+  config::Problems problems;
+  json::Writer w;
+  w.begin_object();
+  config::io_write(w, io);
+  w.end_object();
+  config::io_read(parsed(w.str()), read_back, problems);
+  CHECK(problems.empty() && read_back.relays[1].interlock == "mains" && read_back.relays[0].interlock.empty());
+  config::io_read(parsed("{\"relays\":[{},{\"interlock\":\"" + std::string(33, 'x') + "\"}]}"), read_back, problems);
+  CHECK(has(problems, "relays.1.interlock", "too_long"));
+  problems.clear();
+  config::io_read(parsed("{\"relays\":[{},{\"interlock\":5}]}"), read_back, problems);
+  CHECK(has(problems, "relays.1.interlock", "invalid"));
+  // the bank: the second closing is refused, whichever of the two names the other
+  Bank bank(io);
+  CHECK(bank.set(0, true) && bank.is_on(0));
+  CHECK(bank.blocked_by(1) == 0 && !bank.set(1, true) && !bank.is_on(1) && bank.is_on(0));   // refused, and the first stays as it was
+  CHECK(bank.blocked_by(0) == -1 && bank.blocked_by(2) == -1 && bank.set(2, true));                  // others are free
+  CHECK(bank.set(1, true, true) && bank.is_on(1) && bank.is_on(0));                                  // forced (the siren): not held back
+  bank.open_all();
+  CHECK(bank.set(1, true) && bank.blocked_by(0) == 1 && !bank.set(0, true) && !bank.is_on(0));      // the other way round: naming it on one of the two is enough
+  CHECK(bank.set(1, false) && bank.blocked_by(0) == -1 && bank.set(0, true));                        // when the partner is open it closes
+  CHECK(bank.set(0, false) && !bank.is_on(0));                                                       // opening is always allowed
+  CHECK(!bank.set(5, true) && bank.blocked_by(5) == -1 && bank.blocked_by(99) == -1);                // a relay that is not enabled has nobody to wait for
+  io.relays[1].interlock.clear();
+  Bank free_bank(io);
+  CHECK(free_bank.set(0, true) && free_bank.set(1, true));                                           // without the setting both close, as before
+}
+
 static void test_relay_remote() {
   using namespace relays;
   for (const char* word : {"on", "ON", "On", " on ", "\ttrue\n", "1", "TRUE"}) CHECK(parse_command(word) == Action::kOn);
@@ -752,6 +799,7 @@ int main() {
   test_io_settings();
   test_io_round_trip();
   test_relay_bank();
+  test_relay_interlock();
   test_relay_remote();
   test_zigbee_bridge();
   test_central_requests();
