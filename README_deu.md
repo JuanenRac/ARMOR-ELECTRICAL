@@ -38,7 +38,7 @@
 |---|---|
 | Version | `0.4.5` |
 | Reifegrad | Funktionsfähig |
-| Tests | 379,655 checks in 16 programs (`ctest`) |
+| Tests | 379.655 Prüfungen in 16 Programmen (`ctest`) |
 | Technik | C++17 (host-tested core); ESP-IDF firmware for the ESP32-S3 (Wi-Fi or Ethernet), with its web panel |
 | Auf echter Hardware | Noch keiner: keine Platine aufgebaut und kein Zähler oder Schütz angeschlossen; nichts schaltet irgendetwas |
 
@@ -91,7 +91,7 @@ ARMOR-ELECTRICAL/
 
 ## 🛠️ Entwicklungsumgebung
 
-**Voraussetzungen:** a C++17 compiler for the host tests, the ESP-IDF 5.4 container to build the image, an ESP32-S3-WROOM-1 N16R8 or a Waveshare ESP32-S3-ETH
+**Voraussetzungen:** ein C++17-Compiler für die Host-Tests, der ESP-IDF-5.4-Container zum Bauen des Images, ein ESP32-S3-WROOM-1 N16R8 oder ein Waveshare ESP32-S3-ETH
 
 ```bash
 cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 379,655 checks: the meters (62), the loop that asks them (72), the settings (85), the readings and inputs (477), Bluetooth (68), the shared base (252), the central link (19), the release and signature checks (20), the interlock (135,736) and the switch sets (239,272)

@@ -38,7 +38,7 @@
 |---|---|
 | 版本 | `0.4.5` |
 | 成熟度 | 可用 |
-| 测试 | 379,655 checks in 16 programs (`ctest`) |
+| 测试 | 16 个程序中的 379,655 项检查（`ctest`） |
 | 技术栈 | C++17 (host-tested core); ESP-IDF firmware for the ESP32-S3 (Wi-Fi or Ethernet), with its web panel |
 | 真实硬件 | 暂无：没有制作板子，也没有连接电表或接触器；不会切换任何设备 |
 
@@ -91,7 +91,7 @@ ARMOR-ELECTRICAL/
 
 ## 🛠️ 开发环境
 
-**环境要求:** a C++17 compiler for the host tests, the ESP-IDF 5.4 container to build the image, an ESP32-S3-WROOM-1 N16R8 or a Waveshare ESP32-S3-ETH
+**环境要求:** 用于主机测试的 C++17 编译器, 用于构建镜像的 ESP-IDF 5.4 容器, ESP32-S3-WROOM-1 N16R8 或 Waveshare ESP32-S3-ETH
 
 ```bash
 cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 379,655 checks: the meters (62), the loop that asks them (72), the settings (85), the readings and inputs (477), Bluetooth (68), the shared base (252), the central link (19), the release and signature checks (20), the interlock (135,736) and the switch sets (239,272)

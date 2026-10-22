@@ -38,7 +38,7 @@
 |---|---|
 | バージョン | `0.4.5` |
 | 成熟度 | 機能する |
-| テスト | 379,655 checks in 16 programs (`ctest`) |
+| テスト | 16 個のプログラムで 379,655 件のチェック（`ctest`） |
 | 技術 | C++17 (host-tested core); ESP-IDF firmware for the ESP32-S3 (Wi-Fi or Ethernet), with its web panel |
 | 実機での確認 | まだありません：基板は未製作で、メーターも接触器も未接続。何も切り替えません |
 
@@ -91,7 +91,7 @@ ARMOR-ELECTRICAL/
 
 ## 🛠️ 開発環境
 
-**必要なもの:** a C++17 compiler for the host tests, the ESP-IDF 5.4 container to build the image, an ESP32-S3-WROOM-1 N16R8 or a Waveshare ESP32-S3-ETH
+**必要なもの:** ホストテスト用の C++17 コンパイラ, イメージをビルドするための ESP-IDF 5.4 コンテナ, ESP32-S3-WROOM-1 N16R8 または Waveshare ESP32-S3-ETH
 
 ```bash
 cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 379,655 checks: the meters (62), the loop that asks them (72), the settings (85), the readings and inputs (477), Bluetooth (68), the shared base (252), the central link (19), the release and signature checks (20), the interlock (135,736) and the switch sets (239,272)
