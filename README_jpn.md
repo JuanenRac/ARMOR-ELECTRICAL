@@ -22,13 +22,13 @@
   <img src="https://img.shields.io/badge/Language-C%2B%2B17-00599c.svg" alt="Language">
   <img src="https://img.shields.io/badge/Meters-PZEM--004T%20%2F%20017-ffb020.svg" alt="Meters">
   <img src="https://img.shields.io/badge/Checks-376%2C195-2ea44f.svg" alt="Checks">
-  <img src="https://img.shields.io/badge/Version-0.4.5-0f6cbd.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-0.4.6-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-00E5FF.svg" alt="Maturity">
 </p>
 
 ---
 
-**正直さのチェック - 今日動いているもの:** コア（PZEM-004T v3 と PZEM-017 メーターのフレーム、それらに問い合わせるバス、ノードのメッセージ、アナログ入力、切り替えのルール：16 のテストプログラムで 379,663 項目、うち 375,008 項目が切り替えルール）は代替メーターと接触器を使ってコンピューター上でテストされ、生成するメッセージは ARMOR-COMMON に受け付けられます。ノードのファームウェア（設定、シリアルライン、パネルのメーターと測定値のページ、Bluetooth、署名付きアップデート）は ESP-IDF 5.5.5 コンテナーで両方の基板向けにビルドできます。**基板上で動いたことはなく、メーターにも接触器にも何も接続されておらず、ここには何かを切り替えるものはありません。**
+**正直さのチェック - 今日動いているもの:** コア（PZEM-004T v3 と PZEM-017 メーターのフレーム、それらに問い合わせるバス、ノードのメッセージ、アナログ入力、切り替えのルール：16 のテストプログラムで 380,189 項目、うち 375,036 項目が切り替えルール）は代替メーターと接触器を使ってコンピューター上でテストされ、生成するメッセージは ARMOR-COMMON に受け付けられます。ノードのファームウェア（設定、シリアルライン、パネルのメーターと測定値のページ、Bluetooth、署名付きアップデート）は ESP-IDF 5.5.5 コンテナーで両方の基板向けにビルドできます。**基板上で動いたことはなく、メーターにも接触器にも何も接続されておらず、ここには何かを切り替えるものはありません。**
 
 ---
 
@@ -36,9 +36,9 @@
 
 | | |
 |---|---|
-| バージョン | `0.4.5` |
+| バージョン | `0.4.6` |
 | 成熟度 | 機能する |
-| テスト | 16 個のプログラムで 379,655 件のチェック（`ctest`） |
+| テスト | 16 個のプログラムで 380,189 件のチェック（`ctest`） |
 | 技術 | C++17 (host-tested core); ESP-IDF firmware for the ESP32-S3 (Wi-Fi or Ethernet), with its web panel |
 | 実機での確認 | まだありません：基板は未製作で、メーターも接触器も未接続。何も切り替えません |
 
@@ -61,6 +61,7 @@
 * **サーバーからの制御：** Studio はノードをきれいに再起動し、最大 1 時間まで一時停止し（自動的に再開）、作業を待機にし（期限なし、再起動後も維持、ノードは接続したまま応答を続けます）、自分を表示させ、診断のスナップショットを求め、メンテナンス中として印を付けることができます（`armor/control/<ノード>/...`、ARMOR-COMMON の `node_control` 契約）。命令はすべて、その操作専用の使い捨てトークンによる 2 段階で、ブローカーに書き込めるのはサーバーだけです。工場出荷時リセットも消去もディープスリープもありません。一時停止中または待機中のノードは、誰が要求しても（パネル、ブローカー、セントラル）すべてのリレーを開いたままにして動かしません。電力量計の読み取りは続けます。 このコードは全ノードで共有され、コンピューター上でテスト済みですが、実機ではまだ動作していません。
 * **鮮度を示す測定値：** 各メーターチャンネルには測定値の経過時間とメーターへの失敗したリクエスト数が付くため、サーバーは本当の0 Wと応答しなくなったメーターを区別できます。メータータスクが固まった場合はウォッチドッグがボードを再起動します。
 * **ケーブルなしの診断：** 正常でない起動（クラッシュ、ウォッチドッグ、電源の電圧低下、メモリ確保の失敗）の後、ヘルスレポートが10分間その原因を伝えます。クラッシュするとコアダンプが残り、パネルから確認、ダウンロード、削除できます。保存された設定はファームウェアのインストールごとにコピーされ、更新で壊れた場合は復元されます。管理者はサーバー経由で、使い捨てトークンを使って、ノードに診断パッケージまたはログを要求できます。
+* **リレーのインターロック：**リレーは、同時に閉じてはならない別のリレーを指定できます（1つの負荷の2系統の電源、モーターの正転と逆転など）。一方が閉じている間にもう一方を閉じる要求は、パネル、ブローカー、セントラルのいずれからでも拒否され、ノードがもう一方を勝手に開くことはありません。コンピューター上でテスト済みで、ボード上ではまだ動作していません。
 
 ## 🖼️ スクリーンショット
 
@@ -94,7 +95,7 @@ ARMOR-ELECTRICAL/
 **必要なもの:** ホストテスト用の C++17 コンパイラ, イメージをビルドするための ESP-IDF 5.5.5 コンテナ, ESP32-S3-WROOM-1 N16R8 または Waveshare ESP32-S3-ETH
 
 ```bash
-cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 379,655 checks: the meters (62), the loop that asks them (72), the settings (85), the readings and inputs (477), Bluetooth (68), the shared base (252), the central link (19), the release and signature checks (20), the interlock (135,736) and the switch sets (239,272)
+cmake -S tests -B build/host && cmake --build build/host && ctest --test-dir build/host   # 380,189 checks: the meters (69), the loop that asks them (81), the settings (93), the readings and inputs (479), Bluetooth (68), the shared base (2,179), the control orders and diagnostics (1,799), the limits (260), the central link (19), the encrypted link (45), the release and signature checks (61), the interlock (135,736) and the switch sets (239,300)
 build/host/emit_samples | python tests/check_samples.py                                     # the messages, against ARMOR-COMMON
 node tools/panel_mock.mjs --user admin:adminpass123                                         # the panel without a board
 tools/build_node.sh generic                                                                 # the firmware image for the N16R8 board in the ESP-IDF container: dist/generic-s3-wifi.bin
