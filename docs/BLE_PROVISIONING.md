@@ -95,3 +95,5 @@ and then `reboot`. `wifi.scan` gives the app the list of networks to choose from
   node lists in its settings differs (radars and pins, serial ports, meters), and the app only touches what they all have: name, Wi-Fi, address, broker and Bluetooth.
 * The passkey is derived from the set-up code and is the same at every pairing of the node (a random one for each pairing would be better and is not done yet); five failed pairings close the door for five minutes.
 * The set-up code and the passwords are sent inside the encrypted link; a phone that pairs with an impostor node would send them to it.
+
+Where the setup code and the Bluetooth PIN come from, which image gives which kind of code and how to read it: [SETUP_CODE.md](SETUP_CODE.md).
