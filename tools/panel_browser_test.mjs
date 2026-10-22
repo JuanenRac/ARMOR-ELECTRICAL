@@ -1,5 +1,5 @@
 // ARMOR-ELECTRICAL - the web panel in a real browser (headless Microsoft Edge) against the stand-in node of tools/panel_mock.mjs: set-up, login, the pages, saving with a refused and a
-// corrected value, every page in the seven languages, the width of a phone. Development tool; it needs Edge, and `ws` from ARMOR-SERVER's node_modules.
+// corrected value, every page in the eight languages, the width of a phone. Development tool; it needs Edge, and `ws` from ARMOR-SERVER's node_modules.
 //   node tools/panel_browser_test.mjs [s3-wifi|s3-eth]
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 import { spawn } from "node:child_process";
