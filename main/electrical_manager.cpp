@@ -11,6 +11,7 @@
 #include <mutex>
 extern "C" {
 #include "esp_log.h"
+#include "esp_task_wdt.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -65,7 +66,9 @@ void bus_task(void*) {
   clock.wall_clock_ms = [] { return mqtt_link::wall_clock_ms(); };
   std::uint32_t reported_failures = 0;
   bool reported_no_publisher = false;
+  esp_task_wdt_add(nullptr);   // a meters task that hangs would leave every reading stale unseen: the watchdog restarts the board
   for (;;) {
+    esp_task_wdt_reset();
     const Runner::Outcome outcome = g_runner->step(*line, second.get(), clock);
     if (g_runner->write_failures() != reported_failures) { reported_failures = g_runner->write_failures(); ESP_LOGW(kTag, "a request could not be sent"); }
     if (outcome.statuses || outcome.message) {

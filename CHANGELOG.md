@@ -6,6 +6,8 @@ All notable changes to this project are documented here.
 
 - The repository has a security policy, a code of conduct, a contributing guide and a support file.
 - The banner follows the animated style of the ecosystem banners, with the name, the kind and the technologies of the project.
+- **The meters task is watched by the task watchdog,** like the analog inputs and the relays: a bus read that hangs restarts the board instead of leaving every reading stale unseen.
+- **Each meter channel says how old its reading is and how many requests failed** (`reading_age_ms`, `errors`), so the server can tell `0 W` from no data; the fields are optional in the contract.
 
 ## [0.4.4] - The node protects its memory, and the server can control it
 

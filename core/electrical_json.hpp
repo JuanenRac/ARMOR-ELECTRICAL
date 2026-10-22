@@ -48,10 +48,11 @@ struct AnalogChannel {
 /// The message of a node from the meters that have a fresh reading. `extras` (by channel id) adds the state of a switch and an alarm code; a meter's own alarm flag is
 /// always reported. At most sixteen channels go into one message. `switching_enabled` says whether this node's firmware may switch at all. `switches` is the already
 /// serialised array of the node's switches (`SwitchSet::switches_json`), or empty for a node that has none. `analog` are the channels of the node's own analog inputs, after the
-/// meters' (the message holds sixteen channels in all).
+/// meters' (the message holds sixteen channels in all). `now_ms` is the node's uptime clock: when it is given (not zero) each meter channel also says how old its reading is
+/// (`reading_age_ms`) and how many requests failed since boot (`errors`), so the server can tell "0 W" from "no data".
 inline std::string message_json(const std::string& node_id, std::uint64_t timestamp_ms, bool switching_enabled, const std::vector<const MeterState*>& meters,
                                 const std::vector<std::pair<std::string, ChannelExtra>>& extras = {}, const std::string& switches = "",
-                                const std::vector<AnalogChannel>& analog = {}) {
+                                const std::vector<AnalogChannel>& analog = {}, std::uint64_t now_ms = 0) {
   json::Writer w;
   w.begin_object().field("kind", "electrical").field("node_id", node_id).key("timestamp_ms").integer(static_cast<long long>(timestamp_ms));
   w.field("switching_enabled", switching_enabled);
@@ -66,6 +67,10 @@ inline std::string message_json(const std::string& node_id, std::uint64_t timest
     w.key("voltage_v").number(r.voltage_v, ac ? 1 : 2).key("current_a").number(r.current_a, ac ? 3 : 2).key("power_w").number(r.power_w, 1).key("energy_kwh").number(r.energy_kwh, 3);
     if (r.has_frequency) w.key("frequency_hz").number(r.frequency_hz, 1);
     if (r.has_power_factor) w.key("power_factor").number(r.power_factor, 2);
+    if (now_ms != 0) {
+      w.key("reading_age_ms").integer(static_cast<long long>(now_ms >= meter->reading_at_ms ? now_ms - meter->reading_at_ms : 0));
+      w.key("errors").integer(static_cast<long long>(meter->replies_bad) + static_cast<long long>(meter->timeouts));
+    }
     for (const auto& extra : extras) {
       if (extra.first != meter->config.channel) continue;
       if (extra.second.state != SwitchState::kNone) w.field("state", state_name(extra.second.state));

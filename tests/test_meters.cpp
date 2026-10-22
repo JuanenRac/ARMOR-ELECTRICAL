@@ -212,6 +212,16 @@ static void test_message() {
   armor::json::Value doc2;
   CHECK(armor::json::parse(with_extra, doc2) && doc2.get("switching_enabled")->boolean && doc2.get("channels")->items[0].get("state")->text == "open" && doc2.get("channels")->items[0].get("alarm_code")->text == "over_current");
   CHECK(doc2.get("channels")->items[1].get("state") == nullptr);
+  // given the node clock, every meter channel says how old its reading is and how many requests failed; without it the message is as before
+  CHECK(grid.get("reading_age_ms") == nullptr && grid.get("errors") == nullptr);
+  armor::json::Value quality;
+  CHECK(armor::json::parse(message_json("electrical-1", 1, false, line.bus.fresh(line.now), {}, "", {}, line.now), quality));
+  const armor::json::Value& graded = quality.get("channels")->items[0];
+  CHECK(graded.get("reading_age_ms") != nullptr && graded.get("reading_age_ms")->number >= 0 && graded.get("reading_age_ms")->number <= 10000);
+  CHECK(graded.get("errors") != nullptr && graded.get("errors")->number == 0);
+  // a clock behind the reading cannot give a negative age
+  armor::json::Value early;
+  CHECK(armor::json::parse(message_json("electrical-1", 1, false, line.bus.fresh(line.now), {}, "", {}, 1), early) && early.get("channels")->items[0].get("reading_age_ms")->number == 0);
   // no meters with a reading: still a message, with no channels
   armor::json::Value doc3;
   CHECK(armor::json::parse(message_json("electrical-1", 1, false, {}), doc3) && doc3.get("channels")->is_array() && doc3.get("channels")->items.empty());

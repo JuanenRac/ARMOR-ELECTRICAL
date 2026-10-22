@@ -131,7 +131,7 @@ class Runner {
       const std::uint64_t stamp = clock.wall_clock_is_set() ? clock.wall_clock_ms() : after;
       std::vector<const electrical::MeterState*> fresh = engine_[0]->fresh(after);
       for (const electrical::MeterState* state : engine_[1]->fresh(after)) fresh.push_back(state);
-      message_ = electrical::message_json(settings_.node_id, stamp, false, fresh, {}, "", analog_ ? analog_() : std::vector<electrical::AnalogChannel>{});
+      message_ = electrical::message_json(settings_.node_id, stamp, false, fresh, {}, "", analog_ ? analog_() : std::vector<electrical::AnalogChannel>{}, after);
       for (int k = 0; k < kLines; ++k) if (!slots_[k].empty()) ++bus_[k].messages;
       outcome.message = true;
     }
