@@ -6,6 +6,7 @@ All notable changes to this project are documented here.
 
 - The repository has a security policy, a code of conduct, a contributing guide and a support file.
 - The banner follows the animated style of the ecosystem banners, with the name, the kind and the technologies of the project.
+- **ESP-IDF 5.5.5 is the one version:** `tools/build_node.sh` uses the 5.5.5 container, and the firmware guide, the requirements of the READMEs and the manifest name it (it said 5.4 in places).
 - **The meters task is watched by the task watchdog,** like the analog inputs and the relays: a bus read that hangs restarts the board instead of leaving every reading stale unseen.
 - **Each meter channel says how old its reading is and how many requests failed** (`reading_age_ms`, `errors`), so the server can tell `0 W` from no data; the fields are optional in the contract.
 - **How the last run ended:** after a start that was not clean (a crash, a watchdog, a sag of the supply, a failed allocation, a restart by the node's own guard) the health report carries the cause for the first ten minutes, so nobody has to be at the board with a cable.
