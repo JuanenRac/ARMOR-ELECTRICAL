@@ -59,6 +59,10 @@ def check_panel_features(table, problems):
             problems.append(f"the panel has no text {key}")
     if '"system.login_limit_per_minute"' not in app:
         problems.append("the System page does not offer system.login_limit_per_minute")
+    if "relayInterlock" in app:
+        for key in ("relayInterlock", "relayInterlockNone", "relayInterlockHint", "e_relay_interlocked"):
+            if key not in table:
+                problems.append(f"the panel has no text {key}")
     if '"voiceUrl"' in app and "192.168.0.180:18090" not in app:
         problems.append("the voice page suggests an address other than the port 18090 where ARMOR-VOICE-AI listens")
 

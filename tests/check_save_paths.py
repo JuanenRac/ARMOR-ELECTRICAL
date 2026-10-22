@@ -4,7 +4,8 @@
 #      saved in the panel stayed on the old one until somebody restarted the node;
 #   2. the clock still applies the zone only at start;
 #   3. the panel can no longer tell the person that a restart is needed (the restart_required answer, the note in eight languages and the Restart button);
-#   4. put_config keeps a whole config::Settings on the stack (the web, Bluetooth and serial set-up paths all run it in a task with a small stack).
+#   4. put_config keeps a whole config::Settings on the stack (the web, Bluetooth and serial set-up paths all run it in a task with a small stack);
+#   5. the settings are no longer read tolerantly, a serial set-up no longer sets the Wi-Fi as the way in, or the update check loses its answer for a release without an image for the board.
 # Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 from __future__ import annotations
 
@@ -47,6 +48,22 @@ def problems_of() -> list[str]:
     app = read("panel/app.js")
     if "restart_required" not in app or "savedRestart" not in app or "reboot()" not in app:
         problems.append("panel/app.js: the panel no longer shows the restart note and the Restart button when a save needs a restart")
+    # what an update and a first set-up leave behind (each of these was a node that came out of an update, or out of a set-up by cable, without its network or its release)
+    store = read("main/node_store.cpp")
+    if "load_stored(" not in store:
+        problems.append("main/node_store.cpp no longer reads the stored settings with load_stored: one value that a newer firmware refuses would throw away all of them (the network and the broker too)")
+    improv = read("main/improv_serial.cpp")
+    if improv and '\\"uplink\\":\\"wifi\\"' not in improv:
+        problems.append("main/improv_serial.cpp does not set uplink wifi: a board with a cable would take the Wi-Fi of a serial set-up and never use it")
+    if improv and "sta_connected" not in improv:
+        problems.append("main/improv_serial.cpp says \"provisioned\" without asking whether the station joined its network")
+    update = read("main/github_update.cpp")
+    if update and "no_asset_for_board" not in update:
+        problems.append("main/github_update.cpp does not answer no_asset_for_board when a newer release has no image for this board (the panel would say \"up to date\")")
+    limit = re.search(r"kMaxFirmware\s*=\s*(0x[0-9a-fA-F]+|\d+)", update)
+    slots = [int(size, 0) for size in re.findall(r"^ota_\d,\s*app,\s*ota_\d,\s*\w+,\s*(0x[0-9a-fA-F]+|\d+)", read("partitions.csv"), re.M)]
+    if update and limit and slots and int(limit.group(1), 0) > min(slots):
+        problems.append("main/github_update.cpp: kMaxFirmware is larger than an application slot of partitions.csv, so an image that fits nowhere would start to download")
     return problems
 
 
