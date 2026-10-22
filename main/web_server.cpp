@@ -5,6 +5,7 @@
 // JSON. Errors are short codes ({"error":"invalid"}), never sentences: the panel translates them into the eight languages.
 // The panel itself (index.html, app.js, style.css) is embedded compressed in the firmware, so an update of the firmware updates it too.
 #include "web_server.hpp"
+#include "node_diag.hpp"
 #include "node_guard.hpp"
 
 #include <arpa/inet.h>
@@ -689,6 +690,28 @@ esp_err_t post_factory_reset(httpd_req_t* r) {
   return send_ok(r, true);
 }
 
+// The core dump of the last crash. ONLY an administrator who is logged in to this panel may read it, see it described or erase it: it holds the memory the node had when it crashed, which can
+// include a secret. Nothing here is reachable without the session, and the dump is never written to the log.
+esp_err_t get_coredump_info(httpd_req_t* r) {
+  Who who;
+  if (!require(r, who, true, false)) return ESP_OK;
+  return send_json(r, 200, node_diag::core_info_json());
+}
+
+esp_err_t get_coredump(httpd_req_t* r) {
+  Who who;
+  if (!require(r, who, true, false)) return ESP_OK;
+  ESP_LOGW(kTag, "the core dump is being downloaded by \"%s\"", who.user.c_str());
+  return node_diag::send_core_dump(r);
+}
+
+esp_err_t post_coredump_erase(httpd_req_t* r) {
+  Who who;
+  if (!require(r, who, true, true)) return ESP_OK;
+  if (!node_diag::erase_core_dump()) return send_error(r, 404, "no_coredump");
+  return send_ok(r);
+}
+
 esp_err_t get_log(httpd_req_t* r) {
   Who who;
   if (!require(r, who, false, false)) return ESP_OK;
@@ -725,6 +748,7 @@ esp_err_t post_ota(httpd_req_t* r) {
   const node_control::UploadGuard upload_guard;   // the node does not restart, pause or go to standby in the middle of an upload
   const std::size_t total = r->content_len;
   if (total < 100 * 1024 || total > kMaxFirmware) return send_error(r, 413, "bad_size");
+  store::snapshot_settings(esp_app_get_description()->version);   // a copy of the settings, for the start to use if the new firmware cannot read them
   const esp_partition_t* target = esp_ota_get_next_update_partition(nullptr);
   if (target == nullptr) return send_error(r, 500, "no_partition");
   esp_ota_handle_t handle = 0;
@@ -861,6 +885,8 @@ esp_err_t api_handler(httpd_req_t* r) {
     if (route == "users") return get_users(r);
     if (route == "ble-pin") return get_ble_pin(r);
     if (route == "log") return get_log(r);
+    if (route == "coredump") return get_coredump(r);
+    if (route == "coredump/info") return get_coredump_info(r);
     if (route == "ota/check") return get_ota_check(r);
     if (route == "ota/progress") return get_ota_progress(r);
     if (route == "ota/copy") return get_ota_copy(r);
@@ -873,6 +899,7 @@ esp_err_t api_handler(httpd_req_t* r) {
     if (route == "remote/relay") return post_remote_relay(r);
     if (route == "factory-reset") return post_factory_reset(r);
     if (route == "ota") return post_ota(r);
+    if (route == "coredump/erase") return post_coredump_erase(r);
     if (route == "ota/switch") return post_ota_switch(r);
     if (route == "ota/copy") return post_ota_copy(r);
     if (route == "ota/install") return post_ota_install(r);

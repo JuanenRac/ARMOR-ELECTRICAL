@@ -28,6 +28,7 @@ extern "C" {
 #include "core/release_assets.hpp"
 #include "core/semver.hpp"
 #include "node_guard.hpp"
+#include "node_store.hpp"
 #include "psram_mem.hpp"
 #include "node_control.hpp"
 
@@ -322,6 +323,7 @@ void install_task(void* raw) {
     else if (!found.update_available) result.error = "up_to_date";
     else if (found.sha256.empty()) result.error = "no_checksum";
     else {
+      store::snapshot_settings(esp_app_get_description()->version);   // a copy of the settings next to them, for the start to use if the new firmware cannot read them (core/config_snapshot.hpp)
       node_control::announce_maintenance("update", 900);   // the server holds back the node-offline alert for a while (a no-op when the server does not control this node)
       result = install(found);
       if (!result.ok) node_control::announce_maintenance_done("update");   // failed: the node stays; a success restarts, and the node clears the signal when it is back

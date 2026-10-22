@@ -8,6 +8,7 @@
 #include <string_view>
 
 #include "core/auth.hpp"
+#include "core/boot_report.hpp"
 #include "core/electrical_config.hpp"
 
 namespace armor::store {
@@ -20,8 +21,15 @@ std::string mac_tail();
 unsigned mac_sum();
 
 config::Settings settings();                     // a copy
+std::string settings_json_full();                // the settings as they are kept in flash, secrets included, without copying them (for the diagnostic package, which washes them: core/diag_package.hpp)
 bool settings_are_stored();                      // false until the panel (or a build) has saved them once
 bool save_settings(const config::Settings& s);   // false when flash writing failed
+
+// A copy of the stored settings, kept in flash under a key of its own, right before a firmware is installed (from GitHub or by an upload to the panel); the start uses it when the new firmware cannot
+// read the settings (core/config_snapshot.hpp). `firmware` is the version that is running. False when there is nothing to copy or the copy is too big. Call it from a task with a stack in the internal memory.
+bool snapshot_settings(const char* firmware);
+// What the checks of this start found (the copy was put back; the settings read again fifteen seconds after the start were not what was expected and were written again), for the health report.
+bootreport::ConfigCheck config_check();
 
 bool users_empty();
 std::string users_json();                        // names and roles only, never hashes

@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -38,6 +39,11 @@ constexpr std::uint32_t kIdentifyMinS = 5, kIdentifyMaxS = 300, kIdentifyDefault
 constexpr std::uint32_t kMaintenanceMinS = 60, kMaintenanceMaxS = 28800, kMaintenanceDefaultS = 3600;
 
 enum class Operation { kRestart, kPause, kResume, kStandby, kIdentify, kDiagnostics, kMaintenanceOn, kMaintenanceOff };
+// What a diagnostics order asks for: the plain snapshot, the diagnostic package (core/diag_package.hpp) or the recent log alone.
+enum class Detail { kSummary, kPackage, kLog };
+inline const char* detail_name(Detail detail) { return detail == Detail::kPackage ? "package" : detail == Detail::kLog ? "log" : "summary"; }
+// At most one package or log in this many milliseconds: the answer is big and the node is small.
+constexpr std::uint64_t kPackageGapMs = 15000;
 enum class Action { kArm, kExecute };
 enum class Mode { kNow, kRolling };
 enum class Busy { kNone, kUpdate, kUpload, kSlotCopy, kBattery };
@@ -151,6 +157,7 @@ struct Command {
   std::uint32_t delay_s = 0;
   int slot = -1;                // -1: the order names no place
   std::uint32_t duration_s = 0; // 0: the order names no duration (the default of the operation applies)
+  Detail detail = Detail::kSummary;   // only on the execute of a diagnostics order
 };
 
 // The seconds a pause, identify or maintenance lasts: what the order says, or the default of the operation.
@@ -167,7 +174,7 @@ inline bool parse_command(std::string_view text, Command& out, std::string* why 
   auto fail = [&](const char* reason) { if (why != nullptr) *why = reason; return false; };
   json::Value doc;
   if (!json::parse(text, doc) || !doc.is_object()) return fail("not a JSON object");
-  static const char* const known[] = {"kind", "node_id", "timestamp_ms", "command_id", "action", "operation", "mode", "delay_s", "slot", "duration_s", "token", "requested_by"};
+  static const char* const known[] = {"kind", "node_id", "timestamp_ms", "command_id", "action", "operation", "mode", "delay_s", "slot", "duration_s", "token", "requested_by", "detail"};
   for (const std::string& name : doc.names) {
     bool found = false;
     for (const char* k : known) found = found || name == k;
@@ -218,6 +225,14 @@ inline bool parse_command(std::string_view text, Command& out, std::string* why 
     if (!executes || span.high == 0) return fail("a duration goes on the execute of pause, identify or maintenance_on");
     if (!detail::integer_in(doc.get("duration_s"), span.low, span.high, number)) return fail("duration_s");
     parsed.duration_s = static_cast<std::uint32_t>(number);
+  }
+  if (doc.get("detail") != nullptr) {
+    const json::Value* detail = doc.get("detail");
+    if (!executes || parsed.operation != Operation::kDiagnostics) return fail("a detail goes on the execute of diagnostics");
+    if (!detail->is_string()) return fail("detail");
+    if (detail->text == "package") parsed.detail = Detail::kPackage;
+    else if (detail->text == "log") parsed.detail = Detail::kLog;
+    else return fail("detail");
   }
   parsed.node_id = node->text;
   parsed.command_id = id->text;
@@ -521,6 +536,7 @@ struct Diagnostics {
   bool has_rssi = false;
   int rssi = 0;
   bool mqtt_connected = false;
+  std::string package;             // the `package` member as JSON text (core/diag_package.hpp), empty for the plain snapshot
 };
 
 inline std::string diagnostics_json(const std::string& node_id, std::uint64_t timestamp_ms, const Command& command, const Diagnostics& d, const Machine& machine) {
@@ -534,6 +550,7 @@ inline std::string diagnostics_json(const std::string& node_id, std::uint64_t ti
   if (d.stack_min_free >= 0) w.key("stack_min_free").integer(d.stack_min_free);
   if (d.has_rssi) w.key("rssi").integer(d.rssi > 0 ? 0 : (d.rssi < -120 ? -120 : d.rssi));
   w.field("mqtt_connected", d.mqtt_connected).field("state", state_name(machine.state())).field("maintenance", machine.maintenance());
+  if (!d.package.empty()) w.key("package").raw(d.package);
   w.end_object().end_object();
   return w.str();
 }
@@ -700,6 +717,8 @@ struct Env {
   Busy busy = Busy::kNone;
   std::string fresh_token;       // a new token, in case this order is an arm
   Diagnostics diagnostics;       // only read for a diagnostics order
+  // Builds the package (or the log) for a diagnostics order that asked for one; called only after the order was accepted, so the work is not done for an order that is refused. Optional.
+  std::function<std::string(Detail)> package;
 };
 
 // What the node is to do about an order: say `json` (when not empty), then restart in `restart_in_s` seconds when `restart` is set, and act on `change` (the work stops or starts, the standby is
@@ -761,9 +780,23 @@ class Controller {
       case Operation::kIdentify: reply.change = machine_.identify(env.now_ms, duration_of(command)); break;
       case Operation::kMaintenanceOn: machine_.maintenance_on(env.now_ms, duration_of(command)); break;
       case Operation::kMaintenanceOff: machine_.maintenance_off(); break;
-      case Operation::kDiagnostics:
-        reply.json = diagnostics_json(own_id, env.stamp_ms, command, env.diagnostics, machine_);
+      case Operation::kDiagnostics: {
+        Diagnostics snapshot = env.diagnostics;
+        if (command.detail != Detail::kSummary) {
+          // A package or a log is big: one in a while, never one after the other.
+          if (package_seen_ && env.now_ms >= last_package_ms_ && env.now_ms - last_package_ms_ < kPackageGapMs) {
+            reply.carried_out = false;
+            reply.why_not = "a package was refused: one was sent a moment ago";
+            reply.json = rejected_json(own_id, env.stamp_ms, command, Refusal::kRateLimited);
+            return reply;
+          }
+          package_seen_ = true;
+          last_package_ms_ = env.now_ms;
+          if (env.package) snapshot.package = env.package(command.detail);
+        }
+        reply.json = diagnostics_json(own_id, env.stamp_ms, command, snapshot, machine_);
         return reply;
+      }
     }
     reply.json = applied_json(own_id, env.stamp_ms, command, machine_, env.now_ms);
     return reply;
@@ -774,6 +807,8 @@ class Controller {
  private:
   Gate gate_;
   Machine machine_;
+  bool package_seen_ = false;
+  std::uint64_t last_package_ms_ = 0;
 };
 
 // What the planned-maintenance signal does after an order was carried out: a restart is announced (with the time it needs to be back), a pause with its length, a standby with none; a resume

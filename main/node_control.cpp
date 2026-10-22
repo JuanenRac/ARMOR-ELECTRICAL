@@ -23,6 +23,7 @@ extern "C" {
 #include "github_update.hpp"
 #include "mqtt_link.hpp"
 #include "network.hpp"
+#include "node_diag.hpp"
 #include "node_guard.hpp"
 #include "node_store.hpp"
 #include "task_health.hpp"
@@ -138,6 +139,8 @@ void on_command(const std::string& topic, const std::string& payload) {
   esp_fill_random(random, sizeof random);
   env.fresh_token = control::token_from_bytes(random, sizeof random);
   fill_diagnostics(env.diagnostics);
+  // The package (or the log) of a diagnostics order that asks for one is built only after the order was accepted (see control::Controller::handle).
+  env.package = [](control::Detail detail) { return node_diag::build_package(detail); };
   control::Reply reply;
   {
     const std::lock_guard<std::mutex> guard(g_lock);
@@ -189,6 +192,7 @@ void tick_task(void*) {
 void start(const Options& options) {
   if (!control::node_can_be_controlled(options.node_id)) { ESP_LOGW(kTag, "no control by the server: the node id is not valid for it"); return; }
   g_options = options;
+  if (options.sensor_versions) node_diag::set_sensor_versions(options.sensor_versions);
   std::string kept;
   std::uint64_t since = 0;
   std::string by;

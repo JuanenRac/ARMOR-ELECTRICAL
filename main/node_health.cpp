@@ -15,9 +15,11 @@ extern "C" {
 #include "core/node_health.hpp"
 #include "log_buffer.hpp"
 #include "network.hpp"
-#include "node_guard.hpp"
-#include "psram_mem.hpp"
 #include "node_control.hpp"
+#include "node_diag.hpp"
+#include "node_guard.hpp"
+#include "node_store.hpp"
+#include "psram_mem.hpp"
 #include "task_health.hpp"
 
 namespace armor::node_health {
@@ -61,6 +63,18 @@ nodehealth::Report build(const std::string& node_id, const std::string& family) 
   report.control_until_s = ctl.paused_left_s;
   report.maintenance = ctl.maintenance;
   report.maintenance_until_s = ctl.maintenance_left_s;
+  // How the last run ended (said only after a dirty start, for the first minutes), the gate at the door of the panel, the core dump in flash and what the checks of the start found. All of it is
+  // kept in memory already: nothing here reads the flash (this task keeps its stack in the external RAM).
+  report.has_boot = true;
+  report.boot = nodeguard::boot_report();
+  report.has_gate = true;
+  report.gate = nodeguard::gate_info();
+  const node_diag::CoreInfo core = node_diag::core_info();
+  report.has_coredump = true;
+  report.coredump_present = core.present;
+  report.coredump_size = core.size;
+  report.has_config_check = true;
+  report.config_check = store::config_check();
   return report;
 }
 

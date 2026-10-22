@@ -4,8 +4,10 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "core/control_gate.hpp"
+#include "core/diag_package.hpp"
 
 namespace armor::node_control {
 
@@ -24,6 +26,8 @@ struct Options {
   std::function<void(unsigned seconds)> identify;
   // Adds what only the node knows to the snapshot of a diagnostics order (it may fill psram_free, stack_min_free, rssi). Optional.
   std::function<void(control::Diagnostics&)> diagnostics_extra;
+  // The firmware versions of the sensors the node reads (name and version, at most eight), for the diagnostic package. Optional.
+  std::function<std::vector<diag::Sensor>()> sensor_versions;
 };
 
 // Loads the standby kept in flash (a node that was put in standby boots straight into it: the state is known BEFORE the node's work starts, so call this right after the store is open and

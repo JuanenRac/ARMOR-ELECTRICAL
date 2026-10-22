@@ -17,7 +17,10 @@ extern "C" {
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 }
+#include "core/boot_report.hpp"
+#include "core/node_health.hpp"
 #include "node_control.hpp"
+#include "node_diag.hpp"
 #include "node_health.hpp"
 #include "psram_mem.hpp"
 #include "web_server.hpp"
@@ -36,6 +39,12 @@ RTC_NOINIT_ATTR Ledger g_rtc_ledger;
 RTC_NOINIT_ATTR std::uint32_t g_rtc_check;
 RTC_NOINIT_ATTR OomRecord g_rtc_oom;
 RTC_NOINIT_ATTR std::uint32_t g_rtc_deliberate;   // kDeliberateMark when the last restart was asked for on purpose
+RTC_NOINIT_ATTR bootreport::WhyRecord g_rtc_why;      // why the guard asked for its last restart
+RTC_NOINIT_ATTR bootreport::CrashRecord g_rtc_crash;  // the guard's last look: how long the node had run and the internal memory it had
+bootreport::Facts g_facts;                            // what this boot learned, kept for the report of a dirty start
+bootreport::Report g_boot_report;
+bool g_boot_report_ready = false;
+std::atomic<std::uint32_t> g_gate_changes{0};
 Ledger g_ledger;
 BootInfo g_boot;
 OomRecord g_previous_oom;   // what the last boot left (invalid when there was none)
@@ -64,6 +73,17 @@ void load_ledger() {
   g_rtc_oom = OomRecord{};   // read once
   g_boot.deliberate = deliberate_boot(g_rtc_deliberate, kept, g_boot.by_guard);
   g_rtc_deliberate = 0;   // read once
+  // What the report of a dirty start is made of (core/boot_report.hpp). A brown-out leaves the memory as it was most of the time; the check numbers refuse the garbage when it does not.
+  g_facts.reset_reason = nodehealth::reset_reason_text(static_cast<int>(reason));
+  g_facts.kept_memory = kept || reason == ESP_RST_BROWNOUT;
+  g_facts.by_guard = g_boot.by_guard;
+  g_facts.deliberate = g_boot.deliberate;
+  if (g_facts.kept_memory) {
+    g_facts.why = g_rtc_why;
+    g_facts.crash = g_rtc_crash;
+    g_facts.oom = g_previous_oom;
+  }
+  g_rtc_why = bootreport::WhyRecord{};   // read once
   if (g_boot.deliberate) ESP_LOGW(kTag, "this start follows a restart that was asked for on purpose (the server or the panel), not one of the guard's: it does not count against the guard's limit");
   if (g_boot.by_guard) ESP_LOGW(kTag, "this start follows a restart the node asked for itself (%u in the last hour of running time): Bluetooth stays off", g_boot.restarts_in_hour);
   // The line below is also what the health report carries as its last error, so the server and the panel show why the last run ended.
@@ -95,7 +115,8 @@ std::vector<std::string> missing_tasks() {
   return missing;
 }
 
-void restart_cleanly() {
+void restart_cleanly(bootreport::Why why) {
+  g_rtc_why = bootreport::make_why(why);
   g_ledger.note_restart(uptime_s());
   save_ledger();
   ESP_LOGW(kTag, "restarting once, cleanly, in %u s (%u restarts of this kind in the last hour; the limit is %u)", kRestartDelayMs / 1000, g_ledger.recent(uptime_s()), kMaxRestartsPerHour);
@@ -115,6 +136,7 @@ void guard_task(void*) {
     // The gate at the door of the panel.
     if (gate.step(memory.internal_free, memory.internal_largest)) {
       g_gate_closed = gate.closed;
+      g_gate_changes = gate.transitions;
       const std::string text = gate_text(gate.closed, memory.internal_free, memory.internal_largest);
       if (gate.closed) ESP_LOGE(kTag, "%s", text.c_str());
       else ESP_LOGW(kTag, "%s", text.c_str());
@@ -127,7 +149,7 @@ void guard_task(void*) {
       if (verdict == DeadMan::kRestart) {
         ESP_LOGE(kTag, "guard: nothing was published to the broker for ten minutes while it is connected");
         node_health::publish_now();
-        restart_cleanly();
+        restart_cleanly(bootreport::Why::kDeadMan);
         g_last_publish_ms = now;   // not asked again while the restart is on its way
       } else if (verdict == DeadMan::kDegraded && (!degraded_said || now - degraded_at_ms >= kRepeatAlarmMs)) {
         degraded_said = true;
@@ -137,6 +159,9 @@ void guard_task(void*) {
     } else {
       degraded_said = false;
     }
+
+    // The last look before a crash: how long the node had run and the internal memory it had (read at the next start, see core/boot_report.hpp).
+    g_rtc_crash = bootreport::make_crash(uptime_s(), memory.internal_free, memory.internal_largest);
 
     // Tasks that are missing and memory that stays low.
     // A node the server paused or put in standby, or one with a restart on its way that someone asked for, is not restarted for a task it stopped on purpose; the memory rules stay in force.
@@ -153,7 +178,7 @@ void guard_task(void*) {
     const std::string reason = reason_text(missing, in, state.memory_low);
     ESP_LOGE(kTag, "%s", reason.c_str());
     node_health::publish_now();
-    if (action == Action::kAlertAndRestart) restart_cleanly();
+    if (action == Action::kAlertAndRestart) restart_cleanly(missing.empty() ? bootreport::Why::kLowMemory : bootreport::Why::kMissingTask);
     else ESP_LOGE(kTag, "no restart: the limit of %u in an hour is used up, the node stays up and says so again in ten minutes", kMaxRestartsPerHour);
   }
 }
@@ -172,13 +197,36 @@ BootInfo boot_info() {
 }
 
 void start() {
+  node_diag::init();   // the one look at the core dump partition (flash is read here, in the main task, and nowhere else)
   boot_info();
+  boot_report();
   std::set_new_handler(out_of_memory);
   // No flash is touched here (a log line, a message to the queue, a timer), so the stack can be in the external RAM.
   memory::start_task(guard_task, "node-guard", 4096, nullptr, 3);
 }
 
 void note_deliberate_restart() { g_rtc_deliberate = kDeliberateMark; }
+
+bootreport::Report boot_report() {
+  boot_info();
+  if (!g_boot_report_ready) {
+    bootreport::Facts facts = g_facts;
+    facts.coredump_present = node_diag::core_info().present;
+    g_boot_report = bootreport::classify(facts);
+    g_boot_report_ready = true;
+    if (g_boot_report.dirty) ESP_LOGW(kTag, "the last run ended badly: %s (reset %s)%s", bootreport::cause_name(g_boot_report.cause), g_boot_report.reset_reason.c_str(), g_boot_report.coredump ? ", a core dump is waiting in flash" : "");
+  }
+  return g_boot_report;
+}
+
+bootreport::GateInfo gate_info() {
+  bootreport::GateInfo info;
+  info.closed = g_gate_closed.load();
+  info.transitions = g_gate_changes.load();
+  return info;
+}
+
+unsigned restarts_in_hour() { return g_ledger.recent(uptime_s()); }
 
 void note_broker_in_use() { g_broker_in_use = true; g_last_publish_ms = now_ms(); }
 void note_broker_connected(bool connected) {

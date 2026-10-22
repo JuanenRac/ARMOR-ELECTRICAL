@@ -73,3 +73,11 @@ CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=247
 # advertisement and one connection, and a spare. A cached sdkconfig keeps an older value of these: delete the .compile cache before building (tools/check_sdkconfig.py compares the result).
 CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y
 CONFIG_BT_CTRL_BLE_MAX_ACT=3
+
+# A crash leaves its core dump in the partition made for it (coredump), in the ELF form with a checksum, so the summary (the task, the place, the backtrace) can be read on the node and the
+# image downloaded by an administrator (main/node_diag.cpp). Up to 32 tasks are saved. The partition is 128 KB in the tables of the repository; a node whose table is the older 64 KB one
+# (flashed by cable before this) may find a long dump does not fit, which the health report then shows as a node with no dump.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
+CONFIG_ESP_COREDUMP_MAX_TASKS_NUM=32

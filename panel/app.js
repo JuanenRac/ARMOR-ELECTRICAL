@@ -790,6 +790,30 @@ function copyButton(getText) {
   return button;
 }
 
+// The core dump of the last crash: an administrator looks for it, downloads it or erases it (the node refuses anyone else).
+function coredumpCard() {
+  const result = el("p", { class: "muted", role: "status" });
+  const actions = el("div", { class: "actions" });
+  const look = async () => {
+    const r = await api("GET", "coredump/info");
+    actions.textContent = "";
+    actions.appendChild(el("button", { class: "b", disabled: !isAdmin(), onclick: look }, t("coredumpCheck")));
+    if (!r.ok) { result.textContent = errorText(r.data.error); result.className = "err"; return; }
+    if (!r.data.present) { result.textContent = t("coredumpNone"); result.className = "muted"; return; }
+    const sum = r.data.summary || {};
+    result.textContent = t("coredumpFound", r.data.size, sum.task || "?", sum.pc || "?"); result.className = "muted";
+    actions.appendChild(el("a", { class: "b", href: "api/v1/coredump", download: "coredump.bin" }, t("coredumpDownload")));
+    actions.appendChild(el("button", { class: "b danger", onclick: async () => {
+      if (!confirm(t("confirmAsk"))) return;
+      const e = await api("POST", "coredump/erase", {});
+      result.textContent = e.ok ? t("coredumpErased") : errorText(e.data.error); result.className = e.ok ? "muted" : "err";
+      if (e.ok) actions.textContent = "";
+    } }, t("coredumpErase")));
+  };
+  actions.appendChild(el("button", { class: "b", disabled: !isAdmin(), onclick: look }, t("coredumpCheck")));
+  return card(t("coredumpTitle"), el("p", { class: "muted" }, t("coredumpHelp")), actions, result);
+}
+
 function updatePage() {
   const s = S.status;
   const progress = el("i"), label = el("p", { class: "muted" }), file = el("input", { type: "file", accept: ".bin" });
@@ -821,6 +845,7 @@ function updatePage() {
         const r = await api("POST", "factory-reset", { confirm: confirmBox.value });
         if (r.ok) { S.rebooting = true; render(); setTimeout(() => location.reload(), 6000); } else alert(errorText(r.data.error));
       } }, t("factoryTitle")))),
+    coredumpCard(),
     card(t("logTitle"), logBox, el("div", { class: "actions" }, el("button", { class: "b", onclick: async () => { S.log = { next: 0, text: "" }; await refreshLog(); } }, t("refresh")),
       copyButton(() => S.log.text))));
 }

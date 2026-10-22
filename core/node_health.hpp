@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <string>
 
+#include "boot_report.hpp"
 #include "json.hpp"
 #include "memory_budget.hpp"
 #include "node_id.hpp"
@@ -133,6 +134,17 @@ struct Report {
   long long control_until_s = -1;          // seconds until a pause ends, -1 when not paused
   bool maintenance = false;
   long long maintenance_until_s = -1;
+  // The way the node last started, said only after a dirty start and only in the first minutes of the run (see boot_report.hpp); the memory gate at the door of the panel; the core dump in flash;
+  // what the settings checks of the start found. Each is left out of the message unless its flag is set.
+  bool has_boot = false;
+  bootreport::Report boot;
+  bool has_gate = false;
+  bootreport::GateInfo gate;
+  bool has_coredump = false;
+  bool coredump_present = false;
+  std::uint32_t coredump_size = 0;
+  bool has_config_check = false;
+  bootreport::ConfigCheck config_check;
 };
 
 inline bool valid_family(const std::string& family) { return family == "radar" || family == "solar" || family == "electrical" || family == "alarm" || family == "hmi"; }
@@ -174,6 +186,14 @@ inline std::string to_json(const Report& r) {
     w.field("maintenance", r.maintenance);
     if (r.maintenance && r.maintenance_until_s >= 0) w.key("maintenance_until_s").integer(r.maintenance_until_s > 86400 ? 86400 : r.maintenance_until_s);
   }
+  if (r.has_boot && bootreport::should_report(r.boot, r.uptime_s)) { w.key("boot"); bootreport::write_json(w, r.boot); }
+  if (r.has_gate) { w.key("memory_gate"); bootreport::write_gate_json(w, r.gate); }
+  if (r.has_coredump) {
+    w.key("coredump").begin_object().field("present", r.coredump_present);
+    if (r.coredump_present && r.coredump_size > 0) w.key("size").integer(static_cast<long long>(r.coredump_size));
+    w.end_object();
+  }
+  if (r.has_config_check && r.config_check.any() && r.uptime_s < bootreport::kReportForS) { w.key("config_check"); bootreport::write_config_check_json(w, r.config_check); }
   w.end_object();
   return w.str();
 }

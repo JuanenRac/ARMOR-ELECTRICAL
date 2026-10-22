@@ -1,6 +1,7 @@
 // ARMOR-ELECTRICAL - the node's own watchdog over its health (rules in core/node_guard.hpp, tested on a computer). Nothing here has run on a board.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
+#include "core/boot_report.hpp"
 #include "core/node_guard.hpp"
 
 extern "C" {
@@ -20,6 +21,14 @@ BootInfo boot_info();
 // A restart someone asked for on purpose (the server's order, through node_control) marks the memory that survives a software reset, so that the next boot tells it from a restart the guard made.
 // Call it right before the restart is scheduled. It does not touch the ledger: deliberate restarts do not count against the limit of the guard.
 void note_deliberate_restart();
+
+// How this start came about (core/boot_report.hpp): a dirty one (a crash, a watchdog, a brown-out, an out-of-memory, a restart of the guard) says why, how long the node had run and the memory it had
+// at its last look; a clean one is `dirty == false`. Computed once, on the first call (after node_diag::init(), which tells whether a core dump is waiting).
+bootreport::Report boot_report();
+// The gate at the door of the panel as the health report tells it: open or closed and how many times it changed.
+bootreport::GateInfo gate_info();
+// How many restarts the guard has asked for in the last hour of running time (at most three).
+unsigned restarts_in_hour();
 
 // Starts the task that looks at the node every few seconds, and the handler of a failed allocation. Called once, first thing, by memory::start_monitor().
 void start();

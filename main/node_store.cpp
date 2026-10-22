@@ -11,9 +11,13 @@ extern "C" {
 #include "mbedtls/md.h"
 #include "mbedtls/pkcs5.h"
 #include "nvs.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
 }
+#include "core/config_snapshot.hpp"
+#include "core/node_guard.hpp"
 #include "entropy.hpp"
 
 namespace armor::store {
@@ -23,6 +27,7 @@ constexpr char kNamespace[] = "armor";
 constexpr char kSettingsKey[] = "config";
 constexpr char kUsersKey[] = "users";
 constexpr char kSetupCodeKey[] = "setup_code";
+constexpr char kSnapshotKey[] = "config_snap";   // the copy of the settings made before a firmware is installed (an NVS key is at most 15 characters)
 constexpr unsigned kHashIterations = 10000;
 
 std::mutex g_lock;
@@ -31,6 +36,10 @@ bool g_stored = false;
 auth::UserStore g_users;
 std::string g_setup_code;
 std::uint8_t g_mac[6]{};
+// What the node expects to find in flash under the settings key: the check number of the text it read at the start or wrote since. Moved by every save (under g_lock).
+bool g_expecting = false;
+std::uint32_t g_expected_hash = 0;
+bootreport::ConfigCheck g_check;   // what the checks of this start found, for the health report
 
 // PBKDF2-HMAC-SHA256, 10 000 rounds, 32 bytes, written as hexadecimal. The salt (text) is used as it is.
 std::string hash_password(std::string_view password, std::string_view salt) {
@@ -82,6 +91,30 @@ config::Settings first_settings() {
   s.mqtt.heartbeat_s = CONFIG_ARMOR_HEARTBEAT_S;
   return s;
 }
+
+// The stored settings are compared with what the node expects (the text it read, or the one it wrote since) and, when they differ, written once more from the settings in memory. The outcome
+// goes to the health report (config_check.reverted). Runs once, in the task below.
+void verify_settings() {
+  std::lock_guard<std::mutex> guard(g_lock);
+  std::string stored;
+  const bool readable = read_blob(kSettingsKey, stored);
+  const snapshot::Recheck found = snapshot::recheck(g_expecting, g_expected_hash, readable, snapshot::fnv1a(stored));
+  if (found == snapshot::Recheck::kFine) return;
+  ESP_LOGE(kTag, "the stored settings are not what the node read or wrote: writing them again once");
+  const std::string again = config::to_json(g_settings, true);
+  std::string back;
+  const bool confirmed = write_blob(kSettingsKey, again) && read_blob(kSettingsKey, back) && back == again;
+  if (confirmed) g_expected_hash = snapshot::fnv1a(again);
+  g_check.reverted = snapshot::reverted_outcome(found, confirmed);
+  if (confirmed) ESP_LOGW(kTag, "the settings were written again and read back");
+  else ESP_LOGE(kTag, "the settings could not be written again");
+}
+
+void settings_check_task(void*) {
+  vTaskDelay(pdMS_TO_TICKS(nodeguard::kSettingsCheckDelayS * 1000));
+  verify_settings();
+  vTaskDelete(nullptr);
+}
 }  // namespace
 
 void init() {
@@ -99,20 +132,37 @@ void init() {
   std::lock_guard<std::mutex> guard(g_lock);
   std::string text;
   g_settings = first_settings();
-  if (read_blob(kSettingsKey, text)) {
-    config::Settings loaded;
-    config::Problems dropped;
-    // Settings written by another version of the firmware are read as far as they can be: members this version does not know are ignored, and one that it cannot accept is left at its first value
-    // (the rest is kept), so an update never sends the node back to its first settings.
-    if (config::load_stored(text, first_settings(), loaded, dropped)) {
-      g_settings = loaded;
-      g_stored = true;
-      for (const config::Problem& problem : dropped) ESP_LOGW(kTag, "stored setting %s left at its first value (%s)", problem.path.c_str(), problem.code.c_str());
-    } else {
-      ESP_LOGE(kTag, "the stored settings could not be read: using the first settings");
-      for (const config::Problem& problem : dropped) ESP_LOGE(kTag, "  %s at %s", problem.code.c_str(), problem.path.c_str());
-    }
+  const bool have_text = read_blob(kSettingsKey, text);
+  config::Settings loaded;   // task-stack-ok: start-up code in the main task (16 KB stack)
+  config::Problems dropped;
+  // Settings written by another version of the firmware are read as far as they can be: members this version does not know are ignored, and one that it cannot accept is left at its first value
+  // (the rest is kept), so an update never sends the node back to its first settings.
+  const bool loaded_ok = have_text && config::load_stored(text, first_settings(), loaded, dropped);
+  // The copy made before the last install (core/config_snapshot.hpp): used when the stored text cannot be read at all, or when the copy is read with fewer fields dropped.
+  std::string copy_blob;
+  snapshot::Parsed copy;
+  config::Settings copy_settings;   // task-stack-ok: start-up code in the main task (16 KB stack)
+  config::Problems copy_dropped;
+  const bool have_copy = read_blob(kSnapshotKey, copy_blob) && snapshot::parse(copy_blob, copy);
+  const bool copy_ok = have_copy && config::load_stored(copy.settings, first_settings(), copy_settings, copy_dropped);
+  if (snapshot::pick_source(loaded_ok, dropped.size(), copy_ok, copy_dropped.size()) == snapshot::Pick::kSnapshot) {
+    g_settings = copy_settings;
+    g_stored = true;
+    const bool written = write_blob(kSettingsKey, copy.settings);
+    if (written) text = copy.settings;
+    g_check.snapshot = snapshot::snapshot_outcome(written, !written);
+    ESP_LOGW(kTag, "the stored settings %s: the copy made before the last update (firmware %s) %s", have_text ? "were damaged or lost fields" : "were missing", copy.firmware.c_str(), written ? "was put back" : "is used, but could not be written back");
+  } else if (loaded_ok) {
+    g_settings = loaded;
+    g_stored = true;
+    for (const config::Problem& problem : dropped) ESP_LOGW(kTag, "stored setting %s left at its first value (%s)", problem.path.c_str(), problem.code.c_str());
+  } else if (have_text) {
+    ESP_LOGE(kTag, "the stored settings could not be read: using the first settings");
+    for (const config::Problem& problem : dropped) ESP_LOGE(kTag, "  %s at %s", problem.code.c_str(), problem.path.c_str());
+    if (have_copy) g_check.snapshot = snapshot::snapshot_outcome(false, true);   // there was a copy and it did not help
   }
+  g_expecting = g_stored;
+  g_expected_hash = snapshot::fnv1a(text);
   if (read_blob(kUsersKey, text) && !g_users.from_json(text)) ESP_LOGE(kTag, "the stored users could not be read: the node is back in setup");
   // The board's code: first from the fleet secret (the owner can always work it out again), then the one built into the image, and last a
   // random one that is kept in flash so it is the same at every start. It only ever opens a node with no administrator yet (the panel and
@@ -139,6 +189,8 @@ void init() {
     g_setup_code = auth::setup_code_from(bytes, sizeof bytes);
     write_blob(kSetupCodeKey, g_setup_code);
   }
+  // Fifteen seconds after the start the stored text is read again (a task of its own, with its stack in the internal memory: it touches the flash, and it ends when it is done).
+  xTaskCreate(settings_check_task, "cfg-check", 4096, nullptr, 1, nullptr);
 }
 
 std::string mac_tail() { return auth::to_hex(g_mac + 3, 3); }
@@ -153,12 +205,35 @@ bool settings_are_stored() {
   return g_stored;
 }
 
+std::string settings_json_full() {
+  std::lock_guard<std::mutex> guard(g_lock);
+  return config::to_json(g_settings, true);
+}
+
 bool save_settings(const config::Settings& s) {
   std::lock_guard<std::mutex> guard(g_lock);
-  if (!write_blob(kSettingsKey, config::to_json(s, true))) return false;
+  const std::string text = config::to_json(s, true);
+  if (!write_blob(kSettingsKey, text)) return false;
   g_settings = s;
   g_stored = true;
+  g_expecting = true;
+  g_expected_hash = snapshot::fnv1a(text);
   return true;
+}
+
+bool snapshot_settings(const char* firmware) {
+  std::string text;
+  if (!read_blob(kSettingsKey, text)) return false;
+  const std::string blob = snapshot::make(firmware != nullptr ? firmware : "", text);
+  if (blob.empty()) return false;   // nothing to copy, or too big to keep next to the users and the certificate
+  if (!write_blob(kSnapshotKey, blob)) { ESP_LOGW(kTag, "the settings could not be copied before the update"); return false; }
+  ESP_LOGI(kTag, "the settings were copied before the update (%u bytes)", static_cast<unsigned>(text.size()));
+  return true;
+}
+
+bootreport::ConfigCheck config_check() {
+  std::lock_guard<std::mutex> guard(g_lock);
+  return g_check;
 }
 
 bool blob_read(const char* key, std::string& out) { return read_blob(key, out); }
