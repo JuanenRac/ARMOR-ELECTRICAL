@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## [0.4.6] - Interlocked relays, wrong passwords per minute as a setting and the broker certificate from a file
 
+- **Fixed: a node with stored settings no longer restarts in a loop at power-up.** The start-up code read the stored settings and the copy made before the last update on the stack of the main task (about 3 KB each, plus the reader's own copy); with settings stored the 16 KB stack overflowed and the node restarted again and again before it could start the network. They now live on the heap.
 - **A relay can name another that must never be closed at the same time** (the two sources of one load, the two directions of a motor): a request to close one while the other is closed is refused with `relay_interlocked` (from the panel, the broker and the central alike), the node never opens the partner by itself, opening is always allowed, and nothing changes for a relay that names none.
 - **The limit on wrong passwords per minute is a setting of the node:** `system.login_limit_per_minute` (30 as always, 0 for none, at most 120) with its field and its explanation in the panel in the eight languages; the limit of each address and of each person is not touched by it.
 - **The certificate of the broker can be loaded from a file** on the Broker page (it is checked for the BEGIN and END lines, a private key is refused, and it must fit the 2048 characters the node keeps); nothing is sent to the node until the page is saved.

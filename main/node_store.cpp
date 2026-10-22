@@ -2,6 +2,7 @@
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include "node_store.hpp"
 
+#include <memory>
 #include <cctype>
 #include <cstring>
 #include <mutex>
@@ -133,7 +134,9 @@ void init() {
   std::string text;
   g_settings = first_settings();
   const bool have_text = read_blob(kSettingsKey, text);
-  config::Settings loaded;   // task-stack-ok: start-up code in the main task (16 KB stack)
+  // Each Settings is about 3 KB: the two read here live on the heap, because with the settings parser and the temporaries below they overflowed the 16 KB stack of the main task at the start of a node that had stored settings.
+  const auto loaded_box = std::make_unique<config::Settings>();
+  config::Settings& loaded = *loaded_box;
   config::Problems dropped;
   // Settings written by another version of the firmware are read as far as they can be: members this version does not know are ignored, and one that it cannot accept is left at its first value
   // (the rest is kept), so an update never sends the node back to its first settings.
@@ -141,7 +144,8 @@ void init() {
   // The copy made before the last install (core/config_snapshot.hpp): used when the stored text cannot be read at all, or when the copy is read with fewer fields dropped.
   std::string copy_blob;
   snapshot::Parsed copy;
-  config::Settings copy_settings;   // task-stack-ok: start-up code in the main task (16 KB stack)
+  const auto copy_box = std::make_unique<config::Settings>();
+  config::Settings& copy_settings = *copy_box;
   config::Problems copy_dropped;
   const bool have_copy = read_blob(kSnapshotKey, copy_blob) && snapshot::parse(copy_blob, copy);
   const bool copy_ok = have_copy && config::load_stored(copy.settings, first_settings(), copy_settings, copy_dropped);

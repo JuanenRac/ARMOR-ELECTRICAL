@@ -2,6 +2,7 @@
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -56,7 +57,9 @@ bool load_stored(std::string_view text, const Settings& base, Settings& out, Pro
   json::Value document;
   if (!json::parse(text, document)) { dropped.push_back({"", "not_json"}); return false; }
   for (int round = 0; round < 128; ++round) {
-    Settings candidate = base;
+    // Settings is about 3 KB: it lives on the heap so that this reader, called with others of its size from the start-up of the main task, does not run that stack out.
+    const auto candidate_box = std::make_unique<Settings>(base);
+    Settings& candidate = *candidate_box;
     ProblemList problems;
     read_settings(document, candidate, problems);
     if (problems.empty()) problems = validate(candidate);
