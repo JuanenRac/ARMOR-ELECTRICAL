@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here.
 
-## [Unreleased]
+## [0.4.7] - Meter settings check, HTTPS adoption and optional sealing of secrets
 
 - **The secrets the node stores can be kept sealed (optional, off by default):** the setting `security.seal_secrets` (in the panel, with its explanation in the eight languages) seals the passwords, tokens, keys, PINs and password hashes in flash with ChaCha20-Poly1305 (`core/secret_seal.hpp`, checked against the RFC vectors) and leaves everything else readable; turning it on or off rewrites the stored values one by one with nothing lost, even if the node stops half-way. The key is a record in the new `nvs_keys` partition: no eFuse is burned and the flash is not encrypted, so it does not protect against someone who holds the board, and a node installed with the earlier partition table keeps its secrets as they were. Tests on a computer cover the cipher, the settings in both directions and a stop in the middle.
 - **Improv over USB says "provisioned" only once the node has joined the network, and gives the address of the panel:** the node leaves a mark, restarts to join, and the page is then told the state and handed `http://<address>/` (or `https://` when the panel serves only HTTPS), or that it could not connect after 45 seconds.
