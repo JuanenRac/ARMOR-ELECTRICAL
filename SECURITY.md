@@ -1,6 +1,6 @@
 # Security policy
 
-Report a vulnerability in ARMOR-ELECTRICAL privately to `electrohobby3d@gmail.com`. Please do not publish it in a public issue before a fix exists.
+Report a vulnerability in ARMOR-NODE-ELECTRICAL privately to `electrohobby3d@gmail.com`. Please do not publish it in a public issue before a fix exists.
 
 Never put in an issue, a log or a screenshot: camera addresses and passwords, tokens, the set-up code of a node, the firmware signing key, the stored settings of a node or the addresses of a private network.
 

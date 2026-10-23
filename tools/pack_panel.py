@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ARMOR-ELECTRICAL - compresses the web panel for embedding in the firmware.
+"""ARMOR-NODE-ELECTRICAL - compresses the web panel for embedding in the firmware.
 Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 
     pack_panel.py PANEL_DIR OUT_DIR

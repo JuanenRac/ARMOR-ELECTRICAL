@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the serial line of the meters. Nothing here has run on a board.
+// ARMOR-NODE-ELECTRICAL - the serial line of the meters. Nothing here has run on a board.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include "uart_bus.hpp"
 

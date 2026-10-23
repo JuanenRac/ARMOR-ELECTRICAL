@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of the meters at work: what the node does on every turn of its loop, with a stand-in serial line that plays the meters and a clock the test moves.
+// ARMOR-NODE-ELECTRICAL - host tests of the meters at work: what the node does on every turn of its loop, with a stand-in serial line that plays the meters and a clock the test moves.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 // The meters are stand-ins written from the makers' public description; no real PZEM has been read, and no UART was used.
 #include <cstdio>

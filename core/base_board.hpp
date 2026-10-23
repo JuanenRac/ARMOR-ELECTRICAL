@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the base board that carries the ESP32-S3 module: where the Zigbee radio, the relays and the analog inputs are wired by default.
+// ARMOR-NODE-ELECTRICAL - the base board that carries the ESP32-S3 module: where the Zigbee radio, the relays and the analog inputs are wired by default.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The pins of the module itself (which GPIO exists, which belongs to the flash, the Ethernet controller or the USB) are core/board_s3.hpp's, shared by every node; this file is only

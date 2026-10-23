@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - which networks may use the panel: the house by default, and the ones its owner adds.
+// ARMOR-NODE-ELECTRICAL - which networks may use the panel: the house by default, and the ones its owner adds.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The panel is meant for the house (or a VPN into it), never for the Internet: if a port of the router is opened towards a node by mistake, whoever comes from outside must not

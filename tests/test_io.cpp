@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of what the base board adds: the Zigbee radio's bridge, the relay outputs and the analog inputs (settings, rules and the message).
+// ARMOR-NODE-ELECTRICAL - host tests of what the base board adds: the Zigbee radio's bridge, the relay outputs and the analog inputs (settings, rules and the message).
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 // No radio, relay or ADC was used: the samples and the pins are stand-ins.
 #include <cmath>

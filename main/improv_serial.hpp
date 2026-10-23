@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - Improv Wi-Fi over the USB serial line: a web page (ESP Web Tools) can give the node its Wi-Fi network without a phone or a cable to the router.
+// ARMOR-NODE-ELECTRICAL - Improv Wi-Fi over the USB serial line: a web page (ESP Web Tools) can give the node its Wi-Fi network without a phone or a cable to the router.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 

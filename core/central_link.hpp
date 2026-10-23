@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the node's direct, authenticated HTTP API for a central that has no broker to rely on: what it may ask and what it may command, checked before anything moves. No hardware.
+// ARMOR-NODE-ELECTRICAL - the node's direct, authenticated HTTP API for a central that has no broker to rely on: what it may ask and what it may command, checked before anything moves. No hardware.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // While the server's broker is out of reach a separate panel (a central of the house) still has to read the zones of a node and move its siren and relays. The node therefore answers, when

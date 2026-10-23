@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the node's own TLS certificate.
+// ARMOR-NODE-ELECTRICAL - the node's own TLS certificate.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include "tls_cert.hpp"
 

@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - how the tasks of the node are doing: the stack each has left, as the panel shows it. No hardware.
+// ARMOR-NODE-ELECTRICAL - how the tasks of the node are doing: the stack each has left, as the panel shows it. No hardware.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // A task whose stack is nearly used up is a crash waiting for the right input (a long JSON, a deep call). FreeRTOS keeps, for every task, the least stack it has ever had free (the "high-water

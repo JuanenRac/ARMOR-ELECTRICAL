@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the Zigbee radio of the base board: UART2 to one TCP client, byte for byte. Nothing here has run on a board.
+// ARMOR-NODE-ELECTRICAL - the Zigbee radio of the base board: UART2 to one TCP client, byte for byte. Nothing here has run on a board.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The node does not read what goes through: it is a cable. One client at a time, and only the addresses the settings name: the primary (the server) and, if set, a fallback (an alarm

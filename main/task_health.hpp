@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the stack each task of the node has left (read from FreeRTOS), for the panel's status.
+// ARMOR-NODE-ELECTRICAL - the stack each task of the node has left (read from FreeRTOS), for the panel's status.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <string>

@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of the edges the other tests pass by: what a damaged meter reply is called, what the analog inputs make of odd samples, and what the switch commands do with
+// ARMOR-NODE-ELECTRICAL - host tests of the edges the other tests pass by: what a damaged meter reply is called, what the analog inputs make of odd samples, and what the switch commands do with
 // text that is nearly right, with a token that is spent, or with a clock that has moved on.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 // No meter, ADC or contactor is used: the bytes and the samples are written out in the tests, and the contactors are numbers.

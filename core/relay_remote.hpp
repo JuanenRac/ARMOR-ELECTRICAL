@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the relays as devices of the device layer: the topics, the command words and the fall back to open when the broker is lost.
+// ARMOR-NODE-ELECTRICAL - the relays as devices of the device layer: the topics, the command words and the fall back to open when the broker is lost.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The convention is the one the radar node uses for the pins its panel maps: a relay is a device of A.R.M.O.R.'s device layer (ARMOR-SERVER), named after the node,

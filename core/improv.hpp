@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - Improv Wi-Fi over a serial line: the packets of the standard that lets a web page (ESP Web Tools) give a node its Wi-Fi network through the USB cable. No hardware.
+// ARMOR-NODE-ELECTRICAL - Improv Wi-Fi over a serial line: the packets of the standard that lets a web page (ESP Web Tools) give a node its Wi-Fi network through the USB cable. No hardware.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // Improv Wi-Fi Serial (https://www.improv-wifi.com/serial/) is a small packet protocol sent over the same serial line as the log:

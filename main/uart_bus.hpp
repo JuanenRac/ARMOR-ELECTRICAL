@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the serial lines of the meters: a hardware UART each (UART1 for the first line, UART0 for the second one: the console is on the USB).
+// ARMOR-NODE-ELECTRICAL - the serial lines of the meters: a hardware UART each (UART1 for the first line, UART0 for the second one: the console is on the USB).
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <cstddef>

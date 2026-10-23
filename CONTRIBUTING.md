@@ -1,4 +1,4 @@
-# Contributing to ARMOR-ELECTRICAL
+# Contributing to ARMOR-NODE-ELECTRICAL
 
 1. **Before a pull request** run `python -I tools/armor_ci_validate.py` and the tests of the project: both must pass.
 2. **The README exists in eight languages** (`README.md` and `README_spa.md`, `README_fra.md`, `README_ita.md`, `README_deu.md`, `README_zho.md`, `README_jpn.md`, `README_por.md`). They are generated from the sources in ARMOR-DOCS, so a change to the text is made there and the eight files are regenerated.

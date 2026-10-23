@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - what the panel does over HTTP and over HTTPS: which servers run, where plain HTTP sends the browser, how the cookie is marked.
+// ARMOR-NODE-ELECTRICAL - what the panel does over HTTP and over HTTPS: which servers run, where plain HTTP sends the browser, how the cookie is marked.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The node makes its own certificate (self-signed, so a browser warns the first time): what HTTPS gives is that the password and the session

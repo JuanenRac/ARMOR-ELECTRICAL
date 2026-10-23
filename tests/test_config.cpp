@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of the node's settings: the defaults, the serial line and its meters, and the stored document.
+// ARMOR-NODE-ELECTRICAL - host tests of the node's settings: the defaults, the serial line and its meters, and the stored document.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include <cstdio>
 #include <string>
@@ -38,7 +38,7 @@ static void test_defaults() {
   // no Wi-Fi at all could not be reached: the defaults are not valid until one of the two ways in is on
   CHECK(has(config::validate(s), "sta.enabled", "required"));
   CHECK(config::validate(valid_settings()).empty());
-  CHECK(std::string(config::default_settings("a1b2c3").ap.ssid) == "ARMOR-ELECTRICAL");
+  CHECK(std::string(config::default_settings("a1b2c3").ap.ssid) == "ARMOR-NODE-ELECTRICAL");
   for (int gpio : {26, 30, 33, 35, 37, 19, 20, 22, 49, -1}) CHECK(!board::assignable(gpio));
   for (int gpio : {0, 3, 43, 44, 45, 46, 48, 1, 16, 47}) CHECK(board::assignable(gpio));
 }

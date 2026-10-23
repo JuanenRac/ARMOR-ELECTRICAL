@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - what a serial line with several energy meters does: ask one meter at a time, wait for its reply, go on to the next, and keep the last good reading
+// ARMOR-NODE-ELECTRICAL - what a serial line with several energy meters does: ask one meter at a time, wait for its reply, go on to the next, and keep the last good reading
 // of each. It touches no hardware: the firmware feeds it the bytes that arrive and the time, and sends the bytes it returns, so the whole exchange (the order of the
 // requests, a meter that does not answer, a reply that is garbled or belongs to another address) is tested on a computer with a stand-in for the meters.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.

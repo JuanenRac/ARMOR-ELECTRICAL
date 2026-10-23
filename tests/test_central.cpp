@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of the node's direct HTTP API for a central: the token and the relay request, without hardware.
+// ARMOR-NODE-ELECTRICAL - host tests of the node's direct HTTP API for a central: the token and the relay request, without hardware.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include <cstdio>
 #include <string>

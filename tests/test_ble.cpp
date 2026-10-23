@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of the Bluetooth configuration channel: the framing, the requests, who may ask what, and the setting that turns it on.
+// ARMOR-NODE-ELECTRICAL - host tests of the Bluetooth configuration channel: the framing, the requests, who may ask what, and the setting that turns it on.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 // The radio (NimBLE) is not here: it builds with the firmware and has not run on a board. Everything a phone could ask, and the rules for answering it, are.
 #include <cstdio>

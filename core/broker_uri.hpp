@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the host and the port in the address of a broker ("mqtt://192.168.0.180:1883", "mqtts://broker.local", "ws://host/path"). Pure: tested on a computer.
+// ARMOR-NODE-ELECTRICAL - the host and the port in the address of a broker ("mqtt://192.168.0.180:1883", "mqtts://broker.local", "ws://host/path"). Pure: tested on a computer.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The node asks whether a broker answers (a plain TCP connection) before it leaves the one it is using for it; for that it needs the host and the port the address names, with the

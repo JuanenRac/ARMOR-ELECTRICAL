@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the Zigbee radio of the base board: the serial line lent to one client of the network over TCP.
+// ARMOR-NODE-ELECTRICAL - the Zigbee radio of the base board: the serial line lent to one client of the network over TCP.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <string>

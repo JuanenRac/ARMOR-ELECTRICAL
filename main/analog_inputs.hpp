@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the analog inputs of the base board: ADC1 pins read into channels of the node's message.
+// ARMOR-NODE-ELECTRICAL - the analog inputs of the base board: ADC1 pins read into channels of the node's message.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <array>

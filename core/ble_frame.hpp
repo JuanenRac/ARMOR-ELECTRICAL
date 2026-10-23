@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the framing of the Bluetooth configuration channel: JSON messages carried over a GATT byte stream.
+// ARMOR-NODE-ELECTRICAL - the framing of the Bluetooth configuration channel: JSON messages carried over a GATT byte stream.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // A GATT write or notification carries at most (MTU - 3) bytes, often 20, while a configuration is a few kilobytes of JSON. The channel is

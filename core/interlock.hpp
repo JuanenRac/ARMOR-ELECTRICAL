@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the rules for switching, kept apart from any hardware and tested to exhaustion on a computer.
+// ARMOR-NODE-ELECTRICAL - the rules for switching, kept apart from any hardware and tested to exhaustion on a computer.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // SWITCHING IS OFF unless the node was built and set up to allow it (`Config::allowed`). These controllers are the SOFTWARE layer of the protection and never the

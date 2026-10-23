@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the serial line of the meters, as the rest of the node sees it: bytes in, bytes out. The firmware gives it a hardware UART; the tests give it a stand-in.
+// ARMOR-NODE-ELECTRICAL - the serial line of the meters, as the rest of the node sees it: bytes in, bytes out. The firmware gives it a hardware UART; the tests give it a stand-in.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <cstddef>

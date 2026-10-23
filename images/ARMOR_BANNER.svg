@@ -234,7 +234,7 @@
       <text x="12" y="-2" font-family="'Inter', 'Segoe UI', 'Roboto', sans-serif" font-weight="700" font-size="11" fill="#00FF88" letter-spacing="2.5">A.R.M.O.R. · FIRMWARE</text>
     </g>
 
-    <text x="0" y="142" font-family="'Inter', 'Segoe UI', 'Roboto', sans-serif" font-weight="900" font-size="49" fill="#FFFFFF" letter-spacing="5">ARMOR-ELECTRICAL</text>
+    <text x="0" y="142" font-family="'Inter', 'Segoe UI', 'Roboto', sans-serif" font-weight="900" font-size="49" fill="#FFFFFF" letter-spacing="5">ARMOR-NODE-ELECTRICAL</text>
 
     <text x="0" y="182" font-family="'Inter', 'Segoe UI', 'Roboto', sans-serif" font-weight="700" font-size="22" fill="url(#greenGlow)" letter-spacing="4" filter="url(#glowGreen)">FIELD NODES</text>
 

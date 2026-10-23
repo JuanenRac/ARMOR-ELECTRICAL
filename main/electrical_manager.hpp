@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the meters at work: one task opens the serial line, asks the meters one at a time (core/pzem_bus.hpp) and hands the message of the node to the
+// ARMOR-NODE-ELECTRICAL - the meters at work: one task opens the serial line, asks the meters one at a time (core/pzem_bus.hpp) and hands the message of the node to the
 // broker link. READ ONLY: nothing in this project writes to a meter or switches anything.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once

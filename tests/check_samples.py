@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the messages ARMOR-ELECTRICAL's emit_samples prints against ARMOR-COMMON's published contract.
+"""Check the messages ARMOR-NODE-ELECTRICAL's emit_samples prints against ARMOR-COMMON's published contract.
 
 Usage:  emit_samples | python tests/check_samples.py
 

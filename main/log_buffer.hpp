@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the last few kilobytes of the node's log, so the panel can show what the console would.
+// ARMOR-NODE-ELECTRICAL - the last few kilobytes of the node's log, so the panel can show what the console would.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <cstdint>

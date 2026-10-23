@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - what a Bluetooth client may ask, and who may ask it: the operations of the configuration channel and their access rules.
+// ARMOR-NODE-ELECTRICAL - what a Bluetooth client may ask, and who may ask it: the operations of the configuration channel and their access rules.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The radio, the storage and the network are behind `Backend`, so all of the rules (a node that has no user answers only hello and set-up;

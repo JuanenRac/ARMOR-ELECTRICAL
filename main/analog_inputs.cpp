@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the analog inputs of the base board. Nothing here has run on a board.
+// ARMOR-NODE-ELECTRICAL - the analog inputs of the base board. Nothing here has run on a board.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // One task reads the enabled inputs in turn. A pin is sampled as fast as the converter allows for a fixed window (a whole number of mains periods for both 50 and 60 Hz: 200 ms for an

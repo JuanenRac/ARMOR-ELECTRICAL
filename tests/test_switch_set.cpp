@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of the commands to a switch: the strict reader (against the shared conformance vectors), the two-step close and its token, every refusal,
+// ARMOR-NODE-ELECTRICAL - host tests of the commands to a switch: the strict reader (against the shared conformance vectors), the two-step close and its token, every refusal,
 // the state message with switches, and a hundred thousand random messages against stand-in contactors. No real contactor has ever been driven.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include <cstdint>

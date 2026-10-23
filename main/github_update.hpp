@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - checking GitHub's own releases for a newer firmware and installing it, next to the existing manual upload (web_server.cpp's
+// ARMOR-NODE-ELECTRICAL - checking GitHub's own releases for a newer firmware and installing it, next to the existing manual upload (web_server.cpp's
 // /api/v1/ota): both end up in the same OTA slot through the same esp_ota_* calls, this one just gets its bytes from the Internet instead
 // of the panel's own upload. Nothing here replaces the manual path - a board with no Internet route, or a fleet an operator wants to hold
 // back, still updates exactly as it always has.
@@ -11,7 +11,7 @@ namespace armor::github_update {
 
 // The repository releases are read from. Which file of a release is this board's image (and its SHA-256) is core/release_assets.hpp's: a node installs a release only when the
 // image it downloaded has exactly the hash the release publishes - a truncated, altered or mixed-up download is refused.
-constexpr const char* kRepo = "JuanenRac/ARMOR-ELECTRICAL";
+constexpr const char* kRepo = "JuanenRac/ARMOR-NODE-ELECTRICAL";
 
 struct CheckResult {
   bool ok = false;             // false: `error` says why (network, no release, no matching asset...)

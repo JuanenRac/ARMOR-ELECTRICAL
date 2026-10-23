@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the analog inputs of the base board: what the ADC saw on a pin, made into a channel of the node's message.
+// ARMOR-NODE-ELECTRICAL - the analog inputs of the base board: what the ADC saw on a pin, made into a channel of the node's message.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The firmware reads a pin many times (main/analog_inputs.cpp) and gives the samples, in millivolts, to this file. Nothing here touches hardware, so all of it is tested on a computer.

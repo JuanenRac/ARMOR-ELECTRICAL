@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - how long to wait before trying again: a wait that grows with every failure and falls back to the first one when a try works. No hardware.
+// ARMOR-NODE-ELECTRICAL - how long to wait before trying again: a wait that grows with every failure and falls back to the first one when a try works. No hardware.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // A link that has gone away (the Wi-Fi network, the broker) is tried again at once and then less and less often, up to a ceiling, with a little scatter so that many nodes that lost

@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of the switching rules: a stand-in for two contactors, scripted scenarios, and a hundred thousand random steps that check what the
+// ARMOR-NODE-ELECTRICAL - host tests of the switching rules: a stand-in for two contactors, scripted scenarios, and a hundred thousand random steps that check what the
 // controller guarantees. No real contactor has ever been driven.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include <cstdint>

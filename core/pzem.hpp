@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - reading the Peacefair PZEM energy meters over their Modbus-RTU serial link: the PZEM-004T v3 (AC, up to 260 V, a current transformer for the current)
+// ARMOR-NODE-ELECTRICAL - reading the Peacefair PZEM energy meters over their Modbus-RTU serial link: the PZEM-004T v3 (AC, up to 260 V, a current transformer for the current)
 // and the PZEM-017 (DC, up to 300 V, a shunt). READ ONLY: only the request that reads the input registers is built. The requests that write (a new address, the alarm
 // thresholds, the reset of the energy counter) exist in the meters but are not built anywhere in this project.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.

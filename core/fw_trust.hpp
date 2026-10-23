@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - who may sign the firmware that a node installs by itself: the public key of the A.R.M.O.R. releases, and the check of a signature. Pure: tested on a computer.
+// ARMOR-NODE-ELECTRICAL - who may sign the firmware that a node installs by itself: the public key of the A.R.M.O.R. releases, and the check of a signature. Pure: tested on a computer.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // A release carries, next to each image, its SHA-256 (`<image>.sha256`) and two Ed25519 signatures made with the private key of whoever publishes the releases (each 64 bytes as 128

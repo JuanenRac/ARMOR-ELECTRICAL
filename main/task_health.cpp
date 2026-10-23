@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the stack each task of the node has left. Nothing here has run on a board.
+// ARMOR-NODE-ELECTRICAL - the stack each task of the node has left. Nothing here has run on a board.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include "task_health.hpp"
 

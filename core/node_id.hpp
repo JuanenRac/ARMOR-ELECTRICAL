@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - node identifier rules shared with the message contract.
+// ARMOR-NODE-ELECTRICAL - node identifier rules shared with the message contract.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <cstddef>

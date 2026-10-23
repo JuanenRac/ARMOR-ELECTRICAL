@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the Ethernet hardware of the Waveshare ESP32-S3-ETH (W5500 over SPI).
+// ARMOR-NODE-ELECTRICAL - the Ethernet hardware of the Waveshare ESP32-S3-ETH (W5500 over SPI).
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The board wires the W5500 to SPI as MOSI 11, MISO 12, SCLK 13, CS 14, INT 10 and RST 9 (the manufacturer's pin table); the

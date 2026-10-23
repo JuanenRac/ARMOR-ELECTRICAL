@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of the optional encryption of the link to the broker: what a stored authority may look like, what the settings must say when it is on, and that a document keeps it.
+// ARMOR-NODE-ELECTRICAL - host tests of the optional encryption of the link to the broker: what a stored authority may look like, what the settings must say when it is on, and that a document keeps it.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 // The certificate below was made with OpenSSL for these tests (a throw-away authority); no broker was needed.
 #include <cstdio>

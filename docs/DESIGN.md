@@ -1,6 +1,6 @@
 # The electrical node: what it is for and how it is built
 
-ARMOR-ELECTRICAL is the part of A.R.M.O.R. that looks at the house's electrical network: the grid input, the outputs of the solar inverters, the circuits of the distribution board, the DC bus of the batteries. A node measures **channels** (a circuit, a line, a bus) and publishes them; Studio's **Electrical Designer** draws the network and shows, on each element, what its channel measures.
+ARMOR-NODE-ELECTRICAL is the part of A.R.M.O.R. that looks at the house's electrical network: the grid input, the outputs of the solar inverters, the circuits of the distribution board, the DC bus of the batteries. A node measures **channels** (a circuit, a line, a bus) and publishes them; Studio's **Electrical Designer** draws the network and shows, on each element, what its channel measures.
 
 ## The pieces
 
@@ -13,7 +13,7 @@ ARMOR-ELECTRICAL is the part of A.R.M.O.R. that looks at the house's electrical 
 - **`core/electrical_json.hpp`**: the message of the node (see [ELECTRICAL_MESSAGES.md](ELECTRICAL_MESSAGES.md)).
 - **`core/zigbee_bridge.hpp`**, **`core/relay_bank.hpp`**, **`core/analog.hpp`**: what the base board adds - who may connect to the Zigbee radio and how it is reset, which relay is closed and at what level its pin must be, and how the samples of an analog input become a channel (see [BASE_BOARD.md](BASE_BOARD.md)).
 - **`core/interlock.hpp`**: the rules for switching, when a node one day switches something (see [SWITCHING.md](SWITCHING.md) and [SAFETY.md](SAFETY.md)).
-- **The firmware** (the ESP32-S3 with its serial line, Wi-Fi, web panel and MQTT), described in [NODE_FIRMWARE.md](NODE_FIRMWARE.md): `core/electrical_config.hpp` (the settings), `main/uart_bus.*` and `main/electrical_manager.*` (the line and the rounds), and the panel of ARMOR-SOLAR's node adapted (Meters and Readings). It reads only; `core/interlock.hpp` is not linked into it.
+- **The firmware** (the ESP32-S3 with its serial line, Wi-Fi, web panel and MQTT), described in [NODE_FIRMWARE.md](NODE_FIRMWARE.md): `core/electrical_config.hpp` (the settings), `main/uart_bus.*` and `main/electrical_manager.*` (the line and the rounds), and the panel of ARMOR-NODE-SOLAR's node adapted (Meters and Readings). It reads only; `core/interlock.hpp` is not linked into it.
 
 ## Channels and the drawing
 
