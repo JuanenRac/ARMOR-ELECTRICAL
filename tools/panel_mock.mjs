@@ -47,6 +47,7 @@ const config = {
     scale: i === 1 ? 30 : 11, offset_v: 0, zero_below: i === 1 ? 0.3 : 0, nominal_voltage_v: i === 1 ? 230 : 0 })),
   time: { ntp_enabled: true, ntp: "pool.ntp.org", zone: "CET-1CEST,M3.5.0,M10.5.0/3" },
   system: { auto_restart_hours: 0, login_limit_per_minute: 30 },
+  security: { seal_secrets: false },
   web: { mode: "both" },
   ble: { mode: "setup" },
   ui: { language: "en" },

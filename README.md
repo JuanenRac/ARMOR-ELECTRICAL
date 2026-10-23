@@ -62,6 +62,8 @@
 * **Readings that say how fresh they are:** each meter channel carries the age of its reading and how many requests to the meter failed, so the server tells a real 0 W from a meter that stopped answering; and a hung meters task restarts the board through the watchdog.
 * **Diagnostics without a cable:** after a start that was not clean (a crash, a watchdog, a sag of the supply, a failed allocation) the health report says why for ten minutes; a crash leaves its core dump to look at, download or erase from the panel; the stored settings are copied before every firmware install and recovered if an update damages them; and an administrator can ask the node, through the server, for a diagnostic package or its log with a one-time token.
 * **Relay interlock:** a relay can name another that must never be closed at the same time (the two sources of a load, the two directions of a motor); a request to close one while the other is closed is refused from the panel, the broker and the central alike, and the node never opens the partner by itself. Tested on a computer; not run on a board.
+* **Read-only reading of the meters' own settings:** after the first good reading and every `bus.check_settings_s` (600 s, 0 = never) the node reads the PZEM holding registers (004T v3: power threshold and address; 017: voltage thresholds, address and shunt) in the same turn as the measurements, and warns when the stored address is not the one it uses; nothing is written to the meter.
+* **Optional sealing of stored secrets:** off by default (`security.seal_secrets`, or the server's `nodes.nvs_encryption`). When on, the passwords, tokens, keys, PINs and password hashes the node stores are kept sealed with ChaCha20-Poly1305 and everything else stays readable; turning it on or off rewrites them with nothing lost, even if the node stops half-way. No eFuse is burned and the flash is not encrypted: the key lives in a partition of the same chip, so it does **not** protect against someone who holds the board, and a node installed before that partition existed keeps its secrets as they were until it is flashed with the new partition table.
 
 ## 🖼️ Screenshots
 
@@ -120,6 +122,7 @@ See the [design](docs/DESIGN.md), the [safety notes](docs/SAFETY.md), the [rules
 * **[ARMOR-SERVER](https://github.com/JuanenRac/ARMOR-SERVER)** - Central coordinator: telemetry, alarms, devices, solar readings and cameras
 * **[ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO)** - Web console: cameras, radar, alarms, solar energy and the 2D/3D site designer
 * **[ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL)** - Android operator client with a live 2D/3D radar
+* **[ARMOR-IOS-CONTROL](https://github.com/JuanenRac/ARMOR-IOS-CONTROL)** - iPhone operator client
 * **[ARMOR-SERVER-AI](https://github.com/JuanenRac/ARMOR-SERVER-AI)** - Visual inference policy that explains its decisions and never actuates
 * **[ARMOR-VISION](https://github.com/JuanenRac/ARMOR-VISION)** - Camera zones, masks and detection rules for the Jetson Orin NX
 * **[ARMOR-VOICE-AI](https://github.com/JuanenRac/ARMOR-VOICE-AI)** - Offline voice intents with a confirmation that cannot be forged

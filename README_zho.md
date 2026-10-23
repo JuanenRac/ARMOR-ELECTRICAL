@@ -62,6 +62,8 @@
 * **说明自身新鲜度的读数：** 每个电表通道都带有其读数的时间和对该电表失败的请求次数，因此服务器能区分真实的 0 W 与已停止应答的电表；电表任务卡死时，看门狗会重启电路板。
 * **无需线缆的诊断：** 在一次不干净的启动之后（崩溃、看门狗、电源跌落、内存分配失败），健康报告会在十分钟内说明原因；崩溃会留下核心转储（core dump），可在面板中查看、下载或删除；已保存的设置会在每次固件安装前被复制，并在更新损坏它们时恢复；管理员还可以通过服务器，用一次性令牌向节点索取诊断包或其日志。
 * **继电器互锁：**一个继电器可以指定另一个绝不能同时闭合的继电器（同一负载的两路电源、电机的两个转向）；在另一个闭合时要求闭合此继电器，无论来自面板、broker 还是中心，都会被拒绝，节点也绝不会自行断开另一个。已在计算机上测试；尚未在开发板上运行。
+* **只读方式读取电表自身的设置:** 在第一次成功读数之后,以及每隔 `bus.check_settings_s`(600 秒,0 = 从不),节点会在读取测量值的同一轮中读取 PZEM 的保持寄存器(004T v3:功率阈值和地址;017:电压阈值、地址和分流器),并在保存的地址与所用地址不一致时发出警告;不会向电表写入任何内容。
+* **可选的已存储机密封存:** 默认关闭(`security.seal_secrets`,或服务器的 `nodes.nvs_encryption`)。开启后,节点保存的密码、令牌、密钥、PIN 和密码哈希会用 ChaCha20-Poly1305 封存,其余内容仍可读取;开启或关闭时会无损重写,即使节点中途停止也不会丢失。不会烧写 eFuse,闪存也不加密:密钥在同一芯片的一个分区中,因此**不能**防范持有电路板的人;在该分区出现之前安装的节点会保持原样,直到用新的分区表重新烧录。
 
 ## 🖼️ 屏幕截图
 
@@ -120,6 +122,7 @@ See the [firmware guide](docs/NODE_FIRMWARE.md) and the [Bluetooth channel](docs
 * **[ARMOR-SERVER](https://github.com/JuanenRac/ARMOR-SERVER)** - 中央协调器：遥测、报警、设备、太阳能读数和摄像头
 * **[ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO)** - 网页控制台：摄像头、雷达、报警、太阳能和 2D/3D 场地设计器
 * **[ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL)** - 带实时 2D/3D 雷达的 Android 操作员客户端
+* **[ARMOR-IOS-CONTROL](https://github.com/JuanenRac/ARMOR-IOS-CONTROL)** - iPhone 操作员客户端
 * **[ARMOR-SERVER-AI](https://github.com/JuanenRac/ARMOR-SERVER-AI)** - 会解释决策且从不执行动作的视觉推理策略
 * **[ARMOR-VISION](https://github.com/JuanenRac/ARMOR-VISION)** - Jetson Orin NX 上的摄像头区域、遮罩与检测规则
 * **[ARMOR-VOICE-AI](https://github.com/JuanenRac/ARMOR-VOICE-AI)** - 带无法伪造确认的离线语音意图

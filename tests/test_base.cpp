@@ -250,6 +250,21 @@ static void test_improv_packets() {
   CHECK(big[8] == 255 && big.size() == 9 + 255 + 2);
 }
 
+static void test_improv_join_and_address() {
+  // "provisioned" only once the node is on the network and has an address; the page is told it could not connect only after the wait
+  CHECK(improv::join_progress(false, false, 0, 45000) == improv::Join::kWaiting);
+  CHECK(improv::join_progress(true, false, 1000, 45000) == improv::Join::kWaiting);    // associated, no address yet
+  CHECK(improv::join_progress(false, true, 1000, 45000) == improv::Join::kWaiting);    // an address from elsewhere is not the network that was given
+  CHECK(improv::join_progress(true, true, 0, 45000) == improv::Join::kJoined);
+  CHECK(improv::join_progress(true, true, 99999, 45000) == improv::Join::kJoined);     // joined late is joined
+  CHECK(improv::join_progress(false, false, 44999, 45000) == improv::Join::kWaiting);
+  CHECK(improv::join_progress(false, false, 45000, 45000) == improv::Join::kFailed);
+  CHECK(improv::panel_url("192.168.0.50", false) == "http://192.168.0.50/" && improv::panel_url("192.168.0.50", true) == "https://192.168.0.50/");
+  // the address goes in the result of the Wi-Fi command, as the standard has it: command, length, then the string with its length
+  const std::vector<std::uint8_t> result = improv::result_packet(improv::Command::kWifiSettings, {improv::panel_url("10.0.0.7", false)});
+  CHECK(result[7] == 0x04 && result[9] == 0x01 && result[10] == 1 + std::string("http://10.0.0.7/").size() && result[11] == std::string("http://10.0.0.7/").size());
+}
+
 static void test_improv_parser() {
   improv::Parser parser;
   // the Wi-Fi settings, with noise (log lines, a person typing) before and between packets
@@ -1035,6 +1050,7 @@ int main() {
   test_backoff();
   test_improv_packets();
   test_improv_parser();
+  test_improv_join_and_address();
   test_improv_rpc();
   test_task_health();
   test_node_health();

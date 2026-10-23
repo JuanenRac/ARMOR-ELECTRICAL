@@ -102,6 +102,9 @@ struct NodeSettings {
   // Wrong passwords the whole node lets through in a minute, from all addresses and names together (auth::LoginThrottle). 30 is how the node has always behaved; 0 turns this limit off (the limit of
   // each address and each person stays); at most 120.
   int login_limit_per_minute = 30;
+  // Keep the secrets this node stores (the passwords of its networks and users, tokens, keys, PINs) sealed in its flash (core/secret_seal.hpp). Off, as the node always was: they are readable text. Turning it on needs no
+  // eFuse and does not encrypt the flash, so it does not protect against someone who reads the whole chip; the panel says so.
+  bool seal_secrets = false;
 };
 
 inline const char* to_text(WifiSecurity v) {
@@ -299,6 +302,7 @@ inline void node_read(const json::Value& document, NodeSettings& s, Problems& pr
     read_int(*system, "auto_restart_hours", s.auto_restart_hours, 0, 48, "system.auto_restart_hours", problems);
     read_int(*system, "login_limit_per_minute", s.login_limit_per_minute, 0, 120, "system.login_limit_per_minute", problems);
   }
+  if (const json::Value* security = document.get("security"); security != nullptr && security->is_object()) read_bool(*security, "seal_secrets", s.seal_secrets, "security.seal_secrets", problems);
 }
 
 // ---- checking -------------------------------------------------------------------------------------------------------------------
@@ -407,6 +411,7 @@ inline void node_write_tail(json::Writer& w, const NodeSettings& s) {
   w.key("ui").begin_object().field("language", s.language).end_object();
   w.key("time").begin_object().field("ntp_enabled", s.time.ntp_enabled).field("ntp", s.time.ntp).field("zone", s.time.zone).end_object();
   w.key("system").begin_object().field("auto_restart_hours", s.auto_restart_hours).field("login_limit_per_minute", s.login_limit_per_minute).end_object();
+  w.key("security").begin_object().field("seal_secrets", s.seal_secrets).end_object();
 }
 
 }  // namespace armor::config

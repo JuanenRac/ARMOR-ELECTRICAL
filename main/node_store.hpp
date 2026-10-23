@@ -46,6 +46,17 @@ bool factory_reset();
 bool blob_read(const char* key, std::string& out);
 bool blob_write(const char* key, const std::string& value);
 
+// The sealing of the secrets (secret_vault.hpp). The node's own setting (security.seal_secrets) is followed from the settings; a server that asks for it too (the alarm node's policy) says so here. Either one
+// asks for the secrets to be sealed; the stored ones are rewritten to match, and nothing is lost if the node stops half-way.
+void seal_server_request(bool on);
+struct SealStatus {
+  bool wanted = false;      // the option is on, by the setting or by the server
+  bool active = false;      // and it is being done (a key is held)
+  bool available = true;    // the key partition exists (a node installed with an older partition table has none)
+  unsigned unreadable = 0;  // sealed values this start could not open (no key, or another one)
+};
+SealStatus seal_status();
+
 // The setup code: the build's fixed one, or a random one made at start. Only meaningful while users_empty().
 const std::string& setup_code();
 

@@ -62,6 +62,8 @@
 * **Leituras que dizem quão frescas são:** cada canal de contador leva a idade da sua leitura e quantos pedidos ao contador falharam, pelo que o servidor distingue um 0 W real de um contador que deixou de responder; e uma tarefa de contadores bloqueada reinicia a placa através do watchdog.
 * **Diagnóstico sem cabo:** depois de um arranque que não foi limpo (um bloqueio, um watchdog, uma quebra de alimentação, uma reserva de memória falhada), o relatório de saúde diz o motivo durante dez minutos; uma falha deixa o seu core dump para ver, descarregar ou apagar a partir do painel; as definições guardadas são copiadas antes de cada instalação de firmware e recuperadas se uma atualização as danificar; e um administrador pode pedir ao nó, através do servidor, um pacote de diagnóstico ou o seu registo com um token de utilização única.
 * **Intertravamento de relés:** um relé pode indicar outro que nunca deve estar fechado ao mesmo tempo (as duas fontes de uma carga, os dois sentidos de um motor); pedir para fechar um enquanto o outro está fechado é recusado, venha do painel, do broker ou da central, e o nó nunca abre o outro por si. Testado num computador; não executado numa placa.
+* **Leitura, apenas de leitura, das definições próprias dos contadores:** após a primeira leitura boa e a cada `bus.check_settings_s` (600 s, 0 = nunca) o nó lê os registos holding do PZEM (004T v3: limiar de potência e endereço; 017: limiares de tensão, endereço e shunt) no mesmo turno das medidas, e avisa se o endereço guardado não é o que usa; não se escreve nada no contador.
+* **Selagem opcional dos segredos guardados:** desativada por predefinição (`security.seal_secrets`, ou `nodes.nvs_encryption` do servidor). Ativada, as palavras-passe, os tokens, as chaves, os PIN e os hashes de palavras-passe que o nó guarda ficam selados com ChaCha20-Poly1305 e tudo o resto continua legível; ativá-la ou desativá-la reescreve-os sem perder nada, mesmo que o nó pare a meio. Não se queima nenhum eFuse nem se cifra a flash: a chave está numa partição do mesmo chip, pelo que **não** protege contra quem tenha a placa, e um nó instalado antes dessa partição mantém os segredos como estavam até ser gravado com a nova tabela de partições.
 
 ## 🖼️ Capturas de ecrã
 
@@ -120,6 +122,7 @@ O **A.R.M.O.R.** (Autonomous Radar & Multimodal Observation Range) é um sistema
 * **[ARMOR-SERVER](https://github.com/JuanenRac/ARMOR-SERVER)** - Coordenador central: telemetria, alarmes, dispositivos, leituras solares e câmaras
 * **[ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO)** - Consola web: câmaras, radar, alarmes, energia solar e o desenhador de local 2D/3D
 * **[ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL)** - Cliente Android de operador com um radar 2D/3D em direto
+* **[ARMOR-IOS-CONTROL](https://github.com/JuanenRac/ARMOR-IOS-CONTROL)** - Cliente de operador para iPhone
 * **[ARMOR-SERVER-AI](https://github.com/JuanenRac/ARMOR-SERVER-AI)** - Política de inferência visual que explica as suas decisões e nunca atua
 * **[ARMOR-VISION](https://github.com/JuanenRac/ARMOR-VISION)** - Zonas de câmara, máscaras e regras de deteção para o Jetson Orin NX
 * **[ARMOR-VOICE-AI](https://github.com/JuanenRac/ARMOR-VOICE-AI)** - Intenções de voz offline com uma confirmação que não se pode falsificar

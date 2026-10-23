@@ -16,7 +16,8 @@
 // Only on s3-wifi: GPIO 43 and 44 are UART0's pins to the CH343P of the "USB to serial" socket (usable, a cable in that socket drives them) and GPIO 48
 // drives the on-board RGB LED (usable, the LED flickers).
 // Only on s3-eth: GPIO 9..14 are the W5500 (reset, interrupt, MOSI, MISO, clock, chip select) and 8 is wired to the camera connector: never offered;
-// GPIO 4..7 are the microSD socket: usable when no card is used.
+// GPIO 4..7 are the microSD socket: usable when no card is used; GPIO 43 and 44 are UART0's pins, on which the chip's boot ROM prints about a kilobyte of text at every reset ("rom_log"): usable, but
+// whatever is wired there hears it (a device on the node's ninth port, by default, does).
 // Nothing here has been checked on a board.
 #pragma once
 #include <array>
@@ -46,7 +47,7 @@ struct PinInfo {
   int gpio;
   PinUse use;
   Reserved reason;   // only meaningful for kReserved
-  const char* note;  // "" or a short code the panel translates: "strapping", "boot", "usb_serial", "led", "sdcard"
+  const char* note;  // "" or a short code the panel translates: "strapping", "boot", "usb_serial", "led", "sdcard", "rom_log"
   bool on_header;
 };
 
@@ -64,6 +65,7 @@ constexpr PinInfo pin_info(int gpio) {
   if (gpio >= 9 && gpio <= 14) return {gpio, PinUse::kReserved, Reserved::kEthernet, "", false};
   if (gpio == 8) return {gpio, PinUse::kReserved, Reserved::kCamera, "", false};
   if (gpio >= 4 && gpio <= 7) return {gpio, PinUse::kCaution, Reserved::kNone, "sdcard", true};
+  if (gpio == 43 || gpio == 44) return {gpio, PinUse::kCaution, Reserved::kNone, "rom_log", true};
 #else
   if (gpio == 43 || gpio == 44) return {gpio, PinUse::kCaution, Reserved::kNone, "usb_serial", true};
   if (gpio == 48) return {gpio, PinUse::kCaution, Reserved::kNone, "led", true};

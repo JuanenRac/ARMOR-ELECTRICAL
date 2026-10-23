@@ -19,7 +19,9 @@ extern "C" {
 }
 #include "core/config_snapshot.hpp"
 #include "core/node_guard.hpp"
+#include "core/secret_seal.hpp"
 #include "entropy.hpp"
+#include "secret_vault.hpp"
 
 namespace armor::store {
 namespace {
@@ -28,6 +30,8 @@ constexpr char kNamespace[] = "armor";
 constexpr char kSettingsKey[] = "config";
 constexpr char kUsersKey[] = "users";
 constexpr char kSetupCodeKey[] = "setup_code";
+constexpr char kSealRequestKey[] = "seal_req";   // what the server last asked for ("1" or "0"; the alarm node's policy): the sealing of the secrets, kept so a restart does not undo it before the server speaks again
+constexpr char kTlsKeyName[] = "tls_key";           // the private key of the node's certificate (main/tls_cert.cpp keeps it under this name)
 constexpr char kSnapshotKey[] = "config_snap";   // the copy of the settings made before a firmware is installed (an NVS key is at most 15 characters)
 constexpr unsigned kHashIterations = 10000;
 
@@ -38,6 +42,7 @@ auth::UserStore g_users;
 std::string g_setup_code;
 std::uint8_t g_mac[6]{};
 // What the node expects to find in flash under the settings key: the check number of the text it read at the start or wrote since. Moved by every save (under g_lock).
+bool g_reconciled_wanted = false;   // what the option was when the stored secrets were last brought to its form
 bool g_expecting = false;
 std::uint32_t g_expected_hash = 0;
 bootreport::ConfigCheck g_check;   // what the checks of this start found, for the health report
@@ -57,7 +62,7 @@ std::string new_salt() {
   return auth::to_hex(bytes, sizeof bytes);
 }
 
-bool read_blob(const char* key, std::string& out) {
+bool raw_read_blob(const char* key, std::string& out) {
   nvs_handle_t handle;
   if (nvs_open(kNamespace, NVS_READONLY, &handle) != ESP_OK) return false;
   std::size_t size = 0;
@@ -70,12 +75,50 @@ bool read_blob(const char* key, std::string& out) {
   return ok;
 }
 
-bool write_blob(const char* key, const std::string& value) {
+bool raw_write_blob(const char* key, const std::string& value) {
   nvs_handle_t handle;
   if (nvs_open(kNamespace, NVS_READWRITE, &handle) != ESP_OK) return false;
   bool ok = nvs_set_blob(handle, key, value.data(), value.size()) == ESP_OK && nvs_commit(handle) == ESP_OK;
   nvs_close(handle);
   return ok;
+}
+
+// The secrets the node stores are written sealed while the option is on (secret_vault.hpp) and always read back whether they are sealed or not, so the option can be switched at any time and a stop in the
+// middle of the change loses nothing: each value says for itself which form it is in. A value that is sealed and cannot be opened reads as missing (and is logged), and is never overwritten by the migration.
+unsigned g_unreadable = 0;   // how many sealed values the last read of this start could not open
+
+bool read_blob(const char* key, std::string& out) {
+  std::string stored;
+  if (!raw_read_blob(key, stored)) return false;
+  bool ok = true;
+  out = vault::reveal(key, stored, ok);
+  if (!ok) { ++g_unreadable; return false; }
+  return true;
+}
+
+bool write_blob(const char* key, const std::string& value) { return raw_write_blob(key, vault::conceal(key, value, vault::active())); }
+
+constexpr const char* kSecretValues[] = {kSettingsKey, kUsersKey, kSetupCodeKey, kSnapshotKey, kTlsKeyName};
+
+// Brings every stored secret to the form the option asks for: the key is made first when sealing is wanted, the values are rewritten one by one (each is complete in either form, so a stop between two
+// leaves nothing lost and the next start finishes it), and the key is erased only when no value is sealed any more. Does nothing for a value already in the right form, so it wears no flash. Under g_lock.
+void reconcile_secrets() {
+  const bool wanted = vault::wanted();
+  if (wanted && !vault::have_key() && !vault::create_key()) { ESP_LOGW(kTag, "the secrets cannot be sealed on this node: they are kept as they were"); return; }
+  bool any_sealed = false;
+  for (const char* name : kSecretValues) {
+    std::string stored;
+    if (!raw_read_blob(name, stored)) continue;
+    bool ok = true;
+    const std::string plain = vault::reveal(name, stored, ok);
+    if (!ok) { any_sealed = true; continue; }   // sealed and unreadable: left exactly as it is
+    const bool sealed = vault::stored_sealed(name, stored);
+    const seal::Step step = seal::step_for(wanted, sealed);
+    if (step == seal::Step::kNothing) { if (sealed) any_sealed = true; continue; }
+    if (raw_write_blob(name, vault::conceal(name, plain, wanted))) ESP_LOGI(kTag, "\"%s\" is now %s", name, wanted ? "sealed" : "readable");
+    else { ESP_LOGE(kTag, "\"%s\" could not be rewritten", name); if (sealed) any_sealed = true; }
+  }
+  if (!wanted && vault::have_key() && !any_sealed) vault::drop_key();
 }
 
 // The build's values as the first settings.
@@ -129,6 +172,7 @@ void init() {
   // Without storage the node still starts, on the default settings and without remembering anything: it can be reached and set up again, which a node that aborts in a loop cannot.
   if (err != ESP_OK) ESP_LOGE(kTag, "the settings storage could not be started (%s): running on the defaults, nothing will be kept", esp_err_to_name(err));
   esp_read_mac(g_mac, ESP_MAC_WIFI_STA);
+  vault::load();
 
   std::lock_guard<std::mutex> guard(g_lock);
   std::string text;
@@ -164,6 +208,15 @@ void init() {
     ESP_LOGE(kTag, "the stored settings could not be read: using the first settings");
     for (const config::Problem& problem : dropped) ESP_LOGE(kTag, "  %s at %s", problem.code.c_str(), problem.path.c_str());
     if (have_copy) g_check.snapshot = snapshot::snapshot_outcome(false, true);   // there was a copy and it did not help
+  }
+  // The sealing of the secrets: the node's own setting when its settings could be read, and what the server last asked. When the settings could not be read, the key decides (a damaged document must not
+  // be the reason a node unseals everything).
+  {
+    std::string request;
+    vault::set_server_request(raw_read_blob(kSealRequestKey, request) && request == "1");
+    vault::set_own(g_stored ? g_settings.seal_secrets : vault::have_key());
+    reconcile_secrets();
+    g_reconciled_wanted = vault::wanted();
   }
   g_expecting = g_stored;
   g_expected_hash = snapshot::fnv1a(text);
@@ -217,7 +270,10 @@ std::string settings_json_full() {
 bool save_settings(const config::Settings& s) {
   std::lock_guard<std::mutex> guard(g_lock);
   const std::string text = config::to_json(s, true);
+  vault::set_own(s.seal_secrets);
+  if (vault::wanted() && !vault::have_key()) vault::create_key();   // before the write, so the settings themselves are sealed when the option was just turned on
   if (!write_blob(kSettingsKey, text)) return false;
+  if (vault::wanted() != g_reconciled_wanted) { reconcile_secrets(); g_reconciled_wanted = vault::wanted(); }   // the other secrets follow the option
   g_settings = s;
   g_stored = true;
   g_expecting = true;
@@ -306,7 +362,31 @@ bool factory_reset() {
   if (nvs_open(kNamespace, NVS_READWRITE, &handle) != ESP_OK) return false;
   const bool ok = nvs_erase_all(handle) == ESP_OK && nvs_commit(handle) == ESP_OK;
   nvs_close(handle);
+  if (ok) {   // everything the key sealed is gone: the node is back to the default, which is not sealing
+    vault::set_own(false);
+    vault::set_server_request(false);
+    if (vault::have_key()) vault::drop_key();
+    g_reconciled_wanted = false;
+  }
   return ok;
+}
+
+void seal_server_request(bool on) {
+  std::lock_guard<std::mutex> guard(g_lock);
+  if (vault::server_request() == on) return;
+  raw_write_blob(kSealRequestKey, on ? "1" : "0");
+  vault::set_server_request(on);
+  if (vault::wanted() != g_reconciled_wanted) { reconcile_secrets(); g_reconciled_wanted = vault::wanted(); }
+}
+
+SealStatus seal_status() {
+  std::lock_guard<std::mutex> guard(g_lock);
+  SealStatus status;
+  status.wanted = vault::wanted();
+  status.active = vault::active();
+  status.available = vault::partition_exists();
+  status.unreadable = g_unreadable;
+  return status;
 }
 
 const std::string& setup_code() { return g_setup_code; }

@@ -62,6 +62,7 @@ static void test_module_pins() {
     for (int gpio = 9; gpio <= 14; ++gpio) CHECK(pin_info(gpio).reason == Reserved::kEthernet && !assignable(gpio));
     CHECK(pin_info(8).reason == Reserved::kCamera && !assignable(8));
     for (int gpio = 4; gpio <= 7; ++gpio) CHECK(assignable(gpio) && std::string(pin_info(gpio).note) == "sdcard");
+    CHECK(std::string(pin_info(43).note) == "rom_log" && std::string(pin_info(44).note) == "rom_log" && assignable(43) && assignable(44) && std::string(pin_info(45).note) == "strapping");
     CHECK(std::string(kId) == "s3-eth");
   } else {
     for (int gpio = 8; gpio <= 14; ++gpio) CHECK(assignable(gpio));
@@ -418,6 +419,13 @@ static void test_node_read_rules() {
   p = read(s, "{\"system\":{\"login_limit_per_minute\":10}}"); CHECK(p.empty() && s.login_limit_per_minute == 10);
   p = read(s, "{\"system\":{\"auto_restart_hours\":0}}"); CHECK(p.empty() && s.login_limit_per_minute == 10);   // a document without it keeps it
   s.login_limit_per_minute = 30;
+  const auto tail_text = [](const NodeSettings& settings) { json::Writer w; w.begin_object(); node_write_tail(w, settings); w.end_object(); return w.str(); };
+  // sealing the stored secrets is a setting, off until it says otherwise, and it is written back
+  CHECK(!s.seal_secrets);
+  p = read(s, "{\"security\":{\"seal_secrets\":\"yes\"}}"); CHECK(has(p, "security.seal_secrets", "invalid") && !s.seal_secrets);
+  p = read(s, "{\"security\":{\"seal_secrets\":true}}"); CHECK(p.empty() && s.seal_secrets && tail_text(s).find("\"security\":{\"seal_secrets\":true}") != std::string::npos);
+  p = read(s, "{\"system\":{\"auto_restart_hours\":0}}"); CHECK(p.empty() && s.seal_secrets);   // a document without it keeps it
+  p = read(s, "{\"security\":{\"seal_secrets\":false}}"); CHECK(p.empty() && !s.seal_secrets && tail_text(s).find("\"seal_secrets\":false") != std::string::npos);
   // the older place of the time server
   s.auto_restart_hours = 0;
   p = read(s, "{\"mqtt\":{\"ntp\":\"old.example\"}}"); CHECK(p.empty() && s.time.ntp == "old.example");

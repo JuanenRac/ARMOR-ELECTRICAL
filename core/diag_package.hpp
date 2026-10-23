@@ -64,7 +64,7 @@ inline bool allowed_leaf(const std::string& leaf) {
   static const char* const names[] = {
       "v", "enabled", "mode", "dhcp", "hidden", "channel", "bandwidth_mhz", "tx_power_dbm", "country", "language", "zone", "security", "heartbeat_s", "telemetry_ms", "period_s", "poll_s",
       "auto_restart_hours", "ntp_enabled", "tls", "baud", "kind", "type", "model", "profile", "dialect", "max_clients", "link_timeout_s", "write_enabled", "parallel", "cells_per_cycle",
-      "debounce_ms", "pulse_ms", "initial_on", "invert", "pull", "merge_mm", "yaw_deg", "pitch_deg", "lux_fallback", "veml7700", "ui", "uri_host"};
+      "debounce_ms", "pulse_ms", "initial_on", "invert", "pull", "merge_mm", "yaw_deg", "pitch_deg", "lux_fallback", "veml7700", "ui", "uri_host", "check_settings_s"};
   for (const char* name : names) if (leaf == name) return true;
   return false;
 }

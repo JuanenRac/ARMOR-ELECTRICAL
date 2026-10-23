@@ -2,6 +2,7 @@
 // what an operator types for the network, the node identifier, the topic filters of the broker and (where the node has them) the web policy and the layout of the Wi-Fi.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 // Nothing here touches hardware or a network: the password hash is a stand-in and the clock is a number the test moves.
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -13,11 +14,13 @@
 #include "../core/json.hpp"
 #include "../core/net_text.hpp"
 #include "../core/node_id.hpp"
+#include "../core/secret_seal.hpp"
 #else
 #include "../main/core/auth.hpp"
 #include "../main/core/json.hpp"
 #include "../main/core/net_text.hpp"
 #include "../main/core/node_id.hpp"
+#include "../main/core/secret_seal.hpp"
 #endif
 // the web policy, the topic filters and the layout of the Wi-Fi are the shared copies only where a node has them (the radar node keeps its own)
 #if __has_include("../core/netplan.hpp") && __has_include("../core/web_policy.hpp") && __has_include("../core/mqtt_topic.hpp")
@@ -490,6 +493,225 @@ static void test_netplan() {
 }
 #endif  // SHARED_NETWORK_RULES
 
+// ---- the sealing of the secrets a node keeps -------------------------------------------------------------------------------------------
+
+static std::string hex_of(const std::uint8_t* data, std::size_t n) {
+  static const char digits[] = "0123456789abcdef";
+  std::string out;
+  for (std::size_t i = 0; i < n; ++i) { out += digits[data[i] >> 4]; out += digits[data[i] & 15]; }
+  return out;
+}
+
+static void test_seal_cipher_vectors() {
+  // RFC 8439 2.5.2: Poly1305 of a message with a given one-time key
+  const std::uint8_t poly_key[32] = {0x85, 0xd6, 0xbe, 0x78, 0x57, 0x55, 0x6d, 0x33, 0x7f, 0x44, 0x52, 0xfe, 0x42, 0xd5, 0x06, 0xa8, 0x01, 0x03, 0x80, 0x8a, 0xfb, 0x0d, 0xb2, 0xfd, 0x4a, 0xbf, 0xf6, 0xaf, 0x41, 0x49, 0xf5, 0x1b};
+  const std::array<std::uint8_t, 16> tag = seal::detail::poly1305(poly_key, "Cryptographic Forum Research Group");
+  CHECK(hex_of(tag.data(), tag.size()) == "a8061dc1305136c6c22b8baf0c0127a9");
+  // RFC 8439 2.3.2: one block of the ChaCha20 stream
+  seal::Key block_key;
+  for (std::size_t i = 0; i < 32; ++i) block_key[i] = static_cast<std::uint8_t>(i);
+  const std::uint8_t block_nonce[12] = {0, 0, 0, 9, 0, 0, 0, 0x4a, 0, 0, 0, 0};
+  std::uint8_t block[64];
+  seal::detail::chacha_block(block_key, 1, block_nonce, block);
+  CHECK(hex_of(block, 16) == "10f1e7e4d13b5915500fdd1fa32071c4");
+  // RFC 8439 2.8.2: the whole AEAD
+  seal::Key key;
+  for (std::size_t i = 0; i < 32; ++i) key[i] = static_cast<std::uint8_t>(0x80 + i);
+  const std::uint8_t nonce[12] = {0x07, 0, 0, 0, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47};
+  const std::string aad("\x50\x51\x52\x53\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7", 12);
+  const std::string plain = "Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.";
+  const std::string sealed = seal::encrypt(key, nonce, aad, plain);
+  CHECK(sealed.size() == plain.size() + 16);
+  CHECK(hex_of(reinterpret_cast<const std::uint8_t*>(sealed.data()), 16) == "d31a8d34648e60db7b86afbc53ef7ec2");
+  CHECK(hex_of(reinterpret_cast<const std::uint8_t*>(sealed.data()) + plain.size(), 16) == "1ae10b594f09e26a7e902ecbd0600691");
+  std::string back;
+  CHECK(seal::decrypt(key, nonce, aad, sealed, back) && back == plain);
+  // any change is refused: the cipher text, the tag, the name, the key
+  std::string bad = sealed;
+  bad[3] = static_cast<char>(bad[3] ^ 1);
+  CHECK(!seal::decrypt(key, nonce, aad, bad, back) && back.empty());
+  bad = sealed;
+  bad[sealed.size() - 1] = static_cast<char>(bad[sealed.size() - 1] ^ 0x80);
+  CHECK(!seal::decrypt(key, nonce, aad, bad, back));
+  CHECK(!seal::decrypt(key, nonce, "other", sealed, back));
+  seal::Key other = key;
+  other[0] ^= 1;
+  CHECK(!seal::decrypt(other, nonce, aad, sealed, back));
+  CHECK(!seal::decrypt(key, nonce, aad, std::string(15, 'x'), back));
+  // every length around the block sizes round-trips
+  for (std::size_t n = 0; n < 200; ++n) {
+    const std::string text(n, 'q');
+    std::string out;
+    CHECK(seal::decrypt(key, nonce, "", seal::encrypt(key, nonce, "", text), out) && out == text);
+  }
+}
+
+static std::uint8_t g_counter = 0;
+static void test_nonce(std::uint8_t nonce[12]) {
+  ++g_counter;
+  for (int i = 0; i < 12; ++i) nonce[i] = static_cast<std::uint8_t>(g_counter * 7 + i);
+}
+
+static void test_seal_values_and_json() {
+  seal::Key key;
+  for (std::size_t i = 0; i < 32; ++i) key[i] = static_cast<std::uint8_t>(i * 5 + 1);
+  std::uint8_t nonce[12];
+  test_nonce(nonce);
+  const std::string sealed = seal::seal_value(key, nonce, "users", "[{\"name\":\"ana\"}]");
+  CHECK(seal::is_sealed(sealed) && sealed.rfind("enc1:", 0) == 0 && sealed.find("ana") == std::string::npos && sealed.find_first_of("\"\\ ") == std::string::npos);
+  std::string out;
+  CHECK(seal::open_value(key, sealed, "users", out) == seal::Open::kOpened && out == "[{\"name\":\"ana\"}]");
+  CHECK(seal::open_value(key, sealed, "setup_code", out) == seal::Open::kBad && out.empty());
+  CHECK(seal::open_value(key, "plain text", "users", out) == seal::Open::kPlain && out == "plain text");
+  CHECK(seal::open_value(key, "enc1:%%%", "users", out) == seal::Open::kBad);
+  CHECK(seal::open_value(key, "enc1:", "users", out) == seal::Open::kPlain);   // a bare prefix is not a sealed value
+  CHECK(seal::open_value(key, "enc1:AAAA", "users", out) == seal::Open::kBad);
+  // JSON: only the secrets
+  const std::string doc = "{\"node\":{\"id\":\"a1\",\"name\":\"Door\"},\"sta\":{\"ssid\":\"Home\",\"password\":\"p\\\"w\\\\d\",\"backup\":[{\"ssid\":\"B\",\"password\":\"two\"},{\"ssid\":\"C\",\"password\":\"\"}]},"
+                          "\"mqtt\":{\"uri\":\"mqtts://b:8883\",\"username\":\"u\",\"password\":\"mq\"},\"panel\":{\"pin\":\"1234\",\"count\":12},\"list\":[\"password\",\"x\"],\"ok\":true}";
+  const std::string sealed_doc = seal::seal_json(key, doc, test_nonce);
+  CHECK(sealed_doc != doc && sealed_doc.find("two") == std::string::npos && sealed_doc.find("\"mq\"") == std::string::npos && sealed_doc.find("1234") == std::string::npos && sealed_doc.find("w\\\\d") == std::string::npos);
+  CHECK(sealed_doc.find("\"ssid\":\"Home\"") != std::string::npos && sealed_doc.find("mqtts://b:8883") != std::string::npos && sealed_doc.find("\"username\":\"u\"") != std::string::npos && sealed_doc.find("\"name\":\"Door\"") != std::string::npos);
+  CHECK(sealed_doc.find("\"password\":\"\"") != std::string::npos && sealed_doc.find("[\"password\",\"x\"]") != std::string::npos);   // an empty secret and a list of strings are left alone
+  json::Value parsed;
+  CHECK(json::parse(sealed_doc, parsed));   // still JSON
+  CHECK(seal::json_has_sealed(sealed_doc) && !seal::json_has_sealed(doc));
+  std::string opened;
+  CHECK(seal::open_json(key, sealed_doc, opened) == seal::Open::kOpened && opened == doc);
+  CHECK(seal::open_json(key, doc, opened) == seal::Open::kPlain && opened == doc);
+  // sealing again does not seal twice
+  CHECK(seal::seal_json(key, sealed_doc, test_nonce) == sealed_doc);
+  // a wrong key, or a value moved under another name, is refused whole
+  seal::Key other = key;
+  other[31] ^= 0x40;
+  CHECK(seal::open_json(other, sealed_doc, opened) == seal::Open::kBad && opened.empty());
+  const std::size_t at = sealed_doc.find("\"pin\":\"enc1:");
+  CHECK(at != std::string::npos);
+  std::string moved = sealed_doc;
+  moved.replace(at + 1, 3, "key");
+  CHECK(seal::open_json(key, moved, opened) == seal::Open::kBad);
+  // a document that is not JSON (an unterminated string) is returned as it came
+  CHECK(seal::seal_json(key, "{\"password\":\"abc", test_nonce) == "{\"password\":\"abc");
+  CHECK(seal::secret_name("password") && seal::secret_name("zone_feed_key") && seal::secret_name("Token") && seal::secret_name("pin") && seal::secret_name("psk") && !seal::secret_name("ssid") && !seal::secret_name("name"));
+}
+
+static void test_seal_key_record_and_steps() {
+  seal::Key key;
+  for (std::size_t i = 0; i < 32; ++i) key[i] = static_cast<std::uint8_t>(0xA0 ^ i);
+  const std::array<std::uint8_t, seal::kRecordBytes> record = seal::key_record(key);
+  seal::Key read{};
+  CHECK(seal::parse_key_record(record.data(), record.size(), read) && read == key);
+  std::array<std::uint8_t, seal::kRecordBytes> torn = record;
+  torn[20] ^= 1;
+  CHECK(!seal::parse_key_record(torn.data(), torn.size(), read));            // a changed key does not match its check
+  torn = record;
+  torn[0] = 'X';
+  CHECK(!seal::parse_key_record(torn.data(), torn.size(), read));            // another magic
+  std::array<std::uint8_t, seal::kRecordBytes> erased;
+  erased.fill(0xFF);
+  CHECK(!seal::parse_key_record(erased.data(), erased.size(), read));        // erased flash
+  const std::array<std::uint8_t, seal::kRecordBytes> zero = seal::key_record(seal::Key{});
+  CHECK(!seal::parse_key_record(zero.data(), zero.size(), read));            // an all-zero key is never a key
+  CHECK(!seal::parse_key_record(record.data(), seal::kRecordBytes - 1, read));
+  // what is done with a stored value (the migration in both directions, and nothing when it is already right)
+  CHECK(seal::step_for(true, false) == seal::Step::kSeal && seal::step_for(false, true) == seal::Step::kOpen);
+  CHECK(seal::step_for(true, true) == seal::Step::kNothing && seal::step_for(false, false) == seal::Step::kNothing);
+  CHECK(!seal::wanted(false, false) && seal::wanted(true, false) && seal::wanted(false, true) && seal::wanted(true, true));
+}
+
+// A store as the firmware keeps it, in memory: every value as text, and the key. Used to play the migration of the settings through every state, including a stop half-way.
+struct FakeVault {
+  std::vector<std::pair<std::string, std::string>> values;   // name -> as stored
+  seal::Key key{};
+  bool have_key = false;
+  static bool json_value(const std::string& name) { return name == "config"; }
+  std::string reveal(const std::string& name, const std::string& stored, bool& ok) const {
+    std::string out;
+    ok = true;
+    if (!have_key) { ok = !seal::is_sealed(stored) && !seal::json_has_sealed(stored); return stored; }
+    const seal::Open r = json_value(name) ? seal::open_json(key, stored, out) : seal::open_value(key, stored, name, out);
+    ok = r != seal::Open::kBad;
+    return ok ? out : std::string();
+  }
+  std::string conceal(const std::string& name, const std::string& plain, bool wanted) const {
+    if (!wanted || !have_key) return plain;
+    if (json_value(name)) return seal::seal_json(key, plain, test_nonce);
+    std::uint8_t nonce[12];
+    test_nonce(nonce);
+    return seal::seal_value(key, nonce, name, plain);
+  }
+  bool stored_sealed(const std::string& name, const std::string& stored) const { return json_value(name) ? seal::json_has_sealed(stored) : seal::is_sealed(stored); }
+  // one pass of the migration: the key is made first when the option is on, the values are rewritten one by one (`stop_after` values: a power cut), the key goes only when every value is plain
+  void reconcile(bool wanted, int stop_after = 1000) {
+    if (wanted && !have_key) {
+      for (std::size_t i = 0; i < 32; ++i) key[i] = static_cast<std::uint8_t>(0x30 + 3 * i);
+      have_key = true;
+    }
+    int done = 0;
+    for (auto& entry : values) {
+      if (done >= stop_after) return;
+      bool ok = false;
+      const std::string plain = reveal(entry.first, entry.second, ok);
+      if (!ok) continue;
+      if (seal::step_for(wanted, stored_sealed(entry.first, entry.second)) == seal::Step::kNothing) continue;
+      entry.second = conceal(entry.first, plain, wanted);
+      ++done;
+    }
+    if (!wanted && have_key) {
+      for (const auto& entry : values) if (stored_sealed(entry.first, entry.second)) return;
+      have_key = false;
+    }
+  }
+};
+
+static void test_seal_migration() {
+  const std::string config = "{\"sta\":{\"ssid\":\"Home\",\"password\":\"hunter2 hunter2\"},\"mqtt\":{\"password\":\"mq-secret\"},\"panel\":{\"pin\":\"4321\"},\"ui\":{\"language\":\"es\"}}";
+  FakeVault vault;
+  vault.values = {{"config", config}, {"users", "[{\"name\":\"ana\",\"hash\":\"abc\"}]"}, {"setup_code", "ABCD2345EF"}, {"config_snap", "{\"fw\":\"1\",\"settings\":\"x\"}"}};
+  const auto plain_of = [&](const std::string& name) {
+    bool ok = false;
+    for (const auto& e : vault.values) if (e.first == name) return vault.reveal(name, e.second, ok);
+    return std::string("?");
+  };
+  const auto stored_of = [&](const std::string& name) {
+    for (const auto& e : vault.values) if (e.first == name) return e.second;
+    return std::string("?");
+  };
+  // off -> on: every secret is sealed, the settings keep their readable part, and what they say is the same after opening
+  vault.reconcile(true);
+  CHECK(vault.have_key);
+  CHECK(stored_of("config").find("hunter2") == std::string::npos && stored_of("config").find("\"language\":\"es\"") != std::string::npos && stored_of("config").find("\"ssid\":\"Home\"") != std::string::npos);
+  CHECK(seal::is_sealed(stored_of("users")) && seal::is_sealed(stored_of("setup_code")) && seal::is_sealed(stored_of("config_snap")));
+  CHECK(plain_of("config") == config && plain_of("setup_code") == "ABCD2345EF" && plain_of("users") == "[{\"name\":\"ana\",\"hash\":\"abc\"}]");
+  // again: nothing changes (nothing is rewritten, so the flash is not worn)
+  const auto before = vault.values;
+  vault.reconcile(true);
+  CHECK(vault.values == before);
+  // a new write while on is sealed
+  vault.values[0].second = vault.conceal("config", "{\"sta\":{\"password\":\"new-one\"}}", true);
+  CHECK(stored_of("config").find("new-one") == std::string::npos && plain_of("config") == "{\"sta\":{\"password\":\"new-one\"}}");
+  // on -> off, stopped after two values (a power cut): everything is still readable, the key is still there, and the next pass finishes
+  vault.reconcile(false, 2);
+  CHECK(vault.have_key);
+  CHECK(plain_of("config") == "{\"sta\":{\"password\":\"new-one\"}}" && plain_of("setup_code") == "ABCD2345EF" && plain_of("users") == "[{\"name\":\"ana\",\"hash\":\"abc\"}]");
+  vault.reconcile(false);
+  CHECK(!vault.have_key);
+  CHECK(stored_of("setup_code") == "ABCD2345EF" && stored_of("users") == "[{\"name\":\"ana\",\"hash\":\"abc\"}]" && stored_of("config") == "{\"sta\":{\"password\":\"new-one\"}}" && stored_of("config_snap") == "{\"fw\":\"1\",\"settings\":\"x\"}");
+  // off -> on stopped half-way: the next pass finishes it, and no value is lost
+  vault.reconcile(true, 1);
+  CHECK(vault.have_key && plain_of("config") == "{\"sta\":{\"password\":\"new-one\"}}" && plain_of("users") == "[{\"name\":\"ana\",\"hash\":\"abc\"}]");
+  vault.reconcile(true);
+  CHECK(seal::is_sealed(stored_of("users")) && seal::is_sealed(stored_of("setup_code")) && seal::is_sealed(stored_of("config_snap")) && seal::json_has_sealed(stored_of("config")));
+  // the key lost while values are sealed: they are reported unreadable and left alone, never replaced by nothing
+  FakeVault lost = vault;
+  lost.have_key = false;
+  bool ok = true;
+  lost.reveal("users", lost.values[1].second, ok);
+  CHECK(!ok);
+  lost.reconcile(false);
+  CHECK(lost.values == vault.values);
+}
+
 int main() {
   test_ipv4();
   test_masks_and_addresses();
@@ -506,6 +728,10 @@ int main() {
   test_user_store_persistence();
   test_sessions();
   test_login_throttle();
+  test_seal_cipher_vectors();
+  test_seal_values_and_json();
+  test_seal_key_record_and_steps();
+  test_seal_migration();
 #ifdef SHARED_NETWORK_RULES
   test_topic_filters();
   test_web_policy();

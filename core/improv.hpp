@@ -127,4 +127,15 @@ inline Error parse_rpc(const std::vector<std::uint8_t>& data, Rpc& out) {
   }
 }
 
+// After the Wi-Fi network was given, the node restarts to join it; the Improv page is told "provisioned" only once the node really has the network and an address, and the answer to its
+// request carries the address of the panel. `waited_ms` counts from the restart; a node that has not joined within `limit_ms` reports that it was unable to connect.
+enum class Join { kWaiting, kJoined, kFailed };
+inline Join join_progress(bool connected, bool has_ip, std::uint32_t waited_ms, std::uint32_t limit_ms) {
+  if (connected && has_ip) return Join::kJoined;
+  return waited_ms >= limit_ms ? Join::kFailed : Join::kWaiting;
+}
+
+// The address the page is sent to: the panel on the node's own address, over HTTPS when the node serves only HTTPS (otherwise plain HTTP on port 80, which a node in either mode answers).
+inline std::string panel_url(const std::string& ip, bool https_only) { return std::string(https_only ? "https://" : "http://") + ip + "/"; }
+
 }  // namespace armor::improv
