@@ -46,7 +46,7 @@ Pairing a phone over Bluetooth asks for a **six-digit PIN**. It is not a second 
 ## Which image do I have?
 
 * Downloaded from a release, or built without `ARMOR_WITH_FLEET_SECRET=1` → **public**: random 8-character code, read it on the console.
-* Built by you with the fleet secret (file name contains `-local-`) → **local**: 10-character code you can calculate.
+* Built by you with the fleet secret (file name contains `-local-`, kept in `dist/local/`, never in `dist/` next to the public ones) → **local**: 10-character code you can calculate.
 * A board that ran a local image and was then flashed with a public one **changes kind**: its old calculated code stops working and it makes up a new random one.
 
 ## Getting the code and the PIN with a public image, step by step
