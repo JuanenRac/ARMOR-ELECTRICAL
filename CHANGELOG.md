@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here.
 
+## [Unreleased]
+
+- **The node reads the meters' own settings, for diagnosis only:** right after the first good reading of a meter, and then every `bus.check_settings_s` seconds (600 by default, 0 never; a field on the Meters page in the eight languages), it asks the meter for its holding registers (function 0x03: the stored Modbus address and the alarm thresholds of a PZEM-004T v3, the voltage alarms and the shunt range of a PZEM-017) and shows them in the panel and in the meter's status. It warns when the address stored in the meter is not the one the node uses. The request goes in the same turn as the meter's measurements, so it never takes the place of a reading, and a meter that does not answer it keeps being read with nothing counted against it. Nothing is ever written to a meter. Host tests cover the frames, the refusals and the schedule.
+
 ## [0.4.6] - Interlocked relays, wrong passwords per minute as a setting and the broker certificate from a file
 
 - **Fixed: a node with stored settings no longer restarts in a loop at power-up.** The start-up code read the stored settings and the copy made before the last update on the stack of the main task (about 3 KB each, plus the reader's own copy); with settings stored the 16 KB stack overflowed and the node restarted again and again before it could start the network. They now live on the heap.

@@ -42,6 +42,8 @@ struct BusSetting {
   int de = -1;        // the GPIO of an RS485 adapter's driver-enable (and receiver-enable) pins: the UART drives it high while it sends (half duplex); -1: none (TTL or an adapter that turns itself)
   int baud = 9600;
   int poll_s = 2;     // seconds between two rounds of readings (the second line takes the first one's)
+  // How often a meter that answers is asked for its own settings (its address and alarm thresholds, read only) to show whether they fit what the node uses: 0 never; at most a day.
+  int check_settings_s = 600;   // (the second line takes the first one's)
 };
 
 // One meter on the line: which channel of the message it makes, and how to talk to it.
@@ -113,6 +115,7 @@ inline void read_settings(const json::Value& document, Settings& s, Problems& pr
     read_int(*bus, "de", s.bus.de, -1, board::kLastGpio, "bus.de", problems);
     read_int(*bus, "baud", s.bus.baud, 1200, 115200, "bus.baud", problems);
     read_int(*bus, "poll_s", s.bus.poll_s, 1, 3600, "bus.poll_s", problems);
+    read_int(*bus, "check_settings_s", s.bus.check_settings_s, 0, 86400, "bus.check_settings_s", problems);
   }
   if (const json::Value* bus2 = document.get("bus2"); bus2 != nullptr && bus2->is_object()) {
     read_int(*bus2, "rx", s.bus2.rx, -1, board::kLastGpio, "bus2.rx", problems);
@@ -194,6 +197,7 @@ inline Problems validate(const Settings& s) {
   }
   if (any) {
     if (s.bus.poll_s < 1 || s.bus.poll_s > 3600) bad(problems, "bus.poll_s", "range");
+    if (s.bus.check_settings_s < 0 || s.bus.check_settings_s > 86400) bad(problems, "bus.check_settings_s", "range");
     const std::array<const BusSetting*, 2> lines{&s.bus, &s.bus2};
     const std::array<const char*, 2> names{"bus", "bus2"};
     for (int k = 0; k < 2; ++k) {
@@ -244,7 +248,7 @@ inline std::string to_json(const Settings& s, bool secrets) {
   json::Writer w;
   w.begin_object();
   node_write_head(w, s, secrets);
-  w.key("bus").begin_object().field("rx", s.bus.rx).field("tx", s.bus.tx).field("de", s.bus.de).field("baud", s.bus.baud).field("poll_s", s.bus.poll_s).end_object();
+  w.key("bus").begin_object().field("rx", s.bus.rx).field("tx", s.bus.tx).field("de", s.bus.de).field("baud", s.bus.baud).field("poll_s", s.bus.poll_s).field("check_settings_s", s.bus.check_settings_s).end_object();
   w.key("bus2").begin_object().field("rx", s.bus2.rx).field("tx", s.bus2.tx).field("de", s.bus2.de).field("baud", s.bus2.baud).end_object();
   w.key("meters").begin_array();
   for (const MeterSetting& meter : s.meters) {

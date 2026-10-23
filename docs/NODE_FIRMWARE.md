@@ -16,7 +16,7 @@ The node listens over Bluetooth Low Energy (NimBLE) with the same channel as the
 
 Two hardware UARTs carry two lines (line 1 on UART1, line 2 on UART0; each can have a direction pin for an RS485 adapter). Set, in the panel's **Meters** page:
 
-- the **RX** and **TX** pins (the defaults are GPIO 16 and 15), the **speed** (the PZEM meters talk 9600 baud, 8N1) and the **seconds between two rounds**;
+- the **RX** and **TX** pins (the defaults are GPIO 16 and 15), the **speed** (the PZEM meters talk 9600 baud, 8N1), the **seconds between two rounds** and the **seconds between reads of the meters' own settings** (their stored address and alarm thresholds, read only, 600 by default, 0 never);
 - for each of up to sixteen meters: whether it is read, the **channel** it makes in the message (lowercase letters, digits, `-` and `_`; unique), an optional name, its **kind** (`ac` for a PZEM-004T v3, `dc` for a PZEM-017) and its **Modbus address** (1 to 247, unique on the line).
 
 The meters' addresses are set once with the maker's tool, one meter at a time, **before** they are installed on the shared line: the node does not change them. The serial side of a PZEM meter is 5 V: it needs a level adaptation to the 3.3 V of the board (see [HARDWARE.md](HARDWARE.md)). Changes to the line and the meters apply after a restart of the node.

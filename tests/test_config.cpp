@@ -113,7 +113,7 @@ static void test_document() {
   s.meters[3] = {true, "pv-dc", "Campo solar", "dc", 9};
   const std::string stored = config::to_json(s, true), shown = config::to_json(s, false);
   CHECK(stored.find("una-clave-larga") != std::string::npos && shown.find("una-clave-larga") == std::string::npos && shown.find("\"password_set\":true") != std::string::npos);
-  CHECK(shown.find("\"meters\":[") != std::string::npos && shown.find("\"bus\":{\"rx\":16,\"tx\":15,\"de\":-1,\"baud\":19200,\"poll_s\":5}") != std::string::npos);
+  CHECK(shown.find("\"meters\":[") != std::string::npos && shown.find("\"bus\":{\"rx\":16,\"tx\":15,\"de\":-1,\"baud\":19200,\"poll_s\":5,\"check_settings_s\":600}") != std::string::npos);
   config::Settings back;
   config::Problems problems;
   CHECK(config::load(stored, config::default_settings("000000"), back, problems) && back.sta.password == "una-clave-larga" && back.node_id == s.node_id);

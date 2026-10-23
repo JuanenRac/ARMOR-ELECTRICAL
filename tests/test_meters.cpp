@@ -238,8 +238,135 @@ static void test_message() {
   CHECK(valid_name("grid", 32) && !valid_name("Grid", 32) && !valid_name("g", 0) && !valid_name(std::string(33, 'a'), 32));
 }
 
+// ---- the meter's own settings (holding registers, function 0x03) ---------------------------------------------------------------------------------------------------------
+
+static std::vector<std::uint8_t> holding_reply(std::uint8_t address, const std::vector<std::uint16_t>& registers) { return reply(address, registers, 0x03); }
+
+static void test_holding_requests_and_decoding() {
+  std::array<std::uint8_t, 8> request{};
+  CHECK(pzem::build_holding_request(Model::kAc, 1, request) && request[0] == 1 && request[1] == 0x03 && request[2] == 0 && request[3] == 1 && request[4] == 0 && request[5] == 2);
+  CHECK(pzem::crc16(request.data(), 8) == 0);   // a frame with its own CRC checks to zero
+  CHECK(pzem::build_holding_request(Model::kDc, 7, request) && request[0] == 7 && request[1] == 0x03 && request[2] == 0 && request[3] == 0 && request[5] == 4 && pzem::crc16(request.data(), 8) == 0);
+  CHECK(pzem::build_holding_request(Model::kAc, 0xF8, request) && request[0] == 0xF8);
+  CHECK(!pzem::build_holding_request(Model::kAc, 0, request) && !pzem::build_holding_request(Model::kDc, 249, request));
+  // only reads are ever built: function 0x03 here and 0x04 above, whatever the address and the model
+  for (int address = 1; address <= 247; ++address)
+    for (const Model model : {Model::kAc, Model::kDc}) { pzem::build_holding_request(model, static_cast<std::uint8_t>(address), request); if (request[1] != 0x03) CHECK(false); }
+
+  pzem::Holding h;
+  const std::vector<std::uint8_t> ac = holding_reply(1, {2300, 1});   // alarm at 2300 W, address 1
+  CHECK(ac.size() == pzem::holding_reply_length(Model::kAc) && pzem::decode_holding(Model::kAc, 1, ac.data(), ac.size(), h) == Result::kOk);
+  CHECK(h.has_power_alarm && h.power_alarm_w == 2300.0 && h.address == 1 && !h.has_voltage_alarms && !h.has_shunt);
+  const std::vector<std::uint8_t> dc = holding_reply(5, {30000, 700, 5, 0});   // 300.00 V high, 7.00 V low, address 5, 100 A shunt
+  CHECK(dc.size() == pzem::holding_reply_length(Model::kDc) && pzem::decode_holding(Model::kDc, 5, dc.data(), dc.size(), h) == Result::kOk);
+  CHECK(h.has_voltage_alarms && h.high_voltage_alarm_v == 300.0 && h.low_voltage_alarm_v == 7.0 && h.address == 5 && h.has_shunt && h.shunt_a == 100 && !h.has_power_alarm);
+  const int shunts[4] = {100, 50, 200, 300};
+  for (std::uint16_t code = 0; code < 4; ++code) {
+    const std::vector<std::uint8_t> r = holding_reply(5, {30000, 700, 5, code});
+    CHECK(pzem::decode_holding(Model::kDc, 5, r.data(), r.size(), h) == Result::kOk && h.shunt_a == shunts[code]);
+  }
+  // the broadcast address takes any meter's answer and tells which one it was
+  CHECK(pzem::decode_holding(Model::kDc, 0xF8, dc.data(), dc.size(), h) == Result::kOk && h.address == 5);
+
+  // what is refused
+  std::vector<std::uint8_t> bad = ac; bad[4] ^= 1;
+  CHECK(pzem::decode_holding(Model::kAc, 1, bad.data(), bad.size(), h) == Result::kCrc);
+  CHECK(pzem::decode_holding(Model::kAc, 2, ac.data(), ac.size(), h) == Result::kAddress);
+  CHECK(pzem::decode_holding(Model::kAc, 1, ac.data(), ac.size() - 1, h) == Result::kTooShort);
+  std::vector<std::uint8_t> longer = ac; longer.push_back(0);
+  CHECK(pzem::decode_holding(Model::kAc, 1, longer.data(), longer.size(), h) == Result::kLength);
+  const std::vector<std::uint8_t> measurement = reply(1, {2300, 1});   // function 0x04 where 0x03 was asked
+  CHECK(pzem::decode_holding(Model::kAc, 1, measurement.data(), measurement.size(), h) == Result::kFunction);
+  std::vector<std::uint8_t> refused{1, 0x83, 0x02};
+  const std::uint16_t crc = pzem::crc16(refused.data(), refused.size());
+  refused.push_back(static_cast<std::uint8_t>(crc & 0xFF)); refused.push_back(static_cast<std::uint8_t>(crc >> 8));
+  CHECK(pzem::decode_holding(Model::kAc, 1, refused.data(), refused.size(), h) == Result::kException);
+  CHECK(pzem::decode_holding(Model::kAc, 2, refused.data(), refused.size(), h) == Result::kAddress);
+  // a setting no meter has, with a CRC that fits, is not a value
+  const std::vector<std::uint8_t> no_address = holding_reply(1, {2300, 0}), far_address = holding_reply(1, {2300, 248}), no_shunt = holding_reply(5, {30000, 700, 5, 4});
+  CHECK(pzem::decode_holding(Model::kAc, 0xF8, no_address.data(), no_address.size(), h) == Result::kRange);
+  CHECK(pzem::decode_holding(Model::kAc, 0xF8, far_address.data(), far_address.size(), h) == Result::kRange);
+  CHECK(pzem::decode_holding(Model::kDc, 5, no_shunt.data(), no_shunt.size(), h) == Result::kRange);
+  // the measurement decoder does not take a settings reply for a reading
+  pzem::Reading r;
+  CHECK(pzem::decode(Model::kAc, 1, ac.data(), ac.size(), r) != Result::kOk);
+}
+
+// A stand-in line that answers the measurements and the settings from their own tables (by address); an address that is absent from a table is silent for that function.
+struct SettingsLine {
+  PzemBus bus;
+  std::map<int, std::vector<std::uint8_t>> measurements, settings;
+  int measurement_requests = 0, settings_requests = 0;
+  std::uint64_t now = 0;
+  SettingsLine(std::vector<MeterConfig> meters, std::uint64_t cycle_ms, std::uint64_t check_every_ms) : bus(std::move(meters), cycle_ms, check_every_ms) {}
+  void run(std::uint64_t until_ms, std::uint64_t latency_ms = 40) {
+    std::vector<std::pair<std::uint64_t, std::vector<std::uint8_t>>> in_flight;
+    for (; now < until_ms; now += 10) {
+      for (auto it = in_flight.begin(); it != in_flight.end();) {
+        if (it->first <= now) { bus.on_rx(it->second.data(), it->second.size(), now); it = in_flight.erase(it); } else ++it;
+      }
+      const std::vector<std::uint8_t> out = bus.next_tx(now);
+      if (out.empty()) continue;
+      const bool holding = out[1] == 0x03;
+      (holding ? settings_requests : measurement_requests)++;
+      const auto& table = holding ? settings : measurements;
+      const auto answer = table.find(out[0]);
+      if (answer != table.end()) in_flight.push_back({now + latency_ms, answer->second});
+    }
+  }
+};
+
+static void test_the_settings_are_read_now_and_then() {
+  std::vector<MeterConfig> meters = {{"grid", "", Model::kAc, 1}, {"dc-bus", "", Model::kDc, 2}, {"old", "", Model::kAc, 3}};
+  const auto fill = [](SettingsLine& line) {
+    line.measurements[1] = reply(1, kAcRegisters); line.measurements[2] = reply(2, kDcRegisters); line.measurements[3] = reply(3, kAcRegisters);
+    line.settings[1] = holding_reply(1, {2300, 1});
+    line.settings[2] = holding_reply(2, {30000, 700, 9, 1});   // the meter says its address is 9, yet it answers to the 2 this node uses
+    // meter 3 never answers the settings request (an older firmware, a clone): its measurements go on
+  };
+  SettingsLine line(meters, 1000, 60'000);
+  fill(line);
+  line.run(8000);
+  const auto& states = line.bus.meters();
+  CHECK(states[0].have_holding && states[0].holding.power_alarm_w == 2300.0 && states[0].holding.address == 1 && !states[0].address_mismatch());
+  CHECK(states[1].have_holding && states[1].holding.address == 9 && states[1].address_mismatch() && states[1].holding.shunt_a == 50);
+  CHECK(!states[2].have_holding && states[2].holding_bad >= 1 && states[2].holding_result == Result::kTooShort);
+  // asking the settings never counts against the readings: meter 3 has no timeouts and no bad replies, and all three stay fresh
+  CHECK(states[2].timeouts == 0 && states[2].replies_bad == 0 && states[2].misses_in_a_row == 0 && states[0].replies_bad == 0 && states[1].replies_bad == 0);
+  CHECK(line.bus.fresh(line.now).size() == 3);
+  // once each in this time (the first time is right after the first good reading), not at every round
+  CHECK(states[0].holding_ok == 1 && states[1].holding_ok == 1 && states[2].holding_bad == 1);
+  CHECK(line.settings_requests == 3);
+  // and again after the interval
+  line.run(75'000);
+  CHECK(states[0].holding_ok == 2 && states[2].holding_bad == 2 && line.settings_requests == 6);
+  CHECK(line.measurement_requests > 3 * 60);   // the readings went on every second meanwhile
+
+  // never asked when the interval is 0 (the default of the bus itself)
+  SettingsLine quiet(meters, 1000, 0);
+  fill(quiet);
+  quiet.run(8000);
+  CHECK(quiet.settings_requests == 0 && !quiet.bus.meters()[0].have_holding && quiet.bus.fresh(quiet.now).size() == 3);
+
+  // a meter that has stopped answering the measurements is not asked for its settings
+  SettingsLine silent(meters, 1000, 5000);
+  fill(silent);
+  silent.measurements.erase(1);
+  silent.run(8000);
+  CHECK(!silent.bus.meters()[0].holding_tried && silent.bus.meters()[0].timeouts > 0 && silent.bus.meters()[1].have_holding);
+
+  // the address 0xF8 has nothing to compare: the stored address is shown and it is no mismatch
+  SettingsLine broadcast({{"only", "", Model::kAc, 0xF8}}, 1000, 60'000);
+  broadcast.measurements[0xF8] = reply(4, kAcRegisters);
+  broadcast.settings[0xF8] = holding_reply(4, {2300, 4});
+  broadcast.run(4000);
+  CHECK(broadcast.bus.meters()[0].have_holding && broadcast.bus.meters()[0].holding.address == 4 && !broadcast.bus.meters()[0].address_mismatch());
+}
+
 int main() {
   test_crc_and_requests();
+  test_holding_requests_and_decoding();
+  test_the_settings_are_read_now_and_then();
   test_decoding();
   test_bus();
   test_echo_and_stray_bytes();

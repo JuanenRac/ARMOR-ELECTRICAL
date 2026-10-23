@@ -22,7 +22,7 @@ namespace armor::manager {
 struct BusStatus {
   std::string state = "disabled";   // disabled, starting, error, running
   std::string error;                // why the line did not open
-  int rx = -1, tx = -1, de = -1, baud = 0, poll_s = 0;
+  int rx = -1, tx = -1, de = -1, baud = 0, poll_s = 0, check_settings_s = 0;
   std::uint32_t bytes_rx = 0, bytes_tx = 0, messages = 0;
 };
 
@@ -38,6 +38,16 @@ struct MeterStatus {
   bool have_reading = false;
   double voltage_v = 0, current_a = 0, power_w = 0, energy_kwh = 0;
   bool alarm = false;
+  // The meter's own settings, read now and then (bus.check_settings_s): shown for diagnosis, never written.
+  bool settings_known = false;
+  int stored_address = 0;                  // the Modbus address stored in the meter
+  bool address_mismatch = false;           // it is not the one this node asks for
+  bool has_power_alarm = false;            // PZEM-004T v3
+  double power_alarm_w = 0;
+  bool has_voltage_alarms = false;         // PZEM-017
+  double high_voltage_alarm_v = 0, low_voltage_alarm_v = 0;
+  int shunt_a = 0;                         // PZEM-017: 0 when the meter did not say
+  std::uint32_t settings_ok = 0, settings_bad = 0;
 };
 
 // The time the node lives by: milliseconds since it started, and its wall clock when it has been set (the message carries the wall clock; until then it only serves the panel).
@@ -85,9 +95,10 @@ class Runner {
     }
     const std::array<const config::BusSetting*, kLines> pins{&settings.bus, &settings.bus2};
     for (int k = 0; k < kLines; ++k) {
-      bus_[k].rx = pins[k]->rx; bus_[k].tx = pins[k]->tx; bus_[k].de = pins[k]->de; bus_[k].baud = pins[k]->baud; bus_[k].poll_s = settings.bus.poll_s;
+      bus_[k].rx = pins[k]->rx; bus_[k].tx = pins[k]->tx; bus_[k].de = pins[k]->de; bus_[k].baud = pins[k]->baud; bus_[k].poll_s = settings.bus.poll_s; bus_[k].check_settings_s = settings.bus.check_settings_s;
       bus_[k].state = slots_[k].empty() ? "disabled" : "starting";
-      engine_[k] = std::make_unique<electrical::PzemBus>(std::move(meters[k]), static_cast<std::uint64_t>(settings.bus.poll_s) * 1000ULL);
+      engine_[k] = std::make_unique<electrical::PzemBus>(std::move(meters[k]), static_cast<std::uint64_t>(settings.bus.poll_s) * 1000ULL,
+                                                         static_cast<std::uint64_t>(settings.bus.check_settings_s) * 1000ULL);
     }
   }
 
@@ -153,6 +164,14 @@ class Runner {
         const bool fresh = state.have_reading && now - state.reading_at_ms <= engine_[k]->freshness_ms();
         s.have_reading = fresh;
         if (fresh) { s.voltage_v = state.reading.voltage_v; s.current_a = state.reading.current_a; s.power_w = state.reading.power_w; s.energy_kwh = state.reading.energy_kwh; s.alarm = state.reading.alarm; }
+        s.settings_ok = state.holding_ok; s.settings_bad = state.holding_bad;
+        s.settings_known = state.have_holding;
+        if (state.have_holding) {
+          s.stored_address = state.holding.address; s.address_mismatch = state.address_mismatch();
+          s.has_power_alarm = state.holding.has_power_alarm; s.power_alarm_w = state.holding.power_alarm_w;
+          s.has_voltage_alarms = state.holding.has_voltage_alarms; s.high_voltage_alarm_v = state.holding.high_voltage_alarm_v; s.low_voltage_alarm_v = state.holding.low_voltage_alarm_v;
+          s.shunt_a = state.holding.has_shunt ? state.holding.shunt_a : 0;
+        }
         s.error = fresh ? "" : result_text(state.last_result);
         // A meter that has no fresh reading and whose last exchange failed is silent (nothing came) or garbled (something came that was no valid reply), even if it worked before:
         // "waiting" is only for a meter not asked yet.

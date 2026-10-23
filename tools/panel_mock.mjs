@@ -35,7 +35,7 @@ const config = {
   ap: { enabled: true, ssid: "ARMOR-NODE-ELECTRICAL-A1B2C3", security: "wpa2", password_set: true, channel: 0, hidden: false, max_clients: 8, tx_power_dbm: 15, bandwidth_mhz: 20, country: "ES" },
   sta: { enabled: true, ssid: "HomeRouter", password_set: true, backup: [] },
   mqtt: { enabled: true, uri: "mqtt://192.168.0.180:18883", username: "electrical-node-electrical-a1b2c3", password_set: true, heartbeat_s: 10, ntp: "pool.ntp.org", backup: [] },
-  bus: { rx: 16, tx: 15, de: -1, baud: 9600, poll_s: 2 },
+  bus: { rx: 16, tx: 15, de: -1, baud: 9600, poll_s: 2, check_settings_s: 600 },
   bus2: { rx: -1, tx: -1, de: -1, baud: 9600 },
   meters: Array.from({ length: 16 }, (_, i) => ({
     enabled: i < 4, channel: ["grid", "heater", "dc-bus", "oven"][i] ?? `meter${i + 1}`, label: ["Grid input", "Water heater", "Battery bus", ""][i] ?? "", model: i === 2 ? "dc" : "ac", address: i + 1, line: 1,
@@ -82,6 +82,7 @@ const meters = () => config.meters.map((m, i) => {
   const state = stateOf(i), on = state === "reading";
   const tick = Math.floor((Date.now() - started) / 2000);
   return { meter: i + 1, enabled: m.enabled, channel: m.channel, label: m.label, model: m.model, address: m.address, line: m.line ?? 1, state, error: state === "silent" ? "silent" : state === "garbled" ? "crc" : "",
+    ...(on ? { settings: m.model === "dc" ? { address: m.address, address_mismatch: false, high_voltage_alarm_v: 300, low_voltage_alarm_v: 7, shunt_a: 100 } : { address: m.address, address_mismatch: false, power_alarm_w: 2300 } } : {}),
     replies_ok: on ? 200 + tick : 0, replies_bad: state === "garbled" ? 5 + tick : 0, timeouts: state === "silent" ? 40 + tick : 0,
     ...(on ? { reading: { ...NUMBERS[i], power_w: Number((NUMBERS[i].power_w + (tick % 7) * 3.1).toFixed(1)), alarm: false } } : {}) };
 });
@@ -89,7 +90,7 @@ const busStatus = (line = 1) => {
   const tick = Math.floor((Date.now() - started) / 2000);
   const active = config.meters.filter(m => m.enabled && (m.line ?? 1) === line).length;
   const pins = line === 2 ? config.bus2 : config.bus;
-  return { state: active ? "running" : "disabled", error: "", rx: pins.rx, tx: pins.tx, de: pins.de, baud: pins.baud, poll_s: config.bus.poll_s, bytes_rx: active * 25 * tick, bytes_tx: active * 8 * tick, messages: line === 1 ? tick : 0 };
+  return { state: active ? "running" : "disabled", error: "", rx: pins.rx, tx: pins.tx, de: pins.de, baud: pins.baud, poll_s: config.bus.poll_s, check_settings_s: config.bus.check_settings_s, bytes_rx: active * 25 * tick, bytes_tx: active * 8 * tick, messages: line === 1 ? tick : 0 };
 };
 const readings = () => {
   const channels = meters().filter(m => m.state === "reading").map(m => ({ id: m.channel, domain: m.model, ...(m.label ? { label: m.label } : {}), ...m.reading,

@@ -42,9 +42,10 @@ static const std::vector<std::uint16_t> kDc = {5214, 1420, 7404, 0, 25000, 0, 0,
 // The line: it answers the requests it hears with what each address is set to say, after a latency, in pieces of at most `chunk` bytes; and it is the clock (waiting moves time).
 struct World : uartbus::Line {
   std::uint64_t now = 5000;
-  std::map<int, std::vector<std::uint8_t>> answers;
+  std::map<int, std::vector<std::uint8_t>> answers;    // to the requests for the measurements (function 0x04)
+  std::map<int, std::vector<std::uint8_t>> settings;   // to the requests for the meter's own settings (function 0x03); an address that is not here is silent for them
   std::vector<std::pair<std::uint64_t, std::uint8_t>> pending;   // (time it arrives, byte)
-  std::vector<int> asked;
+  std::vector<int> asked, asked_settings;   // the addresses asked for measurements, and for settings
   bool fail_writes = false;
   unsigned latency_ms = 40;
   std::size_t chunk = 64;
@@ -59,9 +60,11 @@ struct World : uartbus::Line {
   }
   bool write(const std::uint8_t* data, std::size_t length) override {
     if (fail_writes) return false;
-    if (length >= 2) asked.push_back(data[0]);
-    const auto answer = answers.find(data[0]);
-    if (answer != answers.end()) for (std::uint8_t b : answer->second) pending.push_back({now + latency_ms, b});
+    const bool for_settings = length >= 2 && data[1] == 0x03;
+    if (length >= 2) (for_settings ? asked_settings : asked).push_back(data[0]);
+    const auto& table = for_settings ? settings : answers;
+    const auto answer = table.find(data[0]);
+    if (answer != table.end()) for (std::uint8_t b : answer->second) pending.push_back({now + latency_ms, b});
     return true;
   }
   Clock clock() {
@@ -114,7 +117,7 @@ static void test_one_meter() {
   CHECK(m.voltage_v == 230.5 && m.current_a == 1.234 && m.power_w == 284.4 && m.energy_kwh == 1.5 && !m.alarm);
   CHECK(m.channel == "grid" && m.label == "Red" && m.model == "ac" && m.address == 1);
   // every request is a whole read request (8 bytes) and every reply a whole AC reply (25 bytes)
-  CHECK(runner.bus().bytes_tx == 8 * world.asked.size() && runner.bus().bytes_rx == 25 * runner.meters()[0].replies_ok);
+  CHECK(runner.bus().bytes_tx == 8 * (world.asked.size() + world.asked_settings.size()) && runner.bus().bytes_rx == 25 * runner.meters()[0].replies_ok);
   // a status every second and a message every poll_s (2 s): about 10 and 5 in ten seconds
   CHECK(tally.statuses >= 9 && tally.statuses <= 11 && tally.messages >= 4 && tally.messages <= 6 && runner.bus().messages == static_cast<std::uint32_t>(tally.messages));
   const std::string& message = runner.message();
@@ -338,7 +341,45 @@ static void test_long_periods_keep_the_readings() {
   }
 }
 
+static void test_the_settings_of_a_meter_reach_the_status() {
+  World world;
+  world.answers[1] = reply(1, kAc);
+  world.answers[2] = reply(2, kDc);
+  world.settings[1] = reply(1, {2300, 1}, 0x03);                  // alarm at 2300 W, address 1
+  world.settings[2] = reply(2, {30000, 700, 9, 3}, 0x03);         // the DC meter says its address is 9 and its shunt is 300 A
+  config::Settings s = settings_with({{true, "grid", "Red", "ac", 1}, {true, "bus", "", "dc", 2}});
+  CHECK(s.bus.check_settings_s == 600);
+  s.bus.check_settings_s = 30;
+  Runner runner(s);
+  runner.set_line_open();
+  run(runner, world, 20);
+  const MeterStatus& ac = runner.meters()[0];
+  const MeterStatus& dc = runner.meters()[1];
+  CHECK(ac.settings_known && ac.stored_address == 1 && !ac.address_mismatch && ac.has_power_alarm && ac.power_alarm_w == 2300.0 && !ac.has_voltage_alarms && ac.shunt_a == 0);
+  CHECK(dc.settings_known && dc.stored_address == 9 && dc.address_mismatch && dc.has_voltage_alarms && dc.high_voltage_alarm_v == 300.0 && dc.low_voltage_alarm_v == 7.0 && dc.shunt_a == 300);
+  CHECK(ac.settings_ok >= 1 && ac.replies_bad == 0 && dc.replies_bad == 0 && ac.state == "reading" && dc.state == "reading");
+  CHECK(runner.bus().check_settings_s == 30);
+  // a meter that does not answer the settings keeps reading, and shows no settings
+  World mute;
+  mute.answers[1] = reply(1, kAc);
+  Runner quiet(s);
+  quiet.set_line_open();
+  run(quiet, mute, 20);
+  CHECK(quiet.meters()[0].state == "reading" && !quiet.meters()[0].settings_known && quiet.meters()[0].settings_bad >= 1 && quiet.meters()[0].timeouts == 0 && quiet.meters()[0].replies_bad == 0);
+  // off: no request for the settings is ever sent
+  config::Settings off = settings_with({{true, "grid", "Red", "ac", 1}});
+  off.bus.check_settings_s = 0;
+  World silent;
+  silent.answers[1] = reply(1, kAc);
+  silent.settings[1] = reply(1, {2300, 1}, 0x03);
+  Runner never(off);
+  never.set_line_open();
+  run(never, silent, 20);
+  CHECK(!never.meters()[0].settings_known && never.meters()[0].settings_ok == 0 && never.meters()[0].settings_bad == 0);
+}
+
 int main() {
+  test_the_settings_of_a_meter_reach_the_status();
   test_long_periods_keep_the_readings();
   test_no_meter();
   test_one_meter();

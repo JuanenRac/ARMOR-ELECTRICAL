@@ -77,7 +77,7 @@ void write_network(json::Writer& w) {
 
 void write_bus(json::Writer& w, int line = 0) {
   const manager::BusStatus b = manager::bus(line);
-  w.begin_object().field("state", b.state).field("error", b.error).field("rx", b.rx).field("tx", b.tx).field("de", b.de).field("baud", b.baud).field("poll_s", b.poll_s)
+  w.begin_object().field("state", b.state).field("error", b.error).field("rx", b.rx).field("tx", b.tx).field("de", b.de).field("baud", b.baud).field("poll_s", b.poll_s).field("check_settings_s", b.check_settings_s)
       .field("bytes_rx", static_cast<long long>(b.bytes_rx)).field("bytes_tx", static_cast<long long>(b.bytes_tx)).field("messages", static_cast<long long>(b.messages)).end_object();
 }
 
@@ -86,6 +86,14 @@ void write_meter(json::Writer& w, std::size_t index) {
   w.begin_object().field("meter", s.number).field("enabled", s.enabled).field("channel", s.channel).field("label", s.label).field("model", s.model).field("address", s.address).field("line", s.line)
       .field("state", s.state).field("error", s.error).field("replies_ok", static_cast<long long>(s.replies_ok)).field("replies_bad", static_cast<long long>(s.replies_bad))
       .field("timeouts", static_cast<long long>(s.timeouts));
+  if (s.settings_known) {
+    // the meter's own settings, as it reported them (read only)
+    w.key("settings").begin_object().field("address", s.stored_address).field("address_mismatch", s.address_mismatch);
+    if (s.has_power_alarm) w.key("power_alarm_w").number(s.power_alarm_w, 0);
+    if (s.has_voltage_alarms) w.key("high_voltage_alarm_v").number(s.high_voltage_alarm_v, 2).key("low_voltage_alarm_v").number(s.low_voltage_alarm_v, 2);
+    if (s.shunt_a > 0) w.field("shunt_a", s.shunt_a);
+    w.end_object();
+  }
   if (s.have_reading) {
     w.key("reading").begin_object().key("voltage_v").number(s.voltage_v, 1).key("current_a").number(s.current_a, 3).key("power_w").number(s.power_w, 1).key("energy_kwh").number(s.energy_kwh, 3)
         .field("alarm", s.alarm).end_object();

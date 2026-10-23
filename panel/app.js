@@ -294,6 +294,16 @@ function psPill(state) {
 }
 const meterErrorText = s => (s.error && L["me_" + s.error] ? t("me_" + s.error) : s.error || "");
 const meterLiveText = s => t("meterCounters", s.replies_ok, s.replies_bad, s.timeouts);
+// What the meter says about itself (its stored address and alarm thresholds, read only), or nothing until it has said it.
+const meterOwnText = s => {
+  const o = s.settings;
+  if (!o) return "";
+  const parts = [t("meterOwn", o.address)];
+  if (o.power_alarm_w !== undefined) parts.push(t("meterOwnPower", o.power_alarm_w));
+  if (o.high_voltage_alarm_v !== undefined) parts.push(t("meterOwnVolts", o.high_voltage_alarm_v, o.low_voltage_alarm_v));
+  if (o.shunt_a !== undefined) parts.push(t("meterOwnShunt", o.shunt_a));
+  return parts.join(" · ");
+};
 
 const BOARD_NAMES = { "s3-wifi": "ESP32-S3-WROOM-1 N16R8", "s3-eth": "Waveshare ESP32-S3-ETH" };
 
@@ -480,7 +490,7 @@ function lineCard(prefix, status, title, intro, withPoll) {
   return el("section", { class: "card" }, el("h2", {}, title), el("p", { class: "muted" }, intro),
     el("div", { class: "row" }, pin("Rx"), pin("Tx")),
     el("div", { class: "row" }, pin("De"), field(prefix === "bus" ? "busBaud" : "bus2Baud", prefix + ".baud", { type: "select", number: true, options: BAUDS.map(b => [b, String(b)]) })),
-    withPoll ? el("div", { class: "row" }, field("busPoll", "bus.poll_s", { type: "number", min: 1, max: 3600 })) : null,
+    withPoll ? el("div", { class: "row" }, field("busPoll", "bus.poll_s", { type: "number", min: 1, max: 3600 }), field("busCheck", "bus.check_settings_s", { type: "number", min: 0, max: 86400 })) : null,
     el("p", { class: "hint" }, t("busDeHint")),
     status && status.state && status.state !== "disabled" ? el("div", { class: "actions" }, psPill(status.state), el("span", { class: "muted", id: prefix + "-live" }, t("busCounters", status.bytes_tx, status.bytes_rx, status.messages || 0))) : null,
     status && status.error ? el("p", { class: "err" }, t("be_" + status.error)) : null);
@@ -497,6 +507,8 @@ function meterCard(index) {
       el("div", { class: "row" }, field("meterChannel", base + "channel", { max: 32, hint: t("meterChannelHint") }), field("meterLabel", base + "label", { max: 40 })),
       el("div", { class: "row" }, field("meterModel", base + "model", { type: "select", options: [["ac", t("meterModelAc")], ["dc", t("meterModelDc")]] }), field("meterAddress", base + "address", { type: "number", min: 1, max: 247 }), field("meterLine", base + "line", { type: "select", number: true, rerender: true, options: [[1, t("meterLine1")], [2, t("meterLine2")]] })),
       st.enabled ? el("div", { class: "actions" }, psPill(st.state), el("span", { class: "muted", id: "meter-live-" + index }, meterLiveText(st))) : null,
+      st.enabled && st.settings ? el("p", { class: "muted", id: "meter-own-" + index }, meterOwnText(st)) : null,
+      st.enabled && st.settings && st.settings.address_mismatch ? el("p", { class: "note warn" }, t("meterOwnMismatch")) : null,
       st.enabled && st.error ? el("p", { class: "err" }, meterErrorText(st)) : null,
       st.state === "silent" || st.state === "garbled" || st.state === "waiting" ? el("p", { class: "hint" }, t("mhint_" + st.state)) : null] : null);
 }
@@ -910,6 +922,8 @@ function patchLive() {
   S.meters.forEach((m, i) => {
     const node = document.getElementById("meter-live-" + i);
     if (node && m.enabled) node.textContent = meterLiveText(m);
+    const own = document.getElementById("meter-own-" + i);
+    if (own && m.enabled) own.textContent = meterOwnText(m);
   });
   if (S.io) {
     const z = S.io.zigbee, live = document.getElementById("zb-live"), pill = document.getElementById("zb-pill"), client = document.getElementById("zb-client");

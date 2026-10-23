@@ -1,6 +1,7 @@
 // ARMOR-NODE-ELECTRICAL - reading the Peacefair PZEM energy meters over their Modbus-RTU serial link: the PZEM-004T v3 (AC, up to 260 V, a current transformer for the current)
-// and the PZEM-017 (DC, up to 300 V, a shunt). READ ONLY: only the request that reads the input registers is built. The requests that write (a new address, the alarm
-// thresholds, the reset of the energy counter) exist in the meters but are not built anywhere in this project.
+// and the PZEM-017 (DC, up to 300 V, a shunt). READ ONLY: only the two requests that read are built, the one for the input registers (the measurements) and the one for the holding
+// registers (the meter's own settings, for diagnosis). The requests that write (a new address, the alarm thresholds, the reset of the energy counter) exist in the meters but are
+// not built anywhere in this project.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // From the makers' public description of the two meters; NOTHING here has been connected to a meter.
@@ -12,6 +13,11 @@
 //                                             registers), frequency (0.1 Hz), power factor (0.01), alarm (0xFFFF when above the threshold).
 //   PZEM-017, eight registers from 0x0000:    voltage (0.01 V), current (0.01 A), power (0.1 W, two registers), energy (1 Wh, two registers), the high- and the low-voltage
 //                                             alarm (0xFFFF when active).
+//   Holding registers (function 0x03, the settings the meter keeps):
+//                                             PZEM-004T v3, two registers from 0x0001: the power alarm threshold (1 W) and the Modbus address (1 to 247).
+//                                             PZEM-017, four registers from 0x0000: the high- and the low-voltage alarm thresholds (0.01 V), the Modbus address, and the range of
+//                                             the shunt (0: 100 A, 1: 50 A, 2: 200 A, 3: 300 A).
+//   The request and the reply have the same shape as the ones above, with function 0x03.
 // Address 0xF8 answers whichever meter is on the line: only for a bench with one meter; on a shared line every meter has its own address.
 #pragma once
 #include <array>
@@ -94,6 +100,69 @@ inline Result decode(Model model, std::uint8_t address, const std::uint8_t* data
   }
   if (reading.voltage_v > 1000 || reading.current_a > 1000 || reading.power_w > 1'000'000 || reading.energy_kwh > 10'000'000 || reading.frequency_hz > 100 || reading.power_factor > 1.0) return Result::kRange;
   out = reading;
+  return Result::kOk;
+}
+
+// ---- the meter's own settings (holding registers, function 0x03) -----------------------------------------------------------------------------------------------------------------
+
+constexpr std::uint16_t holding_first(Model model) { return model == Model::kAc ? 0x0001 : 0x0000; }
+constexpr std::size_t holding_count(Model model) { return model == Model::kAc ? 2 : 4; }
+constexpr std::size_t holding_reply_length(Model model) { return 5 + 2 * holding_count(model); }
+
+// The request that reads the settings of the meter at `address` (1 to 247, or 0xF8).
+inline bool build_holding_request(Model model, std::uint8_t address, std::array<std::uint8_t, kRequestLength>& out) {
+  if (address == 0 || (address > 247 && address != 0xF8)) return false;
+  const std::uint16_t first = holding_first(model);
+  out = {address, 0x03, static_cast<std::uint8_t>(first >> 8), static_cast<std::uint8_t>(first & 0xFF), 0x00, static_cast<std::uint8_t>(holding_count(model)), 0, 0};
+  const std::uint16_t crc = crc16(out.data(), 6);
+  out[6] = static_cast<std::uint8_t>(crc & 0xFF);
+  out[7] = static_cast<std::uint8_t>(crc >> 8);
+  return true;
+}
+
+// What a meter says about itself. `address` is the Modbus address stored in the meter, which is what it answers to besides 0xF8.
+struct Holding {
+  int address = 0;
+  bool has_power_alarm = false;
+  double power_alarm_w = 0;                        // PZEM-004T v3
+  bool has_voltage_alarms = false, has_shunt = false;
+  double high_voltage_alarm_v = 0, low_voltage_alarm_v = 0;   // PZEM-017
+  int shunt_a = 0;                                  // PZEM-017: 100, 50, 200 or 300
+};
+
+// A reply to the holding request, checked the way the measurements' is (address, function, length, CRC), and a setting no meter has is refused (an address outside 1 to 247, a shunt code
+// that does not exist), so a garbled frame that happens to pass the CRC does not become a value.
+inline Result decode_holding(Model model, std::uint8_t address, const std::uint8_t* data, std::size_t length, Holding& out) {
+  if (length < 5) return Result::kTooShort;
+  if (data[1] == (0x03 | 0x80)) {
+    if (length != 5) return Result::kLength;
+    const std::uint16_t crc = crc16(data, 3);
+    if (data[3] != (crc & 0xFF) || data[4] != (crc >> 8)) return Result::kCrc;
+    if (address != 0xF8 && data[0] != address) return Result::kAddress;
+    return Result::kException;
+  }
+  if (length < holding_reply_length(model)) return Result::kTooShort;
+  if (length != holding_reply_length(model)) return Result::kLength;
+  const std::uint16_t crc = crc16(data, length - 2);
+  if (data[length - 2] != (crc & 0xFF) || data[length - 1] != (crc >> 8)) return Result::kCrc;
+  if (address != 0xF8 && data[0] != address) return Result::kAddress;
+  if (data[1] != 0x03) return Result::kFunction;
+  if (data[2] != 2 * holding_count(model)) return Result::kLength;
+  std::array<std::uint32_t, 4> r{};
+  for (std::size_t i = 0; i < holding_count(model); ++i) r[i] = (static_cast<std::uint32_t>(data[3 + 2 * i]) << 8) | data[4 + 2 * i];
+  Holding holding;
+  if (model == Model::kAc) {
+    holding.has_power_alarm = true; holding.power_alarm_w = static_cast<double>(r[0]);
+    holding.address = static_cast<int>(r[1]);
+  } else {
+    holding.has_voltage_alarms = true; holding.high_voltage_alarm_v = r[0] / 100.0; holding.low_voltage_alarm_v = r[1] / 100.0;
+    holding.address = static_cast<int>(r[2]);
+    static constexpr int kShunt[4] = {100, 50, 200, 300};
+    if (r[3] > 3) return Result::kRange;
+    holding.has_shunt = true; holding.shunt_a = kShunt[r[3]];
+  }
+  if (holding.address < 1 || holding.address > 247) return Result::kRange;
+  out = holding;
   return Result::kOk;
 }
 
