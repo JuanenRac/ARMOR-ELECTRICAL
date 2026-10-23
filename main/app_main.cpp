@@ -1,5 +1,5 @@
 /*
- * ARMOR-ELECTRICAL - ESP32-S3 electrical node (ESP32-S3-WROOM-1 N16R8 on Wi-Fi, or the Waveshare ESP32-S3-ETH on its cable): reads energy meters (PZEM-004T v3 for AC,
+ * ARMOR-NODE-ELECTRICAL - ESP32-S3 electrical node (ESP32-S3-WROOM-1 N16R8 on Wi-Fi, or the Waveshare ESP32-S3-ETH on its cable): reads energy meters (PZEM-004T v3 for AC,
  * PZEM-017 for DC) on one serial line and publishes what they measure on the house's electrical network to the A.R.M.O.R. server.
  * Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
  *

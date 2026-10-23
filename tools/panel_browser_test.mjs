@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the web panel in a real browser (headless Microsoft Edge) against the stand-in node of tools/panel_mock.mjs: set-up, login, the pages, saving with a refused and a
+// ARMOR-NODE-ELECTRICAL - the web panel in a real browser (headless Microsoft Edge) against the stand-in node of tools/panel_mock.mjs: set-up, login, the pages, saving with a refused and a
 // corrected value, every page in the eight languages, the width of a phone. Development tool; it needs Edge, and `ws` from ARMOR-SERVER's node_modules.
 //   node tools/panel_browser_test.mjs [s3-wifi|s3-eth]
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
@@ -17,8 +17,8 @@ fs.mkdirSync(OUT, { recursive: true });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "armor-epanel-"));
 const board = process.argv[2] ?? "s3-wifi";
-const mock = spawn("node", ["tools/panel_mock.mjs", "18122", "--user", "admin:adminpass123", "--board", board], { cwd: R + "/ARMOR-ELECTRICAL", stdio: "ignore" });
-const fresh = spawn("node", ["tools/panel_mock.mjs", "18123", "--board", board], { cwd: R + "/ARMOR-ELECTRICAL", stdio: "ignore" });
+const mock = spawn("node", ["tools/panel_mock.mjs", "18122", "--user", "admin:adminpass123", "--board", board], { cwd: R + "/ARMOR-NODE-ELECTRICAL", stdio: "ignore" });
+const fresh = spawn("node", ["tools/panel_mock.mjs", "18123", "--board", board], { cwd: R + "/ARMOR-NODE-ELECTRICAL", stdio: "ignore" });
 let edge;
 const cleanup = () => { for (const p of [mock, fresh, edge]) try { p?.kill(); } catch { /* ignore */ } };
 process.on("exit", cleanup);

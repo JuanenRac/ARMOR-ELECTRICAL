@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - what the node can tell an administrator about itself when it misbehaves: the core dump in flash and the diagnostic package (core/diag_package.hpp has the rules and is tested on a computer).
+// ARMOR-NODE-ELECTRICAL - what the node can tell an administrator about itself when it misbehaves: the core dump in flash and the diagnostic package (core/diag_package.hpp has the rules and is tested on a computer).
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <cstdint>

@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the relay outputs of the base board. Nothing here has run on a board.
+// ARMOR-NODE-ELECTRICAL - the relay outputs of the base board. Nothing here has run on a board.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // What the node decides is in core/relay_bank.hpp and core/relay_remote.hpp (tested on a computer): which relay is closed, at what level its pin must be, which words the broker may

@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the node's web panel and its JSON API.
+// ARMOR-NODE-ELECTRICAL - the node's web panel and its JSON API.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // One dispatcher serves /api/v1/*: it checks the session, reads a bounded body, calls the handler for the method and path and answers
@@ -309,7 +309,7 @@ esp_err_t post_setup(httpd_req_t* r) {
   if (!wifi_ssid.empty()) { s.uplink = config::Uplink::kWifi; s.sta.enabled = true; s.sta.ssid = wifi_ssid; s.sta.password = wifi_password; }
   if (!s.ap.enabled) {
     s.ap.enabled = true;
-    s.ap.ssid = "ARMOR-ELECTRICAL-" + netplan::upper(store::mac_tail());
+    s.ap.ssid = "ARMOR-NODE-ELECTRICAL-" + netplan::upper(store::mac_tail());
     s.ap.security = config::WifiSecurity::kWpa2;
     s.ap.password = code;
   }

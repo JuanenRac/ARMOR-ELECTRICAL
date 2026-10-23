@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - Improv Wi-Fi over the USB serial line. Nothing here has run on a board.
+// ARMOR-NODE-ELECTRICAL - Improv Wi-Fi over the USB serial line. Nothing here has run on a board.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // What the packets mean is in core/improv.hpp (tested on a computer). This file reads the bytes the console receives (the chip's USB Serial/JTAG, polled: nothing is read when nothing was

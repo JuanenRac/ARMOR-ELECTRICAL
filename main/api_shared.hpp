@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - what the panel does over HTTP: the status, the meters, the readings, the settings and the search for Wi-Fi networks.
+// ARMOR-NODE-ELECTRICAL - what the panel does over HTTP: the status, the meters, the readings, the settings and the search for Wi-Fi networks.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <string>

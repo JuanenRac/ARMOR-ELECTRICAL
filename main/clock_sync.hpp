@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the node's clock: the time zone, the time server (SNTP) and, when the time server is off, setting the time by hand.
+// ARMOR-NODE-ELECTRICAL - the node's clock: the time zone, the time server (SNTP) and, when the time server is off, setting the time by hand.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // This used to live inside the broker link, which meant a node with no broker had no time at all. It is its own piece now: the zone applies

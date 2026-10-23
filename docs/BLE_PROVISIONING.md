@@ -25,7 +25,7 @@ it by name or by service.
   the air and, because the passkey must be known, someone who is present while the phone pairs (an active man in the middle).
 * On top of the link, every operation except `hello` needs the **set-up code** (a node with no user) or a **login** (a node with users), and changing
   anything needs an administrator. The set-up code is the one the node shows on its USB console, or the one derived from the fleet secret and the node's
-  MAC (ARMOR-RADAR's `tools/adopt_node.py` computes it, and the app can when it is given the secret).
+  MAC (ARMOR-NODE-RADAR's `tools/adopt_node.py` computes it, and the app can when it is given the secret).
 * Five wrong passwords or codes lock the channel for 30 seconds, doubling up to five minutes.
 * One phone at a time.
 
@@ -90,7 +90,7 @@ and then `reboot`. `wifi.scan` gives the app the list of networks to choose from
 ## Limits of this work
 
 * The radio side (NimBLE) builds in the ESP-IDF container for both boards, and the framing, the operations and their access rules are tested on a computer (`tests/test_ble.cpp`, the same
-  protocol and the same code as ARMOR-RADAR's node); the whole thing has not run on a board, and no phone has talked to it.
+  protocol and the same code as ARMOR-NODE-RADAR's node); the whole thing has not run on a board, and no phone has talked to it.
 * The three kinds of node of A.R.M.O.R. (radar, solar and electrical) answer the same protocol with the same service and characteristics, so one app configures all of them; what a
   node lists in its settings differs (radars and pins, serial ports, meters), and the app only touches what they all have: name, Wi-Fi, address, broker and Bluetooth.
 * The passkey is derived from the set-up code and is the same at every pairing of the node (a random one for each pairing would be better and is not done yet); five failed pairings close the door for five minutes.

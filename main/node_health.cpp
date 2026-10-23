@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - tells the server how the node is doing. Nothing here has run on a board; what it decides is in core/node_health.hpp and is tested on a computer.
+// ARMOR-NODE-ELECTRICAL - tells the server how the node is doing. Nothing here has run on a board; what it decides is in core/node_health.hpp and is tested on a computer.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include "node_health.hpp"
 

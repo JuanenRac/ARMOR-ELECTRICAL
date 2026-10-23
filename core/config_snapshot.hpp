@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - a copy of the settings kept in flash right before a firmware is installed, and the check that the settings survived the start. No hardware.
+// ARMOR-NODE-ELECTRICAL - a copy of the settings kept in flash right before a firmware is installed, and the check that the settings survived the start. No hardware.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // An update replaces the program, not the settings in flash; but a new program may read the old settings differently (a field it no longer accepts is left at its first value, see

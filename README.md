@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="images/ARMOR_BANNER.svg" alt="ARMOR-ELECTRICAL banner" width="100%">
+  <img src="images/ARMOR_BANNER.svg" alt="ARMOR-NODE-ELECTRICAL banner" width="100%">
 </p>
 
-# ⚡ ARMOR-ELECTRICAL
+# ⚡ ARMOR-NODE-ELECTRICAL
 
 <p align="center">
   🇺🇸 <b>English</b> |
@@ -74,12 +74,12 @@ Captured at 1920×1080 on a test bench, with sample data and no real installatio
 
 ## 🧩 Role in A.R.M.O.R.
 
-ARMOR-ELECTRICAL measures the house's AC and DC network through its meters and holds the rules for switching between sources. It publishes the readings for [ARMOR-SERVER](https://github.com/JuanenRac/ARMOR-SERVER), which keeps their history and the energy of each day and raises the alarms; the *Electrical* menu and the *Electrical Designer* of [ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO) and the electrical screen of [ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL) show it. Switching is designed (arm, a one-time token, the interlock, the confirmation of both contactors) but not activated.
+ARMOR-NODE-ELECTRICAL measures the house's AC and DC network through its meters and holds the rules for switching between sources. It publishes the readings for [ARMOR-SERVER](https://github.com/JuanenRac/ARMOR-SERVER), which keeps their history and the energy of each day and raises the alarms; the *Electrical* menu and the *Electrical Designer* of [ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO) and the electrical screen of [ARMOR-ANDROID-CONTROL](https://github.com/JuanenRac/ARMOR-ANDROID-CONTROL) show it. Switching is designed (arm, a one-time token, the interlock, the confirmation of both contactors) but not activated.
 
 ## 📂 Repository Structure
 
 ```text
-ARMOR-ELECTRICAL/
+ARMOR-NODE-ELECTRICAL/
 ├── main/    the ESP-IDF component: app_main, electrical_manager (the task), uart_bus, network, web_server, api_shared, mqtt_link, node_store, tls_cert, ble_provision, board_ethernet
 ├── core/    pzem (frames of the PZEM meters), pzem_bus (the line), meter_runner (one turn of the loop), electrical_json (the message), electrical_config (the settings),
 │            interlock (the rules for switching, NOT linked into the firmware), ble_frame + ble_dispatch (Bluetooth), auth, netplan, board_s3, json...
@@ -111,11 +111,11 @@ See the [design](docs/DESIGN.md), the [safety notes](docs/SAFETY.md), the [rules
 **A.R.M.O.R.** (Autonomous Radar & Multimodal Observation Range) is a perimeter-security system made of independent repositories. Each one has its own version, its own tests and its own README; this is the family:
 
 * **[ARMOR-COMMON](https://github.com/JuanenRac/ARMOR-COMMON)** - Message contracts, validators, conformance vectors and generated types
-* **[ARMOR-RADAR](https://github.com/JuanenRac/ARMOR-RADAR)** - Field-node firmware for ESP32-S3 with three radars and its own web panel
-* **[ARMOR-SOLAR](https://github.com/JuanenRac/ARMOR-SOLAR)** - Solar inverter and battery protocols and the messages of a gateway node
-* **ARMOR-ELECTRICAL** (this repository) - Electrical node: meters, the message of the network's readings and the rules for switching
-* **[ARMOR-ALARM](https://github.com/JuanenRac/ARMOR-ALARM)** - Alarm node and panel: zones, arming, delays, siren and PIN, with the server or without it
-* **[ARMOR-HMI](https://github.com/JuanenRac/ARMOR-HMI)** - Touch panel: the state of the system on a wall screen, arming and acknowledging, and the home of the voice assistant
+* **[ARMOR-NODE-RADAR](https://github.com/JuanenRac/ARMOR-NODE-RADAR)** - Field-node firmware for ESP32-S3 with three radars and its own web panel
+* **[ARMOR-NODE-SOLAR](https://github.com/JuanenRac/ARMOR-NODE-SOLAR)** - Solar inverter and battery protocols and the messages of a gateway node
+* **ARMOR-NODE-ELECTRICAL** (this repository) - Electrical node: meters, the message of the network's readings and the rules for switching
+* **[ARMOR-NODE-ALARM](https://github.com/JuanenRac/ARMOR-NODE-ALARM)** - Alarm node and panel: zones, arming, delays, siren and PIN, with the server or without it
+* **[ARMOR-NODE-HMI](https://github.com/JuanenRac/ARMOR-NODE-HMI)** - Touch panel: the state of the system on a wall screen, arming and acknowledging, and the home of the voice assistant
 * **[ARMOR-NETWORK](https://github.com/JuanenRac/ARMOR-NETWORK)** - The local network: its devices, the internet and what changes
 * **[ARMOR-SERVER](https://github.com/JuanenRac/ARMOR-SERVER)** - Central coordinator: telemetry, alarms, devices, solar readings and cameras
 * **[ARMOR-STUDIO](https://github.com/JuanenRac/ARMOR-STUDIO)** - Web console: cameras, radar, alarms, solar energy and the 2D/3D site designer

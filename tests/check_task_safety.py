@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ARMOR-ELECTRICAL - guard against the stack overflows that only show on a board: reads main/*.cpp (nothing is compiled; the ESP-IDF headers are not needed) and fails when
+# ARMOR-NODE-ELECTRICAL - guard against the stack overflows that only show on a board: reads main/*.cpp (nothing is compiled; the ESP-IDF headers are not needed) and fails when
 #   1. a FreeRTOS task is created with a stack below the minimum, or below the one its job needs (the table of tasks is printed with --table);
 #   2. a function a task can reach (the call graph is followed by name, so it may over-reach) keeps a whole config::Settings, or a buffer of more than 1 KB, on its stack;
 #   3. the HTTP client that fetches the release from GitHub has a header buffer below what GitHub's redirects need (about 5.2 KB), or sets a size that is not header_buffer().

@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the diagnostic package of a node: what an administrator may take from it to find out why it misbehaves, and never a secret. No hardware.
+// ARMOR-NODE-ELECTRICAL - the diagnostic package of a node: what an administrator may take from it to find out why it misbehaves, and never a secret. No hardware.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The server asks for it with the `diagnostics` order (the same arm and execute as every order, detail `package` or `log`) and the node answers inside the `diagnostics` of its result: the

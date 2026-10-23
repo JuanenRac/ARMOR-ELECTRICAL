@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the health report every node says about itself, in the same words for every family. No hardware.
+// ARMOR-NODE-ELECTRICAL - the health report every node says about itself, in the same words for every family. No hardware.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // A node publishes, now and then, one message to armor/health/<node> (contract node_health.schema.json in ARMOR-COMMON): how long it has been up and why it last restarted, the memory it has

@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of the comparison of versions and of the choice of a release's firmware image: the update from GitHub never installs what is not this board's.
+// ARMOR-NODE-ELECTRICAL - host tests of the comparison of versions and of the choice of a release's firmware image: the update from GitHub never installs what is not this board's.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include <cstdio>
 #include <string>
@@ -95,17 +95,17 @@ static void test_assets() {
 
 // Only what GitHub publishes for this very repository is downloaded.
 static void test_official_urls() {
-  const std::string repo = "JuanenRac/ARMOR-RADAR";
-  const std::string base = "https://github.com/JuanenRac/ARMOR-RADAR/releases/download/";
+  const std::string repo = "JuanenRac/ARMOR-NODE-RADAR";
+  const std::string base = "https://github.com/JuanenRac/ARMOR-NODE-RADAR/releases/download/";
   CHECK(release::is_official_url(base + "v0.6.7/armor_radar-s3-eth.bin", repo));
-  CHECK(!release::is_official_url("http://github.com/JuanenRac/ARMOR-RADAR/releases/download/v0.6.7/armor_radar-s3-eth.bin", repo));
-  CHECK(!release::is_official_url("https://github.com/JuanenRac/ARMOR-SOLAR/releases/download/v0.6.7/armor_radar-s3-eth.bin", repo));
-  CHECK(!release::is_official_url("https://github.com.evil.example/JuanenRac/ARMOR-RADAR/releases/download/v1/a.bin", repo));
-  CHECK(!release::is_official_url("https://github.com/JuanenRac/ARMOR-RADAR/releases/download/../../../evil/a.bin", repo));
+  CHECK(!release::is_official_url("http://github.com/JuanenRac/ARMOR-NODE-RADAR/releases/download/v0.6.7/armor_radar-s3-eth.bin", repo));
+  CHECK(!release::is_official_url("https://github.com/JuanenRac/ARMOR-NODE-SOLAR/releases/download/v0.6.7/armor_radar-s3-eth.bin", repo));
+  CHECK(!release::is_official_url("https://github.com.evil.example/JuanenRac/ARMOR-NODE-RADAR/releases/download/v1/a.bin", repo));
+  CHECK(!release::is_official_url("https://github.com/JuanenRac/ARMOR-NODE-RADAR/releases/download/../../../evil/a.bin", repo));
   CHECK(!release::is_official_url(base + "v0.6.7/a.bin?x=1", repo) && !release::is_official_url(base + "v0.6.7/a.bin#x", repo) && !release::is_official_url(base + "v0.6.7/a b.bin", repo));
   CHECK(!release::is_official_url(base + "v0.6.7/sub/a.bin", repo) && !release::is_official_url(base + "a.bin", repo) && !release::is_official_url(base + "v0.6.7/", repo) && !release::is_official_url(base, repo));
   CHECK(!release::is_official_url(base + "v0.6.7/a.bin", "") && !release::is_official_url("", repo));
-  CHECK(!release::is_official_url("https://github.com/JuanenRac/ARMOR-RADAR/releases/download/v1@evil/a.bin", repo));
+  CHECK(!release::is_official_url("https://github.com/JuanenRac/ARMOR-NODE-RADAR/releases/download/v1@evil/a.bin", repo));
 }
 
 // The signature binds the hash to the project, the board and the version: a hash signed for one image cannot be presented for another. The signature below was made with the key of the
@@ -142,7 +142,7 @@ static void test_header_buffer() {
   CHECK(headers.size() > 5100 && headers.size() < 5400);
   CHECK(release::header_buffer_size(8u * 1024 * 1024) == 20480 && release::header_buffer_size(8u * 1024 * 1024) > 16384);   // external RAM: past the internal threshold
   {  // the request that follows GitHub's redirect: an address of about a thousand characters plus the usual headers must fit the request buffer (the default 512 made the client say "Out of buffer")
-    const std::string address(1100, 'a'), request = "GET /" + address + " HTTP/1.1\r\nHost: release-assets.githubusercontent.com\r\nUser-Agent: ARMOR-ELECTRICAL\r\nAccept: */*\r\n\r\n";
+    const std::string address(1100, 'a'), request = "GET /" + address + " HTTP/1.1\r\nHost: release-assets.githubusercontent.com\r\nUser-Agent: ARMOR-NODE-ELECTRICAL\r\nAccept: */*\r\n\r\n";
     CHECK(request.size() > 512 && static_cast<std::size_t>(release::kRequestBuffer) >= request.size() + 1024);
   }
   CHECK(release::header_buffer_size(0) == 6144 && release::header_buffer_size(20480) == 6144 && release::header_buffer_size(40960) == 20480);

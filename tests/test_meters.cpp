@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of the meters: the Modbus CRC, the PZEM frames, the bus that asks them one at a time, and the message the node makes.
+// ARMOR-NODE-ELECTRICAL - host tests of the meters: the Modbus CRC, the PZEM frames, the bus that asks them one at a time, and the message the node makes.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 // The meters are stand-ins written from the makers' public description; no real PZEM has been read.
 #include <cstdio>

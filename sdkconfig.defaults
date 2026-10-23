@@ -1,4 +1,4 @@
-# ARMOR-ELECTRICAL defaults. Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
+# ARMOR-NODE-ELECTRICAL defaults. Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #
 # The board is an ESP32-S3-DevKitC-1 style ESP32-S3-WROOM-1 N16R8 (16 MB flash, 8 MB octal PSRAM) with two USB-C sockets: "USB & OTG" (the chip's native
 # USB, GPIO 19 and 20) and "USB to serial" (a CH343P on UART0, GPIO 43 and 44). The console is moved to the native USB Serial/JTAG so that all three

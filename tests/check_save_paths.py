@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ARMOR-ELECTRICAL - guard on what happens when the panel saves the settings. Nothing is compiled: it reads main/ and panel/ and fails when
+# ARMOR-NODE-ELECTRICAL - guard on what happens when the panel saves the settings. Nothing is compiled: it reads main/ and panel/ and fails when
 #   1. api::put_config no longer applies a new time zone at once (clocksync::set_zone) or no longer leaves the zone out of the "restart needed" comparison, which is how a zone
 #      saved in the panel stayed on the old one until somebody restarted the node;
 #   2. the clock still applies the zone only at start;

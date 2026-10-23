@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of what every node shares and that has no hardware: the schedule of retries, Improv Wi-Fi over serial and the stack report.
+// ARMOR-NODE-ELECTRICAL - host tests of what every node shares and that has no hardware: the schedule of retries, Improv Wi-Fi over serial and the stack report.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 // Nothing was run on a board; the packets are the ones the standard (https://www.improv-wifi.com/serial/) describes.
 #include <cstdio>

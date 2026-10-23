@@ -1,4 +1,4 @@
-/* ARMOR-ELECTRICAL node panel - the same look as ARMOR-STUDIO: dark teal panels, a left menu, mono labels.
+/* ARMOR-NODE-ELECTRICAL node panel - the same look as ARMOR-STUDIO: dark teal panels, a left menu, mono labels.
    Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later. No external font or image: the panel works with no Internet. */
 :root {
   --bg: #071019; --side-a: #0a1823; --side-b: #050b12; --line: #214858; --line-soft: #1d3c49; --text: #ecf7fb; --strong: #f5fdff;

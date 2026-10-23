@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the relay outputs of the base board: GPIO pins driven from the panel.
+// ARMOR-NODE-ELECTRICAL - the relay outputs of the base board: GPIO pins driven from the panel.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <cstddef>

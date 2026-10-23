@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the node's link to the broker: the clock and the messages the node publishes.
+// ARMOR-NODE-ELECTRICAL - the node's link to the broker: the clock and the messages the node publishes.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <cstdint>

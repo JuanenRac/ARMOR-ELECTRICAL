@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of the orders the server can give a node (core/control_gate.hpp): the strict reading of the order against the shared vectors, the one-time token bound to its operation
+// ARMOR-NODE-ELECTRICAL - host tests of the orders the server can give a node (core/control_gate.hpp): the strict reading of the order against the shared vectors, the one-time token bound to its operation
 // (once, in time, the right one, never again), the refusals (too soon, busy, already in that state), the state machine (running, paused, standby, maintenance, identify), the standby that survives
 // a restart, the wait of a rolling restart, and the answers the node publishes against the shared vectors.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.

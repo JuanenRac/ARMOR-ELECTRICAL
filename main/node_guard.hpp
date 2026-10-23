@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the node's own watchdog over its health (rules in core/node_guard.hpp, tested on a computer). Nothing here has run on a board.
+// ARMOR-NODE-ELECTRICAL - the node's own watchdog over its health (rules in core/node_guard.hpp, tested on a computer). Nothing here has run on a board.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include "core/boot_report.hpp"

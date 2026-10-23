@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the relay outputs of the base board: which ones exist, what each is told and at what level its pin must be, without any hardware.
+// ARMOR-NODE-ELECTRICAL - the relay outputs of the base board: which ones exist, what each is told and at what level its pin must be, without any hardware.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The node drives a pin; the driver, the relay and the load behind it are the installer's. Every relay is open (off) when the node starts, whatever it was before: a node that

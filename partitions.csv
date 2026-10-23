@@ -1,4 +1,4 @@
-# ARMOR-ELECTRICAL partition table for the 16 MB flash of the ESP32-S3 N16R8.
+# ARMOR-NODE-ELECTRICAL partition table for the 16 MB flash of the ESP32-S3 N16R8.
 # Two application slots (over-the-air updates with rollback), the settings store, and room to grow.
 # Name,     Type, SubType,  Offset,   Size,     Flags
 nvs,        data, nvs,      0x9000,   0x10000,

@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the node's own watchdog over its health: a task it needs that is not there, or an internal memory that stays too low, is told and put right by one clean restart - never a loop. No hardware.
+// ARMOR-NODE-ELECTRICAL - the node's own watchdog over its health: a task it needs that is not there, or an internal memory that stays too low, is told and put right by one clean restart - never a loop. No hardware.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The ESP32-S3 boards keep some 300 KB of internal memory for everything the radio, the network, the drivers and every task stack need. A node whose Bluetooth took the last of it ran on for

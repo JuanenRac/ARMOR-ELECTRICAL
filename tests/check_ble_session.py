@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ARMOR-ELECTRICAL - guard on the Bluetooth set-up's shared state (main/ble_provision.cpp). Nothing is compiled: it reads the source and fails when
+# ARMOR-NODE-ELECTRICAL - guard on the Bluetooth set-up's shared state (main/ble_provision.cpp). Nothing is compiled: it reads the source and fails when
 #   1. the session of the phone (g_session) is used by a function that does not take its lock: the radio's host task clears it on every connection while the worker task uses it;
 #   2. a request no longer carries the number of the connection it arrived in, or the worker no longer drops a request (and an answer) whose connection is gone;
 #   3. a connection or a disconnection no longer changes that number under the lock, or no longer empties the queue of requests that were waiting, which is how a request of one phone was

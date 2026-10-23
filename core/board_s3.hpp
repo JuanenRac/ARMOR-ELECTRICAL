@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the two boards this firmware is built for, and which GPIO pins of each may be handed to a serial port.
+// ARMOR-NODE-ELECTRICAL - the two boards this firmware is built for, and which GPIO pins of each may be handed to a serial port.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // One firmware, two board profiles (chosen when the image is built, tools/build_node.sh NODE BOARD; the host tests build both):

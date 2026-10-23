@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - how long Bluetooth set-up stays open: it closes itself after some minutes with nobody connected, and stays closed until the node is restarted by its owner. No hardware.
+// ARMOR-NODE-ELECTRICAL - how long Bluetooth set-up stays open: it closes itself after some minutes with nobody connected, and stays closed until the node is restarted by its owner. No hardware.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // In mode "setup" the node listens at every start, because until it has an address it cannot be reached any other way. Left open for ever the radio keeps a large share of the internal memory and

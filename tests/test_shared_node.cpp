@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of what the electrical and the alarm node share: the settings every node has (read, checked and written), the readers they are made with, the pins of the base board,
+// ARMOR-NODE-ELECTRICAL - host tests of what the electrical and the alarm node share: the settings every node has (read, checked and written), the readers they are made with, the pins of the base board,
 // the relays and the Zigbee radio's bridge.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 // Nothing here touches hardware or a network: the pins are numbers, the clock is a number the test moves and the documents are text.
@@ -244,7 +244,7 @@ static void test_node_defaults_and_validation() {
   NodeSettings s;
   node_defaults(s, "a1b2c3");
   CHECK(s.node_id == "electrical-a1b2c3" && s.node_name == s.node_id && s.language == "en" && s.web == WebMode::kBoth && s.ble == BleMode::kSetup && s.time.zone == "UTC0" && s.auto_restart_hours == 0);
-  CHECK(s.uplink == (board::kHasEthernet ? Uplink::kEthernet : Uplink::kWifi) && s.ip.dhcp && !s.ap.enabled && !s.sta.enabled && !s.mqtt.enabled && s.mqtt.heartbeat_s == 10 && s.ap.ssid == "ARMOR-ELECTRICAL");
+  CHECK(s.uplink == (board::kHasEthernet ? Uplink::kEthernet : Uplink::kWifi) && s.ip.dhcp && !s.ap.enabled && !s.sta.enabled && !s.mqtt.enabled && s.mqtt.heartbeat_s == 10 && s.ap.ssid == "ARMOR-NODE-ELECTRICAL");
   // a node that was never configured lacks only a way in, and only on the board without a cable
   Problems fresh = check(s);
   if (board::kHasEthernet) CHECK(fresh.empty()); else CHECK(fresh.size() == 1 && has(fresh, "sta.enabled", "required"));

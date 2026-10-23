@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the rules of the orders the server can give a node: restart, pause, resume, standby, identify, diagnostics and maintenance. No hardware.
+// ARMOR-NODE-ELECTRICAL - the rules of the orders the server can give a node: restart, pause, resume, standby, identify, diagnostics and maintenance. No hardware.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The server (and nobody else: the broker's access list lets only its identity write armor/control/.../command) gives an order in two steps, as for a switch: `arm`, to which the node answers with a

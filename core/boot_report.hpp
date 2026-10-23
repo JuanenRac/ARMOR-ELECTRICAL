@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - what a node says about the way it last started: the report of a dirty boot. No hardware.
+// ARMOR-NODE-ELECTRICAL - what a node says about the way it last started: the report of a dirty boot. No hardware.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // A node that restarts because it crashed, because a watchdog bit, because the supply sagged, because it ran out of memory or because its own guard restarted it, tells so ONCE after it

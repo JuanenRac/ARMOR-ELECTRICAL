@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the meters at work: the task that runs core/meter_runner.hpp on the real serial line (and, with no meter, only on the analog inputs).
+// ARMOR-NODE-ELECTRICAL - the meters at work: the task that runs core/meter_runner.hpp on the real serial line (and, with no meter, only on the analog inputs).
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // What the node does on every turn (asking the meters, the states, the message) is in core/meter_runner.hpp and is tested on a computer; this file only opens the UART, gives the

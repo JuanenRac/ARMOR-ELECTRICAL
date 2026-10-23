@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ARMOR-ELECTRICAL - guard on the routes of the node's web server. Nothing is compiled: it reads main/web_server.cpp (the dispatch), panel/app.js and tools/panel_mock.mjs and fails when
+# ARMOR-NODE-ELECTRICAL - guard on the routes of the node's web server. Nothing is compiled: it reads main/web_server.cpp (the dispatch), panel/app.js and tools/panel_mock.mjs and fails when
 #   1. a route that every node of the family serves (the session, the settings, the users, the log, the core dump, the updates, the clock...) is missing here: a copy of the shared code that
 #      lost a route is how a node ended up without a page of its panel;
 #   2. the panel calls a route the server does not answer (a button that would get a 404);

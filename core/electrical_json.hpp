@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the message a node publishes (contract version 0, see docs/ELECTRICAL_MESSAGES.md).
+// ARMOR-NODE-ELECTRICAL - the message a node publishes (contract version 0, see docs/ELECTRICAL_MESSAGES.md).
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 //   armor/electrical/<node>/state     one message per node, every few seconds; JSON, no retained flag.

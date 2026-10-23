@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the node's own watchdog over its health: reads the real values, tells, and restarts once when the rules in core/node_guard.hpp say so. Nothing here has run on a board.
+// ARMOR-NODE-ELECTRICAL - the node's own watchdog over its health: reads the real values, tells, and restarts once when the rules in core/node_guard.hpp say so. Nothing here has run on a board.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include "node_guard.hpp"
 

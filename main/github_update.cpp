@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - see github_update.hpp.
+// ARMOR-NODE-ELECTRICAL - see github_update.hpp.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include "github_update.hpp"
 
@@ -79,7 +79,7 @@ bool get_bounded_once(const std::string& url, const char* accept, std::string& o
   esp_http_client_handle_t client = esp_http_client_init(&config);
   ESP_LOGI(kTag, "HTTP client opened with a %d-byte header buffer: %u bytes of internal memory free before, %u after", config.buffer_size, internal_before, static_cast<unsigned>(esp_get_free_internal_heap_size()));
   if (client == nullptr) { error = "client_init"; return false; }
-  esp_http_client_set_header(client, "User-Agent", "ARMOR-ELECTRICAL");
+  esp_http_client_set_header(client, "User-Agent", "ARMOR-NODE-ELECTRICAL");
   if (accept != nullptr) esp_http_client_set_header(client, "Accept", accept);
   bool ok = false;
   int length = 0, status = 0;
@@ -213,7 +213,7 @@ InstallResult install(const CheckResult& offer) {
   esp_http_client_handle_t client = esp_http_client_init(&config);
   ESP_LOGI(kTag, "HTTP client opened with a %d-byte header buffer: %u bytes of internal memory free before, %u after", config.buffer_size, internal_before, static_cast<unsigned>(esp_get_free_internal_heap_size()));
   if (client == nullptr) { result.error = "client_init"; return result; }
-  esp_http_client_set_header(client, "User-Agent", "ARMOR-ELECTRICAL");
+  esp_http_client_set_header(client, "User-Agent", "ARMOR-NODE-ELECTRICAL");
   int length = 0, status = 0;
   bool opened = false;
   for (int attempt = 1; attempt <= 3 && !opened; ++attempt) {

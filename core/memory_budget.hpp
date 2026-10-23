@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - how the node spends its memory: the two kinds it has, what is judged "low", where a big buffer goes and how often the log says it. No hardware.
+// ARMOR-NODE-ELECTRICAL - how the node spends its memory: the two kinds it has, what is judged "low", where a big buffer goes and how often the log says it. No hardware.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The ESP32-S3 boards have two kinds of memory. The INTERNAL one (some 300 KB, of which the radio, the network and every task stack take their share) is the only one a

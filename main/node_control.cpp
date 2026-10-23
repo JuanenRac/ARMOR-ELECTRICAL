@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - lets the server control the node. Nothing here has run on a board; what it decides is in core/control_gate.hpp and is tested on a computer.
+// ARMOR-NODE-ELECTRICAL - lets the server control the node. Nothing here has run on a board; what it decides is in core/control_gate.hpp and is tested on a computer.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // Who may ask: only the server's identity can write armor/control/... on the broker (its access list), and even then the node acts only on an execute that carries the token it gave in the

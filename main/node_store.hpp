@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - what the node keeps in flash: its settings and its panel users.
+// ARMOR-NODE-ELECTRICAL - what the node keeps in flash: its settings and its panel users.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // Both are one JSON document each in the NVS partition, written only after they were checked. A build's Kconfig values are the FIRST

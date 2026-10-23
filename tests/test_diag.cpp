@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of what a node tells an administrator about itself when it misbehaves: the report of a dirty start (core/boot_report.hpp), the copy of the settings made before an
+// ARMOR-NODE-ELECTRICAL - host tests of what a node tells an administrator about itself when it misbehaves: the report of a dirty start (core/boot_report.hpp), the copy of the settings made before an
 // update and the check of the start (core/config_snapshot.hpp), and the diagnostic package, which must never carry a secret (core/diag_package.hpp).
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 // Nothing here touches hardware or a network.

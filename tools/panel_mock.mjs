@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * ARMOR-ELECTRICAL - a stand-in for an electrical node, to work on the web panel without a board.
+ * ARMOR-NODE-ELECTRICAL - a stand-in for an electrical node, to work on the web panel without a board.
  * Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
  *
  *   node tools/panel_mock.mjs [port]          (default 8090)     open http://127.0.0.1:8090/
@@ -32,7 +32,7 @@ let logText = "I (1200) armor-node: A.R.M.O.R. node armor-a1b2c3, firmware 0.2.3
 const config = {
   v: 1, node: { id: "electrical-a1b2c3", name: "House panel", hostname: "" },
   uplink: wired ? "ethernet" : "wifi", ip: { dhcp: true, address: "", netmask: "255.255.255.0", gateway: "", dns1: "", dns2: "" },
-  ap: { enabled: true, ssid: "ARMOR-ELECTRICAL-A1B2C3", security: "wpa2", password_set: true, channel: 0, hidden: false, max_clients: 8, tx_power_dbm: 15, bandwidth_mhz: 20, country: "ES" },
+  ap: { enabled: true, ssid: "ARMOR-NODE-ELECTRICAL-A1B2C3", security: "wpa2", password_set: true, channel: 0, hidden: false, max_clients: 8, tx_power_dbm: 15, bandwidth_mhz: 20, country: "ES" },
   sta: { enabled: true, ssid: "HomeRouter", password_set: true, backup: [] },
   mqtt: { enabled: true, uri: "mqtt://192.168.0.180:18883", username: "electrical-node-electrical-a1b2c3", password_set: true, heartbeat_s: 10, ntp: "pool.ntp.org", backup: [] },
   bus: { rx: 16, tx: 15, de: -1, baud: 9600, poll_s: 2 },

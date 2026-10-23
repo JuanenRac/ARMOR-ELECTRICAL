@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the settings of an electrical node: what the web panel edits, what is stored in flash and what the firmware obeys.
+// ARMOR-NODE-ELECTRICAL - the settings of an electrical node: what the web panel edits, what is stored in flash and what the firmware obeys.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // One document (JSON) holds everything that differs from node to node, so the same firmware image serves every node and nothing secret has to be

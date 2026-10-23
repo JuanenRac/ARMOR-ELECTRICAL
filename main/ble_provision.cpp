@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - configuration over Bluetooth Low Energy (NimBLE), for an app on a phone.
+// ARMOR-NODE-ELECTRICAL - configuration over Bluetooth Low Energy (NimBLE), for an app on a phone.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // One GATT service with two characteristics: RX (the app writes framed JSON requests) and TX (the node notifies framed JSON answers); see

@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the core dump in flash and the diagnostic package. Nothing here has run on a board; what goes into the package is decided in core/diag_package.hpp and tested on a computer.
+// ARMOR-NODE-ELECTRICAL - the core dump in flash and the diagnostic package. Nothing here has run on a board; what goes into the package is decided in core/diag_package.hpp and tested on a computer.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // Everything that reads flash (the check of the core dump, its summary) is done ONCE, from init(), which the guard's start calls in the main task: the tasks that report (node-health) keep their

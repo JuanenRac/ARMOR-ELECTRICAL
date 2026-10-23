@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ARMOR-ELECTRICAL - says whether the sdkconfig a build produced really carries what sdkconfig.defaults asks for.
+# ARMOR-NODE-ELECTRICAL - says whether the sdkconfig a build produced really carries what sdkconfig.defaults asks for.
 # Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #
 # ESP-IDF reads sdkconfig.defaults only for the symbols that its generated sdkconfig does not have yet: a build directory (.compile/<profile>/sdkconfig, build/<profile>/sdkconfig) made before a

@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the switches of a node and the commands they take (see docs/SWITCHING.md and docs/ELECTRICAL_MESSAGES.md).
+// ARMOR-NODE-ELECTRICAL - the switches of a node and the commands they take (see docs/SWITCHING.md and docs/ELECTRICAL_MESSAGES.md).
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 //   armor/electrical/<node>/command   server -> node   kind "electrical_command": arm, close_a, close_b, open or acknowledge on one switch.

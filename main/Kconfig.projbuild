@@ -1,7 +1,7 @@
 menu "A.R.M.O.R. electrical node"
 
 # The board the image is for. tools/build_node.sh NODE BOARD picks it (sdkconfig.board.<board>); the two profiles differ in the pin table, in the default way in
-# (the cable or Wi-Fi) and in whether the W5500 Ethernet driver is built. The touch panel (ARMOR-HMI) is a single board, the Waveshare ESP32-S3-Touch-LCD-7C-BOX (profile lcd7box): it has
+# (the cable or Wi-Fi) and in whether the W5500 Ethernet driver is built. The touch panel (ARMOR-NODE-HMI) is a single board, the Waveshare ESP32-S3-Touch-LCD-7C-BOX (profile lcd7box): it has
 # no Ethernet, so its profile takes the Wi-Fi-only entry below, and its image says "lcd7box" wherever it names its board.
 choice ARMOR_BOARD
     prompt "Board"

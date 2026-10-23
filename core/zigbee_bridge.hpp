@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the Zigbee radio of the base board: what the node decides about it, without any hardware.
+// ARMOR-NODE-ELECTRICAL - the Zigbee radio of the base board: what the node decides about it, without any hardware.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // The node does not speak Zigbee. A coordinator module (a CC2652P with a Z-Stack coordinator firmware) sits on one of the node's serial lines and the node only lends that line to the

@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - configuration over Bluetooth Low Energy, for an app on a phone (the same operations as the panel, framed as JSON on a GATT byte stream).
+// ARMOR-NODE-ELECTRICAL - configuration over Bluetooth Low Energy, for an app on a phone (the same operations as the panel, framed as JSON on a GATT byte stream).
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // For a node with no Ethernet cable (or no address yet): the phone finds "ARMOR-xxxxxx", connects, and configures the node's name, Wi-Fi station,

@@ -32,7 +32,7 @@ If you build the image yourself with your fleet secret (`ARMOR_WITH_FLEET_SECRET
 ## How to read or work out the code
 
 * **Any image: the USB console.** While the node has no administrator it prints, every 15 seconds, a line that starts with `SETUP:` and says where to go, the setup code and the Bluetooth PIN. Connect the board's USB port and open the serial monitor (for example `idf.py monitor`). Opening the port may restart the board: the line appears again within 15 seconds.
-* **Local image only: calculate it.** Use the calculator of the ARMOR-RADAR repository (`tools/setup_code.html`, opened in a browser: no server, no network; or `tools/adopt_node.py`): type the fleet secret and the MAC and it shows the code, because every node derives it the same way. The panel's set-up screen shows the node's MAC. This does **not** work for a public image, whatever secret you type.
+* **Local image only: calculate it.** Use the calculator of the ARMOR-NODE-RADAR repository (`tools/setup_code.html`, opened in a browser: no server, no network; or `tools/adopt_node.py`): type the fleet secret and the MAC and it shows the code, because every node derives it the same way. The panel's set-up screen shows the node's MAC. This does **not** work for a public image, whatever secret you type.
 
 ## The Bluetooth PIN
 

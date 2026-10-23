@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - does a topic match a subscription filter (the MQTT rules for + and #)? Used to hand a message the broker sent to whoever subscribed to it.
+// ARMOR-NODE-ELECTRICAL - does a topic match a subscription filter (the MQTT rules for + and #)? Used to hand a message the broker sent to whoever subscribed to it.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <string>

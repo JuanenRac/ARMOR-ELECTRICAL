@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - host tests of the rules every node shares and that guard its panel: the user store, sessions and the throttle on wrong passwords, the strict JSON reader and writer, the checks on
+// ARMOR-NODE-ELECTRICAL - host tests of the rules every node shares and that guard its panel: the user store, sessions and the throttle on wrong passwords, the strict JSON reader and writer, the checks on
 // what an operator types for the network, the node identifier, the topic filters of the broker and (where the node has them) the web policy and the layout of the Wi-Fi.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 // Nothing here touches hardware or a network: the password hash is a stand-in and the clock is a number the test moves.

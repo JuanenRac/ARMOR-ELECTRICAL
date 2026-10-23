@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - the meters at work, without the hardware: what the node does on every turn of its loop. It asks the meters one at a time (core/pzem_bus.hpp), feeds the bus
+// ARMOR-NODE-ELECTRICAL - the meters at work, without the hardware: what the node does on every turn of its loop. It asks the meters one at a time (core/pzem_bus.hpp), feeds the bus
 // what arrives, keeps the state of the line and of each meter as the panel shows it, and every round makes the message of the node. The serial line and the clock are handed
 // in, so the firmware gives it a UART and the tests give it a stand-in that plays the meters. READ ONLY: nothing here writes to a meter or switches anything.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.

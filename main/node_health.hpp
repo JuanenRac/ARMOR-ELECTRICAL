@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - tells the server how the node is doing (core/node_health.hpp): uptime, why it restarted, memory, link, broker reconnects, the last error.
+// ARMOR-NODE-ELECTRICAL - tells the server how the node is doing (core/node_health.hpp): uptime, why it restarted, memory, link, broker reconnects, the last error.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <functional>

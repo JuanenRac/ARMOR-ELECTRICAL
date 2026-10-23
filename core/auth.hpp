@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - who may use the panel: users, roles, sessions and the throttle on wrong passwords.
+// ARMOR-NODE-ELECTRICAL - who may use the panel: users, roles, sessions and the throttle on wrong passwords.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 //
 // Passwords are stored only as a salted hash. The hash function itself (PBKDF2 with HMAC-SHA256 on the board, a stand-in in the tests)

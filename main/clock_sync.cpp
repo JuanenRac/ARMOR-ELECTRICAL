@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - see clock_sync.hpp.
+// ARMOR-NODE-ELECTRICAL - see clock_sync.hpp.
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #include "clock_sync.hpp"
 

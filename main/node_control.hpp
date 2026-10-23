@@ -1,4 +1,4 @@
-// ARMOR-ELECTRICAL - lets the server control the node: restart, pause, resume, standby, identify, diagnostics and maintenance (core/control_gate.hpp has the rules and is tested on a computer).
+// ARMOR-NODE-ELECTRICAL - lets the server control the node: restart, pause, resume, standby, identify, diagnostics and maintenance (core/control_gate.hpp has the rules and is tested on a computer).
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D). GPL-3.0-or-later.
 #pragma once
 #include <cstdint>
