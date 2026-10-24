@@ -42,6 +42,25 @@
 | Technik | C++17 (host-tested core); ESP-IDF firmware for the ESP32-S3 (Wi-Fi or Ethernet), with its web panel |
 | Auf echter Hardware | Noch keiner: keine Platine aufgebaut und kein Zähler oder Schütz angeschlossen; nichts schaltet irgendetwas |
 
+## 🚦 Projektstatus
+
+Jede Zeile ist ein Teil dieses Repositorys, und die Ampel sagt, wie weit er heute ist. Sie beruht auf dem, was das Repository zeigen kann (Tests, Builds, Läufe), nicht auf dem, was geplant ist.
+
+🟢 Fertig und überprüft · 🟡 Funktioniert, mit bekannten Grenzen · 🟠 Teilweise fertig oder noch nicht überprüft · 🔴 Nicht gemacht oder funktioniert nicht
+
+| Bereich | Stand | Was das hier bedeutet |
+|---|---|---|
+| Software | 🟢 | Die Firmware wird im ESP-IDF-5.5.5-Container für beide Platinen (WLAN und Ethernet) gebaut. |
+| Tests | 🟢 | 380.189 Prüfungen in 16 Host-Programmen bestehen (`ctest`), davon 375.036 zu den Schaltregeln; die Zähler und Schütze sind Nachbildungen. |
+| Protokolle und Daten | 🟡 | Die Telegramme und Messwerte der PZEM-004T v3 und PZEM-017 werden gegen die dokumentierten Telegramme und aufgezeichnete Beispiele geprüft; noch hat kein Zähler geantwortet. |
+| Oberfläche | 🟡 | Die Seiten für Zähler und Messwerte des Web-Panels wurden in einem Browser gegen einen nachgebildeten Knoten erprobt, nicht auf einer Platine. |
+| Hardware | 🔴 | Keine Platine gebaut und kein Zähler oder Schütz angeschlossen: Bisher lief nichts auf echten Geräten. |
+| Sicherheit | 🟡 | Der Einrichtungscode, die Anmeldung mit Begrenzung falscher Passwörter, die Bluetooth-PIN und die signierten Aktualisierungen sind auf dem Host getestet; es gab keine unabhängige Prüfung. |
+| Aktualisierungen | 🟠 | Die Hash- und Ed25519-Signaturprüfungen und die Rückfalllogik bestehen auf dem Host; eine Aktualisierung über die Luft wurde nie auf einer Platine ausgeführt. |
+| Schreiben auf Geräte | 🟠 | Die Schaltregeln für Schütze sind nur gegen nachgebildete Schütze getestet; nichts hier hat bisher etwas Echtes geschaltet. |
+| Integration | 🟢 | Die Nachrichten des Knotens werden gegen die gemeinsamen Schemas und Konformitätsvektoren von ARMOR-COMMON geprüft. |
+| Dokumentation | 🟢 | Acht Sprachen, die Firmware-Anleitung, die Verdrahtungshinweise und das Änderungsprotokoll sind aktuell. |
+
 ## 🎯 Überblick
 
 * **Zähler lesen:** die Modbus-RTU-Rahmen der Peacefair-Zähler **PZEM-004T v3** (AC) und **PZEM-017** (DC): die CRC, die Anfrage, die die Register liest, und die Auswertung der Antwort (Spannung, Strom, Leistung, Energie, Frequenz, Leistungsfaktor, Alarm). Nur die Leseanfrage wird gebaut: die schreibenden (Adresse, Schwellen, Zurücksetzen der Energie) werden nirgends gebaut. Eine Antwort, die nicht passt oder einen Wert enthält, den kein echter Zähler liefern könnte, wird abgelehnt.

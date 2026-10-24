@@ -42,6 +42,25 @@
 | Tecnologia | C++17 (host-tested core); ESP-IDF firmware for the ESP32-S3 (Wi-Fi or Ethernet), with its web panel |
 | Em hardware real | Nenhum ainda: nenhuma placa montada nem contador ou contactor ligados; nada comuta coisa alguma |
 
+## 🚦 Estado do projeto
+
+Cada linha é uma parte deste repositório e a luz diz até onde chega hoje. É escrita com o que o repositório consegue demonstrar (testes, compilações, execuções), não com o que está previsto.
+
+🟢 Feito e verificado · 🟡 Funciona, com limites conhecidos · 🟠 Feito a meio ou ainda por verificar · 🔴 Por fazer ou a não funcionar
+
+| Área | Estado | O que significa aqui |
+|---|---|---|
+| Software | 🟢 | O firmware compila no contentor ESP-IDF 5.5.5 para as duas placas (Wi-Fi e Ethernet). |
+| Testes | 🟢 | Passam 380.189 verificações em 16 programas de anfitrião (`ctest`), 375.036 delas sobre as regras de manobra; os contadores e contactores são simulações. |
+| Protocolos e dados | 🟡 | As tramas e leituras dos PZEM-004T v3 e PZEM-017 são verificadas contra as tramas documentadas e amostras gravadas; nenhum contador respondeu ainda. |
+| Interface | 🟡 | As páginas de contadores e leituras do painel web foram exercitadas num navegador contra um nó simulado, não numa placa. |
+| Hardware | 🔴 | Nenhuma placa construída nem contador ou contactor ligados: nada funcionou ainda em equipamentos reais. |
+| Segurança | 🟡 | O código de configuração, o acesso com limite de palavras-passe erradas, o PIN Bluetooth e as atualizações assinadas estão testados no anfitrião; não houve revisão independente. |
+| Atualizações | 🟠 | As verificações de hash e de assinatura Ed25519 e a lógica de retrocesso passam no anfitrião; uma atualização pelo ar nunca foi executada numa placa. |
+| Escrita nos equipamentos | 🟠 | As regras para manobrar contactores só foram testadas contra contactores simulados; nada aqui manobrou ainda nada real. |
+| Integração | 🟢 | As mensagens do nó são validadas contra os esquemas partilhados e os vetores de conformidade do ARMOR-COMMON. |
+| Documentação | 🟢 | Oito idiomas, o guia do firmware, as notas de cablagem e o registo de alterações estão atualizados. |
+
 ## 🎯 Visão geral
 
 * **Ler os contadores:** as tramas Modbus RTU dos **PZEM-004T v3** (AC) e **PZEM-017** (DC) da Peacefair: o CRC, o pedido que lê os registos e a descodificação da resposta (tensão, corrente, potência, energia, frequência, fator de potência, alarme). Só se constrói o pedido de leitura: os que escrevem num contador (o seu endereço, os seus limiares, a reposição da sua energia) não se constroem em lado nenhum. Uma resposta que não encaixa, ou que traz um valor que nenhum contador real poderia dar, recusa-se.

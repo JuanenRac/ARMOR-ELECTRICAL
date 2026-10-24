@@ -42,6 +42,25 @@
 | Tecnología | C++17 (host-tested core); ESP-IDF firmware for the ESP32-S3 (Wi-Fi or Ethernet), with its web panel |
 | En hardware real | Ninguno todavía: ninguna placa montada ni medidor o contactor conectado; nada conmuta nada |
 
+## 🚦 Estado del proyecto
+
+Cada línea es una parte de este repositorio y la luz dice hasta dónde llega hoy. Se escribe con lo que el repositorio puede demostrar (pruebas, compilaciones, ejecuciones), no con lo previsto.
+
+🟢 Hecho y verificado · 🟡 Funciona, con límites conocidos · 🟠 Hecho a medias o sin verificar · 🔴 Sin hacer o sin funcionar
+
+| Área | Estado | Qué significa aquí |
+|---|---|---|
+| Software | 🟢 | El firmware compila en el contenedor ESP-IDF 5.5.5 para las dos placas (Wi-Fi y Ethernet). |
+| Pruebas | 🟢 | Pasan 380.189 comprobaciones en 16 programas de host (`ctest`), 375.036 de ellas sobre las reglas de maniobra; los medidores y contactores son simulaciones. |
+| Protocolos y datos | 🟡 | Las tramas y lecturas de los PZEM-004T v3 y PZEM-017 se comprueban contra las tramas documentadas y muestras grabadas; ningún medidor ha respondido todavía. |
+| Interfaz | 🟡 | Las páginas de medidores y lecturas del panel web se han ejercitado en un navegador contra un nodo simulado, no en una placa. |
+| Hardware | 🔴 | Ninguna placa construida ni medidor o contactor conectados: nada ha funcionado todavía con equipos reales. |
+| Seguridad | 🟡 | El código de configuración, el acceso con límite de contraseñas erróneas, el PIN Bluetooth y las actualizaciones firmadas están probados en el host; no ha habido una revisión independiente. |
+| Actualizaciones | 🟠 | Las comprobaciones de hash y de firma Ed25519 y la lógica de vuelta atrás pasan en el host; una actualización por aire nunca se ha ejecutado en una placa. |
+| Escritura en los equipos | 🟠 | Las reglas para maniobrar contactores solo se han probado contra contactores simulados; nada de aquí ha maniobrado nada real. |
+| Integración | 🟢 | Los mensajes del nodo se validan contra los esquemas compartidos y los vectores de conformidad de ARMOR-COMMON. |
+| Documentación | 🟢 | Ocho idiomas, la guía del firmware, las notas de cableado y el historial de cambios están al día. |
+
 ## 🎯 Descripción general
 
 * **Lectura de contadores:** las tramas Modbus RTU de los **PZEM-004T v3** (AC) y **PZEM-017** (DC) de Peacefair: el CRC, la petición que lee los registros y la decodificación de la respuesta (tensión, corriente, potencia, energía, frecuencia, factor de potencia, alarma). Solo se construye la petición de lectura: las que escriben en un contador (su dirección, sus umbrales, el reinicio de su energía) no se construyen en ningún sitio. Se rechaza una respuesta que no cuadra o que trae un valor que ningún contador real podría dar.

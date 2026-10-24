@@ -42,6 +42,25 @@
 | Stack | C++17 (host-tested core); ESP-IDF firmware for the ESP32-S3 (Wi-Fi or Ethernet), with its web panel |
 | On real hardware | None yet: no board built and no meter or contactor connected; nothing switches anything |
 
+## 🚦 Project status
+
+Each line is one part of this repository and the light says how far it is today. It is written from what the repository can show (tests, builds, runs), not from what is planned.
+
+🟢 Done and verified · 🟡 Works, with known limits · 🟠 Partly done or not verified yet · 🔴 Not done or not working
+
+| Area | State | What it means here |
+|---|---|---|
+| Software | 🟢 | The firmware builds in the ESP-IDF 5.5.5 container for both boards (Wi-Fi and Ethernet). |
+| Tests | 🟢 | 380,189 checks in 16 host programs pass (`ctest`), 375,036 of them on the switching rules; the meters and contactors are stand-ins. |
+| Protocols and data | 🟡 | The PZEM-004T v3 and PZEM-017 frames and readings are checked against the documented frames and recorded samples; no meter has answered yet. |
+| Interface | 🟡 | The Meters and Readings pages of the web panel are exercised in a browser against a stand-in node, not on a board. |
+| Hardware | 🔴 | No board built and no meter or contactor connected: nothing has run on real equipment yet. |
+| Security | 🟡 | The set-up code, the login with a limit on wrong passwords, the Bluetooth PIN and the signed updates are tested on the host; there has been no independent review. |
+| Updates | 🟠 | The hash and Ed25519 signature checks and the rollback logic pass on the host; an update over the air has never been run on a board. |
+| Writing to equipment | 🟠 | The rules for switching contactors are tested only against stand-in contactors; nothing here has switched anything real. |
+| Integration | 🟢 | The messages of the node are validated against the shared schemas and conformance vectors of ARMOR-COMMON. |
+| Documentation | 🟢 | Eight languages, the firmware guide, the wiring notes and the changelog are up to date. |
+
 ## 🎯 Overview
 
 * **Reading the meters:** the Modbus RTU frames of the Peacefair **PZEM-004T v3** (AC) and **PZEM-017** (DC): the CRC, the request that reads the registers and the decoding of the reply (voltage, current, power, energy, frequency, power factor, alarm). Only the read request is built: the ones that write to a meter (its address, its thresholds, the reset of its energy) are not built anywhere. A reply that does not fit, or holds a value no real meter could give, is refused.
