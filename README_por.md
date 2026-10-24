@@ -105,9 +105,11 @@ ARMOR-NODE-ELECTRICAL/
 ├── core/    pzem (frames of the PZEM meters), pzem_bus (the line), meter_runner (one turn of the loop), electrical_json (the message), electrical_config (the settings),
 │            interlock (the rules for switching, NOT linked into the firmware), ble_frame + ble_dispatch (Bluetooth), auth, netplan, board_s3, json...
 ├── panel/   the web panel: index.html, app.js, text.js (8 languages), style.css
-├── tools/   build_node.sh, pack_panel.py, panel_mock.mjs, panel_browser_test.mjs
+├── tools/   build_node.sh, check_sdkconfig.py, pack_panel.py, panel_mock.mjs, panel_browser_test.mjs, the shared CI checks (armor_ci_validate.py, armor_project_tool.py, _armor_readme_parity.py)
+├── secrets/ node.conf.example (the real files are git-ignored)
+├── CMakeLists.txt, partitions.csv, sdkconfig.defaults, sdkconfig.board.*   the ESP-IDF project, the flash layout and the settings of each board (s3-eth, s3-wifi)
 ├── tests/   test_meters, test_runner, test_config, test_mqtt_tls, test_ble, test_interlock, emit_samples + check_samples.py (the messages against ARMOR-COMMON)
-├── docs/    DESIGN, NODE_FIRMWARE, BLE_PROVISIONING, SAFETY, SWITCHING, PROTOCOLS, ELECTRICAL_MESSAGES, HARDWARE
+├── docs/    DESIGN, NODE_FIRMWARE, BLE_PROVISIONING, SAFETY, SWITCHING, PROTOCOLS, ELECTRICAL_MESSAGES, HARDWARE, BASE_BOARD, ZIGBEE, BENCH_TESTS, SETUP_CODE
 └── images/  brand assets
 ```
 
